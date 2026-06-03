@@ -1,0 +1,2 @@
+[console_scripts]
+stock-risk-mcp = stock_risk_mcp.cli:main

@@ -1,0 +1,98 @@
+Metadata-Version: 2.4
+Name: stock-risk-mcp
+Version: 0.1.0
+Summary: Local stock proposal risk evaluation MVP with mock adapters.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic>=2.0
+Requires-Dist: PyYAML>=6.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Provides-Extra: mcp
+Requires-Dist: mcp>=1.0; extra == "mcp"
+
+# stock-risk-mcp
+
+`stock-risk-mcp`는 개인 투자자가 로컬에서 투자 제안을 검토하기 위한 리스크 평가 MVP입니다. 이 프로젝트는 투자 조언이나 자동매매 시스템이 아니며, 실제 주문 실행 기능을 포함하지 않습니다.
+
+LLM은 주문을 직접 실행하면 안 됩니다. LLM이나 외부 클라이언트는 투자 제안만 만들고, Risk Engine이 정책과 리스크 데이터를 기준으로 최종 게이트 역할을 합니다.
+
+## 기능
+
+- LLM 또는 외부 클라이언트의 투자 제안을 JSON 형태의 `RiskResult`로 평가
+- 하드 블록 조건 우선 적용
+- 하드 블록이 없을 때 소프트 점수 계산
+- `ALLOW`, `REVIEW`, `BLOCK` 결정
+- 최대 주문 가능 금액과 최대 포지션 비중 계산
+- MVP용 mock adapter 제공
+- 향후 FINVIZ, Newsfilter.io, Dilution Tracker, Nasdaq Noncompliant, 토스 포트폴리오, 브로커 API를 붙이기 쉬운 adapter 구조
+
+## 설치
+
+```bash
+cd stock-risk-mcp
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+## 실행
+
+```bash
+python -m stock_risk_mcp.cli --ticker SAFE --side BUY --confidence 0.7 --reason "토스 상위 투자자들이 공통 보유"
+```
+
+출력은 pretty JSON입니다. 예시는 다음과 같은 형태입니다.
+
+```json
+{
+  "ticker": "SAFE",
+  "decision": "ALLOW",
+  "score": 94,
+  "max_order_usd": 2000.0
+}
+```
+
+## 테스트
+
+```bash
+pytest
+```
+
+## 정책 수정
+
+기본 정책은 `policies/default_policy.yaml`에 있습니다. 최소 시가총액, 최소 거래대금, 최대 포지션 비중, 현금 비중, 희석 리스크 차단 여부 등을 YAML에서 수정할 수 있습니다.
+
+CLI에서 다른 정책 파일을 쓰려면 `--policy`를 전달합니다.
+
+```bash
+python -m stock_risk_mcp.cli --ticker WATCH --side BUY --confidence 0.6 --reason "관심 종목" --policy policies/default_policy.yaml
+```
+
+## 실제 데이터 소스 연결
+
+외부 API 키나 비밀정보를 코드에 넣지 마세요. 실제 데이터 연결은 `src/stock_risk_mcp/adapters/base.py`의 인터페이스를 구현하는 새 adapter 클래스를 추가하는 방식으로 붙입니다.
+
+- `MarketDataAdapter`: 가격, 시가총액, 거래대금, 변동성
+- `CompanyRiskAdapter`: Nasdaq 미준수, 희석 리스크, 오퍼링, 워런트
+- `PortfolioAdapter`: 총자산, 현금, 현재 포지션, 섹터 노출
+- `TossSignalAdapter`: 추적 투자자 보유, 신규 매수, 신호 품질
+
+서비스 생성 시 mock 대신 실제 adapter 인스턴스를 주입하면 됩니다.
+
+## MCP 서버
+
+`mcp` 패키지가 설치되어 있으면 `mcp_server.py`가 FastMCP tool을 등록합니다. 설치되어 있지 않아도 import가 깨지지 않으며 안내 메시지를 출력합니다.
+
+```bash
+python -m stock_risk_mcp.mcp_server
+```
+
+등록되는 tool은 `evaluate_trade_proposal`이며, 입력은 `ticker`, `side`, `reason`, `llm_confidence`, `intended_holding_days`입니다.
+
+## 안전 원칙
+
+- 실제 주문 실행 기능 없음
+- 시장가, 마진, 옵션 주문은 정책 필드로만 표현하며 MVP에서 실행하지 않음
+- LLM은 제안자이고 Risk Engine이 최종 게이트
+- `BLOCK` 결과는 초보자가 따라 사기 부적합한 제안으로 취급
