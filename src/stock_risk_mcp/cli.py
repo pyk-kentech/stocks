@@ -12,6 +12,7 @@ from stock_risk_mcp.adapters.file_news import FileNewsAdapter
 from stock_risk_mcp.adapters.file_toss_signal import FileTossSignalAdapter
 from stock_risk_mcp.adapters.mock_company_risk import MockCompanyRiskAdapter
 from stock_risk_mcp.adapters.nasdaq_noncompliant_file import NasdaqNoncompliantFileAdapter
+from stock_risk_mcp.adapters.price_history_market_data import PriceHistoryMarketDataAdapter
 from stock_risk_mcp.backtest import BacktestService
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
@@ -47,6 +48,11 @@ def build_command_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="CSV Nasdaq noncompliant companies file",
+    )
+    evaluate_and_save.add_argument(
+        "--use-db-price-history",
+        action="store_true",
+        help="Use the SQLite price_history table to calculate market data.",
     )
     evaluate_and_save.add_argument("--source", default="adapter", help="Source label stored with snapshot rows")
 
@@ -95,6 +101,7 @@ def add_proposal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--reason", required=True, help="Reason supplied by the LLM or client")
     parser.add_argument("--holding-days", type=int, default=30, help="Intended holding period in days")
     parser.add_argument("--policy", type=Path, default=None, help="Optional path to a policy YAML file")
+    parser.add_argument("--price-history-file", type=Path, default=None, help="CSV/JSON price history file for market data")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -147,24 +154,33 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
 def run_evaluate(args: argparse.Namespace) -> dict[str, object]:
     policy = load_policy(args.policy) if args.policy else None
     proposal = build_proposal(args)
-    result = RiskEvaluationService(policy=policy).evaluate(proposal)
+    result = RiskEvaluationService(
+        policy=policy,
+        market_adapter=PriceHistoryMarketDataAdapter(
+            price_history_file=args.price_history_file,
+            source_name="price_history_file",
+        )
+        if args.price_history_file
+        else None,
+    ).evaluate(proposal)
     return result.model_dump(mode="json")
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
     policy = load_policy(args.policy) if args.policy else None
     proposal = build_proposal(args)
+    repository = RiskRepository(args.db)
     company_adapter = _build_company_risk_adapter(args.company_risk_file, args.nasdaq_noncompliant_file)
     service = RiskEvaluationService(
         policy=policy,
-        market_adapter=FileMarketDataAdapter(args.market_file) if args.market_file else None,
+        market_adapter=_build_market_data_adapter(args, repository),
         company_risk_adapter=company_adapter,
         toss_signal_adapter=FileTossSignalAdapter(args.toss_file) if args.toss_file else None,
     )
     context = service.evaluate_with_context(proposal)
     news_events = FileNewsAdapter(args.news_file).get_news_events(proposal.ticker) if args.news_file else []
     saved = save_evaluation_inputs_and_result(
-        repository=RiskRepository(args.db),
+        repository=repository,
         proposal=context.proposal,
         policy=context.policy,
         market=context.market,
@@ -175,7 +191,11 @@ def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
         source=args.source,
     )
     if args.nasdaq_noncompliant_file:
-        RiskRepository(args.db).upsert_data_source(_nasdaq_data_source())
+        repository.upsert_data_source(_nasdaq_data_source())
+    if args.price_history_file:
+        repository.upsert_data_source(_price_history_data_source("price_history_file", SourceType.FILE))
+    if args.use_db_price_history:
+        repository.upsert_data_source(_price_history_data_source("price_history_db", SourceType.SYSTEM))
     return {
         "result": context.result.model_dump(mode="json"),
         "saved": {
@@ -297,12 +317,30 @@ def _build_company_risk_adapter(company_risk_file: Path | None, nasdaq_noncompli
     )
 
 
+def _build_market_data_adapter(args: argparse.Namespace, repository: RiskRepository):
+    if args.price_history_file:
+        return PriceHistoryMarketDataAdapter(price_history_file=args.price_history_file, source_name="price_history_file")
+    if args.use_db_price_history:
+        return PriceHistoryMarketDataAdapter(repository=repository, source_name="price_history_db")
+    if args.market_file:
+        return FileMarketDataAdapter(args.market_file)
+    return None
+
+
 def _nasdaq_data_source() -> DataSource:
     return DataSource(
         name=NASDAQ_NONCOMPLIANT_SOURCE_NAME,
         source_type=SourceType.FILE,
         description="User-provided Nasdaq noncompliant companies CSV",
         base_url="https://www.nasdaq.com/market-activity/stocks/non-compliant-company-list",
+    )
+
+
+def _price_history_data_source(name: str, source_type: SourceType) -> DataSource:
+    return DataSource(
+        name=name,
+        source_type=source_type,
+        description="Local price history used to calculate market snapshots",
     )
 
 

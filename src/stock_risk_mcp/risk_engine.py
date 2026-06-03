@@ -123,15 +123,50 @@ def collect_hard_block_reasons(
     if company.has_convertibles and policy.block_convertibles:
         blocks.append(_hard_block(ticker, HardBlockCode.CONVERTIBLE_OVERHANG, "전환증권이 있어 정책에 따라 차단합니다."))
     if market.market_cap_usd is None and policy.block_missing_core_data:
-        blocks.append(_hard_block(ticker, HardBlockCode.MISSING_MARKET_CAP, "시가총액 핵심 데이터가 누락되었습니다."))
+        blocks.append(
+            _hard_block(
+                ticker,
+                HardBlockCode.MISSING_MARKET_CAP,
+                "시가총액 핵심 데이터가 누락되었습니다.",
+                evidence=market.market_data_evidence,
+            )
+        )
     if market.avg_dollar_volume_20d is None and policy.block_missing_core_data:
-        blocks.append(_hard_block(ticker, HardBlockCode.MISSING_DOLLAR_VOLUME, "20일 평균 거래대금 핵심 데이터가 누락되었습니다."))
+        blocks.append(
+            _hard_block(
+                ticker,
+                HardBlockCode.MISSING_DOLLAR_VOLUME,
+                "20일 평균 거래대금 핵심 데이터가 누락되었습니다.",
+                evidence=market.market_data_evidence,
+            )
+        )
     if market.market_cap_usd is not None and market.market_cap_usd < policy.min_market_cap_usd:
-        blocks.append(_hard_block(ticker, HardBlockCode.MARKET_CAP_TOO_SMALL, "시가총액이 정책 최소 기준보다 낮습니다."))
+        blocks.append(
+            _hard_block(
+                ticker,
+                HardBlockCode.MARKET_CAP_TOO_SMALL,
+                "시가총액이 정책 최소 기준보다 낮습니다.",
+                evidence=market.market_data_evidence,
+            )
+        )
     if market.avg_dollar_volume_20d is not None and market.avg_dollar_volume_20d < policy.min_avg_dollar_volume_usd:
-        blocks.append(_hard_block(ticker, HardBlockCode.DOLLAR_VOLUME_TOO_LOW, "20일 평균 거래대금이 정책 최소 기준보다 낮습니다."))
+        blocks.append(
+            _hard_block(
+                ticker,
+                HardBlockCode.DOLLAR_VOLUME_TOO_LOW,
+                "20일 평균 거래대금이 정책 최소 기준보다 낮습니다.",
+                evidence=market.market_data_evidence,
+            )
+        )
     if market.return_5d_pct is not None and market.return_5d_pct > policy.max_5d_return_pct:
-        blocks.append(_hard_block(ticker, HardBlockCode.RETURN_5D_TOO_HIGH, "5일 수익률이 정책상 허용된 급등 한도를 초과했습니다."))
+        blocks.append(
+            _hard_block(
+                ticker,
+                HardBlockCode.RETURN_5D_TOO_HIGH,
+                "5일 수익률이 정책상 허용된 급등 한도를 초과했습니다.",
+                evidence=market.market_data_evidence,
+            )
+        )
     if portfolio.current_position_pct >= policy.max_single_position_pct:
         blocks.append(_hard_block(ticker, HardBlockCode.POSITION_LIMIT_EXCEEDED, "현재 포지션 비중이 종목별 최대 비중에 도달했습니다."))
     if portfolio.sector_exposure_pct >= policy.max_sector_exposure_pct:

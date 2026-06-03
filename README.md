@@ -214,6 +214,44 @@ SAFE,2026-02-01,109,112,106,110,1200
 python -m stock_risk_mcp.cli ingest-prices --file data/prices.csv --db data/stock_risk_mcp.sqlite3
 ```
 
+`ingest-prices`는 가격 히스토리를 SQLite `price_history` 테이블에 저장합니다. 반면 `evaluate-and-save --price-history-file`은 저장 없이 해당 CSV/JSON 파일을 바로 읽어 이번 평가의 `MarketSnapshot`을 계산합니다.
+
+파일 가격 데이터로 평가:
+
+```bash
+python -m stock_risk_mcp.cli evaluate-and-save \
+  --ticker SAFE \
+  --side BUY \
+  --confidence 0.7 \
+  --reason "파일 가격 데이터 기반 평가" \
+  --db data/stock_risk_mcp.sqlite3 \
+  --price-history-file data/prices.csv
+```
+
+DB에 저장된 가격 데이터로 평가:
+
+```bash
+python -m stock_risk_mcp.cli evaluate-and-save \
+  --ticker SAFE \
+  --side BUY \
+  --confidence 0.7 \
+  --reason "DB 가격 데이터 기반 평가" \
+  --db data/stock_risk_mcp.sqlite3 \
+  --use-db-price-history
+```
+
+가격 히스토리 기반 adapter는 다음 지표를 계산합니다.
+
+- `price`: 최신 거래일 종가
+- `avg_dollar_volume_20d`: 최근 20개 price bar의 `close * volume` 평균
+- `return_5d_pct`: 최신 종가와 5거래일 전 종가의 수익률
+- `return_20d_pct`: 최신 종가와 20거래일 전 종가의 수익률
+- `volatility_20d_pct`: 최근 20개 일간 수익률의 표준편차
+
+데이터가 부족하면 계산할 수 없는 필드는 `None`으로 둡니다. 예를 들어 20개 미만의 bar만 있으면 `avg_dollar_volume_20d`와 `return_20d_pct`는 비어 있을 수 있습니다.
+
+가격 데이터는 투자 성과를 보장하기 위한 데이터가 아니라 리스크 평가와 백테스트 검증을 재현 가능하게 만들기 위한 입력입니다.
+
 ## 백테스트
 
 저장된 `risk_evaluations`와 `price_history`를 매칭해 리스크 엔진 판단 이후 수익률을 계산합니다. 평가일 또는 그 다음 거래일의 종가를 entry price로 사용하고, 지정한 horizon 이후 가장 가까운 거래일 종가를 exit price로 사용합니다.

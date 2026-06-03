@@ -235,6 +235,19 @@ class RiskRepository:
             ).fetchall()
         return [PriceBar.model_validate(dict(row)) for row in rows]
 
+    def get_all_price_history(self, ticker: str) -> list[PriceBar]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT ticker, date, open, high, low, close, volume
+                FROM price_history
+                WHERE ticker = ?
+                ORDER BY date ASC
+                """,
+                (ticker.strip().upper(),),
+            ).fetchall()
+        return [PriceBar.model_validate(dict(row)) for row in rows]
+
     def get_risk_evaluation_for_backtest(self, risk_evaluation_id: int) -> RiskEvaluationRecord:
         with self._connect() as connection:
             row = connection.execute(

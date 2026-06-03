@@ -93,6 +93,7 @@ class TradeProposal(StrictModel):
 class MarketSnapshot(StrictModel):
     ticker: str = Field(..., min_length=1)
     price: float = Field(..., gt=0)
+    market_data_evidence: Evidence | None = None
     market_cap_usd: float | None = Field(default=None, gt=0)
     avg_dollar_volume_20d: float | None = Field(default=None, gt=0)
     return_5d_pct: float | None = None

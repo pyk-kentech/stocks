@@ -261,6 +261,68 @@ When this option is used and the ticker is present in the CSV, the result contai
 
 README was updated with the CSV format and CLI usage.
 
+## Price History Market Data Adapter
+
+Extended local price history support so stored or file-based `price_history` can calculate `MarketSnapshot` values for risk evaluation. This remains local-data only:
+
+- no external API calls
+- no realtime web requests
+- no real order execution
+
+Added file:
+
+- `src/stock_risk_mcp/adapters/price_history_market_data.py`
+- `tests/test_price_history_market_data.py`
+
+Extended `price_history.py` with:
+
+- `normalize_ticker`
+- `sort_price_bars`
+- `latest_bar`
+- `calculate_return_pct_from_bars`
+- `calculate_avg_dollar_volume`
+- `calculate_daily_return_volatility`
+
+Implemented `PriceHistoryMarketDataAdapter`:
+
+- file mode through `FilePriceHistoryAdapter`
+- DB mode through `RiskRepository.get_all_price_history`
+- latest close as `MarketSnapshot.price`
+- `avg_dollar_volume_20d`
+- `return_5d_pct`
+- `return_20d_pct`
+- `volatility_20d_pct`
+- `ValueError` when no price bars exist for the ticker
+
+Added model support:
+
+- `MarketSnapshot.market_data_evidence`
+
+Market hard block reasons now use price history evidence when available:
+
+- `MISSING_MARKET_CAP`
+- `MISSING_DOLLAR_VOLUME`
+- `MARKET_CAP_TOO_SMALL`
+- `DOLLAR_VOLUME_TOO_LOW`
+- `RETURN_5D_TOO_HIGH`
+
+Added repository method:
+
+- `get_all_price_history(ticker)`
+
+Extended CLI:
+
+```powershell
+python -m stock_risk_mcp.cli evaluate-and-save --ticker SAFE --side BUY --confidence 0.7 --reason "..." --db data/stock_risk_mcp.sqlite3 --price-history-file data/prices.csv
+python -m stock_risk_mcp.cli evaluate-and-save --ticker SAFE --side BUY --confidence 0.7 --reason "..." --db data/stock_risk_mcp.sqlite3 --use-db-price-history
+```
+
+When file mode is used, market-related reason evidence can use `source_name="price_history_file"` and `source_type=FILE`.
+
+When DB mode is used, market-related reason evidence can use `source_name="price_history_db"` and `source_type=SYSTEM`.
+
+README was updated with price history CSV usage, DB/file evaluation modes, calculated fields, and the note that insufficient data leaves some fields as `None`.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -271,11 +333,12 @@ The test suite grew over the work:
 - reporting tests passed
 - evidence/provenance tests passed
 - Nasdaq noncompliant file compliance tests passed
+- price history market data adapter tests passed
 
 Latest verified result:
 
 ```text
-47 passed
+54 passed
 ```
 
 ## Skill Path Issue
