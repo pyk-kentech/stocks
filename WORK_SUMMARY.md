@@ -569,9 +569,9 @@ python -m stock_risk_mcp.cli strategy-policies --db data/stock_risk_mcp.sqlite3
 
 The MVP does not reapply candidate policies to historical features and therefore
 does not compare actual candidate policy performance. `FEATURE_RESCORING` is not
-implemented. A future Policy Replay Engine must implement `FULL_POLICY_REPLAY`
-for defensible policy comparison. Policies with fewer than 30 samples must not
-be promoted.
+implemented. This Adaptive Policy Layer evaluation still does not use the
+separate `FULL_POLICY_REPLAY` workflow for its StrategyExperiment records.
+Policies with fewer than 30 samples must not be promoted.
 
 ## Policy-Aware Scoring Integration
 
@@ -603,7 +603,7 @@ This applies a policy only to the current pipeline. It is not
 ## Replay Snapshot Layer
 
 Added replay run, candidate, TradePlan, basket, and outcome snapshot persistence
-as the input storage foundation for a future Policy Replay Engine.
+as the input storage foundation for the Full Policy Replay Engine.
 
 Implemented:
 
@@ -630,6 +630,26 @@ python -m stock_risk_mcp.cli replay-runs --db data/stock_risk_mcp.sqlite3
 python -m stock_risk_mcp.cli replay-show --db data/stock_risk_mcp.sqlite3 --run-id <run_id>
 ```
 
+## Full Policy Replay
+
+Implemented policy-specific historical replay from saved ReplayRun candidate
+snapshots.
+
+Added:
+
+- strict DB/file as-of price history provider
+- historical-only indicator, SetupSignal, TradePlan, and BasketPlan regeneration
+- forward-only paper outcome calculation
+- final PolicyReplayResult and PolicyComparisonResult persistence
+- opt-in regenerated TradePlan and official BasketPlan storage
+- minimum candidate count of three for policy comparison
+- ACCEPT, REJECT, and NEED_MORE_DATA objective-delta recommendations
+- explicit, active, result-list, and comparison CLI commands
+
+Replay does not reuse ReplayTradePlanSnapshot as a policy result. Regenerated
+TradePlans are saved only with `--save-intermediate` and have no
+`policy_replay_id` linkage in this phase.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -651,7 +671,7 @@ The test suite grew over the work:
 Latest verified result:
 
 ```text
-131 passed
+142 passed
 ```
 
 ## Skill Path Issue

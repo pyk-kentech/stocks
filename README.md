@@ -512,9 +512,49 @@ python -m stock_risk_mcp.cli replay-runs --db data/stock_risk_mcp.sqlite3
 python -m stock_risk_mcp.cli replay-show --db data/stock_risk_mcp.sqlite3 --run-id <run_id>
 ```
 
-A future `FULL_POLICY_REPLAY` implementation must use the same candidate
-universe and data restricted by the same as-of cutoff to regenerate indicators,
-TradePlans, and BasketPlans separately for each candidate policy.
+The `FULL_POLICY_REPLAY` workflow uses the same candidate universe and data
+restricted by the same as-of cutoff to regenerate indicators, TradePlans, and
+BasketPlans separately for each candidate policy.
+
+## Full Policy Replay
+
+`FULL_POLICY_REPLAY` regenerates policy-specific indicators, SetupSignals,
+TradePlans, BasketPlans, and paper outcomes from a saved ReplayRun candidate
+universe.
+
+It differs from Replay Snapshot Layer:
+
+- Replay Snapshot stores source records and may use `as_of_date` as metadata.
+- Full Policy Replay strictly uses only price bars whose date is on or before
+  `as_of_date` for indicator, trade, and basket generation.
+- Paper outcomes use only price bars after `as_of_date` within `horizon_days`.
+- Existing ReplayTradePlanSnapshot values are not reused as regenerated plans.
+
+Run an explicit or active policy:
+
+```bash
+python -m stock_risk_mcp.cli policy-replay --db data/stock_risk_mcp.sqlite3 --replay-run-id <run_id> --policy-id default --policy-version v1 --horizon-days 10 --account-equity 10000 --cash-available 5000
+python -m stock_risk_mcp.cli policy-replay-active --db data/stock_risk_mcp.sqlite3 --replay-run-id <run_id> --horizon-days 10 --account-equity 10000 --cash-available 5000
+```
+
+By default regenerated TradePlans and the BasketPlan remain in memory.
+`--save-intermediate` saves regenerated TradePlans without a
+`policy_replay_id` linkage. `--save-basket` saves the official BasketPlan.
+A local `--price-history-file` may be used instead of DB price history.
+
+List results and compare policies:
+
+```bash
+python -m stock_risk_mcp.cli policy-replay-results --db data/stock_risk_mcp.sqlite3 --replay-run-id <run_id>
+python -m stock_risk_mcp.cli policy-compare --db data/stock_risk_mcp.sqlite3 --replay-run-id <run_id> --baseline-policy-id default --baseline-policy-version v1 --candidate-policy-id default --candidate-policy-version v2 --horizon-days 10 --account-equity 10000 --cash-available 5000
+```
+
+If either replay allocates fewer than three candidates, comparison returns
+`NEED_MORE_DATA` regardless of favorable deltas. Otherwise an objective delta
+of at least +5 accepts the candidate and at most -5 rejects it.
+
+This is a local paper-trading policy comparison. It does not guarantee real
+investment performance and never places real orders.
 
 ## Adaptive Strategy Layer
 

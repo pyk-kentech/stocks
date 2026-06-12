@@ -49,6 +49,12 @@ from stock_risk_mcp.paper_trading import (
     PaperTrade,
     PaperTradeStatus,
 )
+from stock_risk_mcp.policy_replay_result import (
+    PolicyComparisonResult,
+    PolicyReplayMode,
+    PolicyReplayResult,
+    PolicyReplayStatus,
+)
 from stock_risk_mcp.replay_snapshot import (
     ReplayBasketSnapshot,
     ReplayCandidateSnapshot,
@@ -794,6 +800,90 @@ class RiskRepository:
                 ),
             )
 
+    def save_policy_replay_result(self, result: PolicyReplayResult) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO policy_replay_results (
+                    policy_replay_id, source_replay_run_id, replay_mode, policy_id, policy_version,
+                    as_of_date, horizon_days, candidate_count, trade_plan_count, basket_id,
+                    total_notional_value, total_allocated_loss, realized_pnl, realized_return_pct,
+                    win_count, loss_count, no_data_count, outcome, objective_score, status,
+                    notes_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.policy_replay_id, result.source_replay_run_id, result.replay_mode.value,
+                    result.policy_id, result.policy_version, result.as_of_date.isoformat(), result.horizon_days,
+                    result.candidate_count, result.trade_plan_count, result.basket_id, result.total_notional_value,
+                    result.total_allocated_loss, result.realized_pnl, result.realized_return_pct, result.win_count,
+                    result.loss_count, result.no_data_count, result.outcome, result.objective_score,
+                    result.status.value, _json(result.notes), result.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_policy_replay_result(self, policy_replay_id: str) -> PolicyReplayResult:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM policy_replay_results WHERE policy_replay_id = ?", (policy_replay_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Policy replay result not found: {policy_replay_id}")
+        return _policy_replay_result_from_row(row)
+
+    def list_policy_replay_results(
+        self, source_replay_run_id: str | None = None, limit: int = 50
+    ) -> list[PolicyReplayResult]:
+        with self._connect() as connection:
+            if source_replay_run_id is None:
+                rows = connection.execute(
+                    "SELECT * FROM policy_replay_results ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM policy_replay_results WHERE source_replay_run_id = ? ORDER BY id DESC LIMIT ?",
+                    (source_replay_run_id, limit),
+                ).fetchall()
+        return [_policy_replay_result_from_row(row) for row in rows]
+
+    def save_policy_comparison_result(self, result: PolicyComparisonResult) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO policy_comparison_results (
+                    comparison_id, source_replay_run_id, baseline_policy_id, baseline_policy_version,
+                    candidate_policy_id, candidate_policy_version, baseline_replay_id, candidate_replay_id,
+                    baseline_return_pct, candidate_return_pct, return_delta_pct, baseline_objective_score,
+                    candidate_objective_score, objective_delta, recommendation, notes_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.comparison_id, result.source_replay_run_id, result.baseline_policy_id,
+                    result.baseline_policy_version, result.candidate_policy_id, result.candidate_policy_version,
+                    result.baseline_replay_id, result.candidate_replay_id, result.baseline_return_pct,
+                    result.candidate_return_pct, result.return_delta_pct, result.baseline_objective_score,
+                    result.candidate_objective_score, result.objective_delta, result.recommendation.value,
+                    _json(result.notes), result.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_policy_comparison_results(
+        self, source_replay_run_id: str | None = None, limit: int = 50
+    ) -> list[PolicyComparisonResult]:
+        with self._connect() as connection:
+            if source_replay_run_id is None:
+                rows = connection.execute(
+                    "SELECT * FROM policy_comparison_results ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM policy_comparison_results WHERE source_replay_run_id = ? ORDER BY id DESC LIMIT ?",
+                    (source_replay_run_id, limit),
+                ).fetchall()
+        return [_policy_comparison_result_from_row(row) for row in rows]
+
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -1189,6 +1279,8 @@ class RiskRepository:
             "replay_trade_plan_snapshots",
             "replay_basket_snapshots",
             "replay_outcome_snapshots",
+            "policy_replay_results",
+            "policy_comparison_results",
             "data_sources",
             "ingestion_runs",
         }
@@ -1533,4 +1625,42 @@ def _replay_outcome_snapshot_from_row(row: sqlite3.Row) -> ReplayOutcomeSnapshot
         run_id=str(row["run_id"]), basket_id=str(row["basket_id"]), outcome=str(row["outcome"]),
         realized_return_pct=float(row["realized_return_pct"]),
         snapshot_json=json.loads(str(row["snapshot_json"])),
+    )
+
+
+def _policy_replay_result_from_row(row: sqlite3.Row) -> PolicyReplayResult:
+    return PolicyReplayResult(
+        policy_replay_id=str(row["policy_replay_id"]), source_replay_run_id=str(row["source_replay_run_id"]),
+        replay_mode=PolicyReplayMode(str(row["replay_mode"])), policy_id=str(row["policy_id"]),
+        policy_version=str(row["policy_version"]), as_of_date=date.fromisoformat(str(row["as_of_date"])),
+        horizon_days=int(row["horizon_days"]), candidate_count=int(row["candidate_count"]),
+        trade_plan_count=int(row["trade_plan_count"]), basket_id=row["basket_id"],
+        total_notional_value=float(row["total_notional_value"]) if row["total_notional_value"] is not None else None,
+        total_allocated_loss=float(row["total_allocated_loss"]) if row["total_allocated_loss"] is not None else None,
+        realized_pnl=float(row["realized_pnl"]) if row["realized_pnl"] is not None else None,
+        realized_return_pct=float(row["realized_return_pct"]) if row["realized_return_pct"] is not None else None,
+        win_count=int(row["win_count"]) if row["win_count"] is not None else None,
+        loss_count=int(row["loss_count"]) if row["loss_count"] is not None else None,
+        no_data_count=int(row["no_data_count"]) if row["no_data_count"] is not None else None,
+        outcome=row["outcome"], objective_score=float(row["objective_score"]) if row["objective_score"] is not None else None,
+        status=PolicyReplayStatus(str(row["status"])), notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _policy_comparison_result_from_row(row: sqlite3.Row) -> PolicyComparisonResult:
+    return PolicyComparisonResult(
+        comparison_id=str(row["comparison_id"]), source_replay_run_id=str(row["source_replay_run_id"]),
+        baseline_policy_id=str(row["baseline_policy_id"]), baseline_policy_version=str(row["baseline_policy_version"]),
+        candidate_policy_id=str(row["candidate_policy_id"]), candidate_policy_version=str(row["candidate_policy_version"]),
+        baseline_replay_id=row["baseline_replay_id"], candidate_replay_id=row["candidate_replay_id"],
+        baseline_return_pct=float(row["baseline_return_pct"]) if row["baseline_return_pct"] is not None else None,
+        candidate_return_pct=float(row["candidate_return_pct"]) if row["candidate_return_pct"] is not None else None,
+        return_delta_pct=float(row["return_delta_pct"]) if row["return_delta_pct"] is not None else None,
+        baseline_objective_score=float(row["baseline_objective_score"]) if row["baseline_objective_score"] is not None else None,
+        candidate_objective_score=float(row["candidate_objective_score"]) if row["candidate_objective_score"] is not None else None,
+        objective_delta=float(row["objective_delta"]) if row["objective_delta"] is not None else None,
+        recommendation=StrategyRecommendation(str(row["recommendation"])),
+        notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
     )

@@ -16,8 +16,8 @@ def build_strategy_report(
         ),
         "promotion_rule": "Policies with sample_count below 30 must not be promoted.",
         "future_work": (
-            "FULL_POLICY_REPLAY will reconstruct historical policy decisions for defensible policy comparison. "
-            "FEATURE_RESCORING and FULL_POLICY_REPLAY are not implemented in this MVP."
+            "FULL_POLICY_REPLAY is available as a separate as-of-date policy comparison workflow. "
+            "FEATURE_RESCORING remains unimplemented."
         ),
         "policies": [policy.model_dump(mode="json") for policy in policies],
         "experiments": [experiment.model_dump(mode="json") for experiment in experiments],

@@ -405,6 +405,53 @@ def create_schema(connection: sqlite3.Connection) -> None:
             snapshot_json TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS policy_replay_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            policy_replay_id TEXT NOT NULL UNIQUE,
+            source_replay_run_id TEXT NOT NULL,
+            replay_mode TEXT NOT NULL,
+            policy_id TEXT NOT NULL,
+            policy_version TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            horizon_days INTEGER NOT NULL,
+            candidate_count INTEGER NOT NULL,
+            trade_plan_count INTEGER NOT NULL,
+            basket_id TEXT,
+            total_notional_value REAL,
+            total_allocated_loss REAL,
+            realized_pnl REAL,
+            realized_return_pct REAL,
+            win_count INTEGER,
+            loss_count INTEGER,
+            no_data_count INTEGER,
+            outcome TEXT,
+            objective_score REAL,
+            status TEXT NOT NULL,
+            notes_json TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS policy_comparison_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            comparison_id TEXT NOT NULL UNIQUE,
+            source_replay_run_id TEXT NOT NULL,
+            baseline_policy_id TEXT NOT NULL,
+            baseline_policy_version TEXT NOT NULL,
+            candidate_policy_id TEXT NOT NULL,
+            candidate_policy_version TEXT NOT NULL,
+            baseline_replay_id TEXT,
+            candidate_replay_id TEXT,
+            baseline_return_pct REAL,
+            candidate_return_pct REAL,
+            return_delta_pct REAL,
+            baseline_objective_score REAL,
+            candidate_objective_score REAL,
+            objective_delta REAL,
+            recommendation TEXT NOT NULL,
+            notes_json TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

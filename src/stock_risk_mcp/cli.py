@@ -14,6 +14,7 @@ from stock_risk_mcp.adapters.file_toss_signal import FileTossSignalAdapter
 from stock_risk_mcp.adapters.mock_company_risk import MockCompanyRiskAdapter
 from stock_risk_mcp.adapters.nasdaq_noncompliant_file import NasdaqNoncompliantFileAdapter
 from stock_risk_mcp.adapters.price_history_market_data import PriceHistoryMarketDataAdapter
+from stock_risk_mcp.asof_price_history import AsOfPriceHistoryProvider
 from stock_risk_mcp.backtest import BacktestService
 from stock_risk_mcp.basket import BasketPolicy, candidate_from_trade_plan
 from stock_risk_mcp.basket_backtest import run_basket_backtest
@@ -23,6 +24,8 @@ from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.policy import load_policy
+from stock_risk_mcp.policy_comparison import compare_policy_replays
+from stock_risk_mcp.policy_replay import replay_policy_on_replay_run
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.replay_dataset import load_replay_dataset
@@ -202,6 +205,26 @@ def build_command_parser() -> argparse.ArgumentParser:
     replay_show = subparsers.add_parser("replay-show", help="Show a replay snapshot dataset.")
     replay_show.add_argument("--db", type=Path, required=True)
     replay_show.add_argument("--run-id", required=True)
+
+    policy_replay = subparsers.add_parser("policy-replay", help="Run FULL_POLICY_REPLAY for an explicit policy.")
+    add_policy_replay_args(policy_replay)
+    policy_replay.add_argument("--policy-id", required=True)
+    policy_replay.add_argument("--policy-version", required=True)
+
+    policy_replay_active = subparsers.add_parser("policy-replay-active", help="Run FULL_POLICY_REPLAY for active policy.")
+    add_policy_replay_args(policy_replay_active)
+
+    policy_replay_results = subparsers.add_parser("policy-replay-results", help="List FULL_POLICY_REPLAY results.")
+    policy_replay_results.add_argument("--db", type=Path, required=True)
+    policy_replay_results.add_argument("--replay-run-id")
+    policy_replay_results.add_argument("--limit", type=int, default=50)
+
+    policy_compare = subparsers.add_parser("policy-compare", help="Compare baseline and candidate FULL_POLICY_REPLAY.")
+    add_policy_replay_args(policy_compare, storage_options=False)
+    policy_compare.add_argument("--baseline-policy-id", required=True)
+    policy_compare.add_argument("--baseline-policy-version", required=True)
+    policy_compare.add_argument("--candidate-policy-id", required=True)
+    policy_compare.add_argument("--candidate-policy-version", required=True)
     return parser
 
 
@@ -257,6 +280,18 @@ def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--horizon-days", type=int, required=True)
 
 
+def add_policy_replay_args(parser: argparse.ArgumentParser, storage_options: bool = True) -> None:
+    parser.add_argument("--db", type=Path, required=True)
+    parser.add_argument("--replay-run-id", required=True)
+    parser.add_argument("--horizon-days", type=int, required=True)
+    parser.add_argument("--account-equity", type=float, required=True)
+    parser.add_argument("--cash-available", type=float, required=True)
+    parser.add_argument("--price-history-file", type=Path)
+    if storage_options:
+        parser.add_argument("--save-intermediate", action="store_true")
+        parser.add_argument("--save-basket", action="store_true")
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = sys.argv[1:] if argv is None else argv
     commands = {
@@ -292,6 +327,10 @@ def main(argv: list[str] | None = None) -> None:
         "replay-snapshot-from-recent-trade-plans",
         "replay-runs",
         "replay-show",
+        "policy-replay",
+        "policy-replay-active",
+        "policy-replay-results",
+        "policy-compare",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -384,6 +423,15 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"runs": [run.model_dump(mode="json") for run in runs]}
     if args.command == "replay-show":
         return load_replay_dataset(RiskRepository(args.db), args.run_id).model_dump(mode="json")
+    if args.command == "policy-replay":
+        return run_policy_replay(args, active=False)
+    if args.command == "policy-replay-active":
+        return run_policy_replay(args, active=True)
+    if args.command == "policy-replay-results":
+        results = RiskRepository(args.db).list_policy_replay_results(args.replay_run_id, args.limit)
+        return {"results": [result.model_dump(mode="json") for result in results]}
+    if args.command == "policy-compare":
+        return run_policy_compare(args)
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -669,6 +717,72 @@ def run_strategy_evaluate(args: argparse.Namespace) -> dict[str, object]:
         ),
         "saved": {"db": str(args.db), "strategy_experiment_id": experiment_id},
     }
+
+
+def run_policy_replay(args: argparse.Namespace, active: bool) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    if active:
+        policy = repository.get_active_strategy_policy()
+        if policy is None:
+            raise LookupError("No active strategy policy. Run strategy-init first.")
+        policy_id, policy_version = policy.policy_id, policy.version
+    else:
+        policy_id, policy_version = args.policy_id, args.policy_version
+    execution = replay_policy_on_replay_run(
+        repository=repository,
+        price_provider=_policy_replay_price_provider(args, repository),
+        source_replay_run_id=args.replay_run_id,
+        policy_id=policy_id,
+        policy_version=policy_version,
+        horizon_days=args.horizon_days,
+        account_equity=args.account_equity,
+        cash_available=args.cash_available,
+        save_intermediate=args.save_intermediate,
+        save_basket=args.save_basket,
+    )
+    return execution.model_dump(mode="json")
+
+
+def run_policy_compare(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    comparison = compare_policy_replays(
+        repository=repository,
+        price_provider=_policy_replay_price_provider(args, repository),
+        source_replay_run_id=args.replay_run_id,
+        baseline_policy_id=args.baseline_policy_id,
+        baseline_policy_version=args.baseline_policy_version,
+        candidate_policy_id=args.candidate_policy_id,
+        candidate_policy_version=args.candidate_policy_version,
+        horizon_days=args.horizon_days,
+        account_equity=args.account_equity,
+        cash_available=args.cash_available,
+    )
+    return {
+        "source_replay_run_id": comparison.source_replay_run_id,
+        "baseline": {
+            "policy_id": comparison.baseline_policy_id,
+            "version": comparison.baseline_policy_version,
+            "realized_return_pct": comparison.baseline_return_pct,
+            "objective_score": comparison.baseline_objective_score,
+        },
+        "candidate": {
+            "policy_id": comparison.candidate_policy_id,
+            "version": comparison.candidate_policy_version,
+            "realized_return_pct": comparison.candidate_return_pct,
+            "objective_score": comparison.candidate_objective_score,
+        },
+        "return_delta_pct": comparison.return_delta_pct,
+        "objective_delta": comparison.objective_delta,
+        "recommendation": comparison.recommendation.value,
+        "notes": comparison.notes,
+    }
+
+
+def _policy_replay_price_provider(args: argparse.Namespace, repository: RiskRepository) -> AsOfPriceHistoryProvider:
+    return AsOfPriceHistoryProvider(
+        repository=None if args.price_history_file else repository,
+        price_history_file=args.price_history_file,
+    )
 
 
 def _group_price_bars(bars: list[PriceBar]) -> dict[str, list[PriceBar]]:
