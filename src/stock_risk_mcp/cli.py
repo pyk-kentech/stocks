@@ -29,7 +29,10 @@ from stock_risk_mcp.candidate_universe import (
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
+from stock_risk_mcp.dilution_signal_file import load_dilution_signals
+from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
+from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.policy_comparison import compare_policy_replays
 from stock_risk_mcp.policy_evaluation_report import policy_evaluation_report
@@ -43,12 +46,14 @@ from stock_risk_mcp.replay_dataset import load_replay_dataset
 from stock_risk_mcp.replay_run import ReplayRunService
 from stock_risk_mcp.scan_pipeline import run_candidate_scan
 from stock_risk_mcp.scan_run import create_basket_from_scan_run, create_replay_snapshot_from_scan_run
+from stock_risk_mcp.signal_enrichment import merge_signal_sources
 from stock_risk_mcp.service import RiskEvaluationService
 from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
 from stock_risk_mcp.strategy_optimizer import StrategyOptimizer
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.trade_plan import create_trade_plan
+from stock_risk_mcp.toss_signal_file import load_toss_signals
 
 
 def build_legacy_parser() -> argparse.ArgumentParser:
@@ -269,7 +274,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     scan_candidates.add_argument("--min-avg-dollar-volume-20d", type=float, default=10_000_000)
     scan_candidates.add_argument("--min-volume-spike-ratio", type=float, default=1.5)
     scan_candidates.add_argument("--save", action="store_true")
+    scan_candidates.add_argument("--save-signals", action="store_true")
+    scan_candidates.add_argument("--ignore-db-signals", action="store_true")
+    add_signal_file_args(scan_candidates)
     add_strategy_policy_args(scan_candidates)
+
+    ingest_signals = subparsers.add_parser("ingest-signals", help="Normalize and save local signal files.")
+    ingest_signals.add_argument("--db", type=Path, required=True)
+    ingest_signals.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    add_signal_file_args(ingest_signals)
+
+    signals = subparsers.add_parser("signals", help="List normalized ticker signals.")
+    signals.add_argument("--db", type=Path, required=True)
+    signals.add_argument("--ticker")
+    signals.add_argument("--as-of-date", type=date.fromisoformat)
+    signals.add_argument("--limit", type=int, default=200)
 
     scan_runs = subparsers.add_parser("scan-runs", help="List saved candidate scan runs.")
     scan_runs.add_argument("--db", type=Path, required=True)
@@ -339,6 +358,13 @@ def add_strategy_policy_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--use-active-policy", action="store_true")
     parser.add_argument("--policy-id")
     parser.add_argument("--policy-version")
+
+
+def add_signal_file_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--news-signal-file", type=Path)
+    parser.add_argument("--dilution-signal-file", type=Path)
+    parser.add_argument("--toss-signal-file", type=Path)
+    parser.add_argument("--flow-signal-file", type=Path)
 
 
 def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
@@ -412,6 +438,8 @@ def main(argv: list[str] | None = None) -> None:
         "scan-results",
         "scan-to-basket",
         "scan-to-replay-snapshot",
+        "ingest-signals",
+        "signals",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -545,6 +573,11 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             RiskRepository(args.db), args.scan_run_id, args.as_of_date, include_watch=args.include_watch
         )
         return replay.model_dump(mode="json")
+    if args.command == "ingest-signals":
+        return run_ingest_signals(args)
+    if args.command == "signals":
+        items = RiskRepository(args.db).list_ticker_signals(args.ticker, args.as_of_date, args.limit)
+        return {"signals": [item.model_dump(mode="json") for item in items]}
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -848,6 +881,17 @@ def run_scan_candidates(args: argparse.Namespace) -> dict[str, object]:
         min_avg_dollar_volume_20d=args.min_avg_dollar_volume_20d,
         min_volume_spike_ratio=args.min_volume_spike_ratio,
     )
+    file_signals = _load_signal_files(args)
+    db_signals = [] if args.ignore_db_signals else repository.list_ticker_signals(as_of_date=args.as_of_date)
+    merged = merge_signal_sources(db_signals, file_signals, args.as_of_date)
+    saved_signal_ids = repository.save_ticker_signals(file_signals) if args.save_signals else []
+    skipped_duplicate_count = len(file_signals) - len(saved_signal_ids) if args.save_signals else 0
+    signal_counts = {
+        "db_signal_count": merged.db_signal_count,
+        "file_signal_count": merged.file_signal_count,
+        "merged_signal_count": merged.merged_signal_count,
+        "deduped_signal_count": merged.deduped_signal_count,
+    }
     output = run_candidate_scan(
         repository=repository,
         price_provider=AsOfPriceHistoryProvider(
@@ -860,12 +904,45 @@ def run_scan_candidates(args: argparse.Namespace) -> dict[str, object]:
         policy=policy,
         strategy_policy=_resolve_strategy_policy(args, repository),
         save=args.save,
+        signals=merged.signals,
+        signal_counts=signal_counts,
     )
     return {
         **output.run.model_dump(mode="json"),
         "saved": output.saved,
+        **signal_counts,
+        "saved_signal_count": len(saved_signal_ids),
+        "skipped_duplicate_count": skipped_duplicate_count,
         "top_candidates": [item.model_dump(mode="json") for item in output.results],
     }
+
+
+def run_ingest_signals(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    file_signals = _load_signal_files(args)
+    ids = repository.save_ticker_signals(file_signals)
+    return {
+        "file_signal_count": len(file_signals),
+        "saved_signal_count": len(ids),
+        "skipped_duplicate_count": len(file_signals) - len(ids),
+        "ticker_signal_ids": ids,
+    }
+
+
+def _load_signal_files(args: argparse.Namespace):
+    as_of_date = args.as_of_date
+    signals = []
+    loaders = (
+        ("news_signal_file", load_news_signals),
+        ("dilution_signal_file", load_dilution_signals),
+        ("toss_signal_file", load_toss_signals),
+        ("flow_signal_file", load_flow_signals),
+    )
+    for attribute, loader in loaders:
+        path = getattr(args, attribute, None)
+        if path:
+            signals.extend(loader(path, as_of_date))
+    return signals
 
 
 def run_scan_to_basket(args: argparse.Namespace) -> dict[str, object]:

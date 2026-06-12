@@ -5,6 +5,7 @@ from stock_risk_mcp.candidate_universe import CandidateDecision, CandidateScanPo
 from stock_risk_mcp.models import PriceBar
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.scan_pipeline import run_candidate_scan
+from stock_risk_mcp.signals import SignalDirection, SignalSeverity, SignalType, TickerSignal
 
 
 def test_pipeline_scans_sorts_limits_and_optionally_saves(tmp_path) -> None:
@@ -20,6 +21,29 @@ def test_pipeline_scans_sorts_limits_and_optionally_saves(tmp_path) -> None:
     assert sum(item.decision != CandidateDecision.EXCLUDE for item in output.results) <= 1
     assert repository.count_rows("scan_runs") == 1
     assert repository.count_rows("candidate_scan_results") == 2
+
+
+def test_pipeline_enriches_after_scan_and_records_signal_counts(tmp_path) -> None:
+    repository = RiskRepository(tmp_path / "risk.sqlite3")
+    repository.save_price_bars(_bars("AAA"))
+    signal = TickerSignal(
+        ticker="AAA", signal_type=SignalType.NEWS, as_of_date=date(2026, 1, 5),
+        observed_at=date(2026, 1, 4), direction=SignalDirection.POSITIVE,
+        severity=SignalSeverity.HIGH, score_delta=10, source_name="fixture",
+    )
+
+    plain = run_candidate_scan(
+        repository, AsOfPriceHistoryProvider(repository=repository), ["AAA"], date(2026, 1, 5),
+        CandidateSource.MANUAL_LIST, CandidateScanPolicy(),
+    )
+    enriched = run_candidate_scan(
+        repository, AsOfPriceHistoryProvider(repository=repository), ["AAA"], date(2026, 1, 5),
+        CandidateSource.MANUAL_LIST, CandidateScanPolicy(), signals=[signal],
+        signal_counts={"db_signal_count": 1, "file_signal_count": 0, "merged_signal_count": 1, "deduped_signal_count": 1},
+    )
+
+    assert enriched.results[0].score == min(100, plain.results[0].score + 10)
+    assert "db_signal_count=1" in enriched.run.notes
 
 
 def _bars(ticker):

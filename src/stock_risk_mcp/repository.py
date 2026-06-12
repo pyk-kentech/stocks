@@ -68,6 +68,7 @@ from stock_risk_mcp.replay_snapshot import (
     ReplayTradePlanSnapshot,
 )
 from stock_risk_mcp.setup import SetupDirection, SetupGrade, TradeDecision, TradePlan
+from stock_risk_mcp.signals import SignalDirection, SignalSeverity, SignalType, TickerSignal, signal_dedupe_key
 from stock_risk_mcp.strategy_experiments import StrategyEvaluationMode, StrategyExperiment
 from stock_risk_mcp.strategy_memory import StrategyMemory
 from stock_risk_mcp.strategy_objective import StrategyRecommendation
@@ -1058,6 +1059,57 @@ class RiskRepository:
                 ).fetchall()
         return [CandidateScanResult.model_validate_json(str(row["result_json"])) for row in rows]
 
+    def save_ticker_signals(self, signals: list[TickerSignal]) -> list[int]:
+        ids: list[int] = []
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM ticker_signals").fetchall()
+            existing = {signal_dedupe_key(_ticker_signal_from_row(row)) for row in rows}
+            for signal in signals:
+                key = signal_dedupe_key(signal)
+                if key in existing:
+                    continue
+                cursor = connection.execute(
+                    """
+                    INSERT INTO ticker_signals (
+                        ticker, signal_type, as_of_date, observed_at, direction,
+                        severity, score_delta, source_name, title, summary,
+                        raw_event_type, metadata_json, reasons_json, warnings_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        signal.ticker, signal.signal_type.value, signal.as_of_date.isoformat(),
+                        signal.observed_at.isoformat(), signal.direction.value, signal.severity.value,
+                        signal.score_delta, signal.source_name, signal.title, signal.summary,
+                        signal.raw_event_type, _json(signal.metadata), _json(signal.reasons), _json(signal.warnings),
+                    ),
+                )
+                ids.append(int(cursor.lastrowid))
+                existing.add(key)
+        return ids
+
+    def list_ticker_signals(
+        self, ticker: str | None = None, as_of_date: date | None = None, limit: int = 200
+    ) -> list[TickerSignal]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if ticker is not None:
+            clauses.append("ticker = ?")
+            values.append(ticker.strip().upper())
+        if as_of_date is not None:
+            clauses.append("date(observed_at) <= ?")
+            values.append(as_of_date.isoformat())
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM ticker_signals{where} ORDER BY id LIMIT ?", values
+            ).fetchall()
+        return [_ticker_signal_from_row(row) for row in rows]
+
+    def get_signals_for_ticker_asof(self, ticker: str, as_of_date: date) -> list[TickerSignal]:
+        return self.list_ticker_signals(ticker=ticker, as_of_date=as_of_date)
+
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -1459,6 +1511,7 @@ class RiskRepository:
             "policy_promotion_proposals",
             "scan_runs",
             "candidate_scan_results",
+            "ticker_signals",
             "data_sources",
             "ingestion_runs",
         }
@@ -1478,6 +1531,27 @@ def _model_json(model: BaseModel) -> str:
 
 def _json(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _ticker_signal_from_row(row: sqlite3.Row) -> TickerSignal:
+    observed_text = str(row["observed_at"])
+    observed_at = datetime.fromisoformat(observed_text) if "T" in observed_text else date.fromisoformat(observed_text)
+    return TickerSignal(
+        ticker=str(row["ticker"]),
+        signal_type=SignalType(str(row["signal_type"])),
+        as_of_date=date.fromisoformat(str(row["as_of_date"])),
+        observed_at=observed_at,
+        direction=SignalDirection(str(row["direction"])),
+        severity=SignalSeverity(str(row["severity"])),
+        score_delta=int(row["score_delta"]),
+        source_name=str(row["source_name"]),
+        title=row["title"],
+        summary=row["summary"],
+        raw_event_type=row["raw_event_type"],
+        metadata=json.loads(str(row["metadata_json"])) if row["metadata_json"] else {},
+        reasons=json.loads(str(row["reasons_json"])) if row["reasons_json"] else [],
+        warnings=json.loads(str(row["warnings_json"])) if row["warnings_json"] else [],
+    )
 
 
 def _risk_evaluation_record_from_row(row: sqlite3.Row) -> RiskEvaluationRecord:

@@ -690,6 +690,29 @@ The scanner does not call external APIs, use realtime data, calculate future
 outcomes, recommend purchases, or execute orders. Scan and basket persistence
 remain opt-in so research records do not mix with official proposal records.
 
+## Signal Enrichment Layer
+
+Added local signal normalization and conservative Candidate Scanner
+enrichment.
+
+Implemented:
+
+- normalized news, dilution, Toss top-investor portfolio, and flow signals
+- strict `observed_at <= as_of_date` handling for DB and file signals
+- default DB plus file merge with file-precedence dedupe
+- optional `--ignore-db-signals`
+- repository-level duplicate storage prevention
+- signal count and skipped-duplicate reporting
+- candidate score adjustment with 0 through 100 clamp
+- CRITICAL negative exclusion and HIGH negative INCLUDE-to-WATCH lowering
+- protection against positive-signal promotion of existing EXCLUDE candidates
+- Toss signal score clamp from -10 through +10
+- `ingest-signals`, `signals`, and signal-aware `scan-candidates` CLI flows
+
+Signal Enrichment is an auxiliary research layer. It does not replace Risk
+Engine hard blocks, call external APIs, request realtime data, or execute
+orders.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -708,11 +731,12 @@ The test suite grew over the work:
 - Adaptive Policy Layer tests passed
 - Policy-Aware Scoring Integration tests passed
 - Candidate Scanner and Universe Builder tests passed
+- Signal Enrichment Layer tests passed
 
 Latest verified result:
 
 ```text
-163 passed
+174 passed
 ```
 
 ## Skill Path Issue

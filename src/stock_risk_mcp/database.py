@@ -538,6 +538,25 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS ticker_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            signal_type TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            score_delta INTEGER NOT NULL,
+            source_name TEXT NOT NULL,
+            title TEXT,
+            summary TEXT,
+            raw_event_type TEXT,
+            metadata_json TEXT,
+            reasons_json TEXT,
+            warnings_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

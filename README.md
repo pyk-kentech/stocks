@@ -633,6 +633,47 @@ decision, reasons, warnings, and TradePlan metadata, as replay candidate
 snapshots. It does not create an official basket or perform
 `FULL_POLICY_REPLAY`.
 
+## Signal Enrichment Layer
+
+The Signal Enrichment Layer adjusts Candidate Scanner research scores with
+normalized local news, dilution, Toss top-investor portfolio, and
+foreign/institution flow records. Signals are auxiliary candidate-universe
+inputs, not buy recommendations, and do not replace Risk Engine hard blocks.
+No external APIs, realtime requests, or orders are used.
+
+All DB and file signals must satisfy `observed_at <= as_of_date`.
+`scan-candidates` merges existing `ticker_signals` rows with specified signal
+files by default. Duplicates use the key `ticker`, `signal_type`,
+`observed_at`, `source_name`, `raw_event_type`, and `title`; the file record
+wins when both sources contain the same key. Use `--ignore-db-signals` to use
+only specified files.
+
+Supported file columns:
+
+- news: `ticker`, `observed_at`, `title`, `summary`, `event_type`,
+  `sentiment`, `materiality`
+- dilution: `ticker`, `observed_at`, `event_type`, `severity`, `details`
+- Toss portfolio: `ticker`, `observed_at`, `investor_id`,
+  `investor_rank_group`, `holding_weight`, `change_type`, `change_pct`
+- flow: `ticker`, `observed_at`, `foreign_net_buy`, `institution_net_buy`,
+  `foreign_ownership_change`, `flow_window_days`
+
+Critical negative signals conservatively exclude a candidate. High negative
+signals lower only an existing INCLUDE candidate to WATCH. Positive signals
+never promote an existing EXCLUDE candidate. Toss portfolio score deltas are
+clamped to `-10` through `+10` to avoid overconfidence.
+
+```bash
+python -m stock_risk_mcp.cli ingest-signals --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --news-signal-file data/news.csv --dilution-signal-file data/dilution.csv --toss-signal-file data/toss.csv --flow-signal-file data/flow.csv
+python -m stock_risk_mcp.cli signals --db data/stock_risk_mcp.sqlite3 --ticker AAPL --as-of-date 2026-06-13
+python -m stock_risk_mcp.cli scan-candidates --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --news-signal-file data/news.csv --save-signals --save
+```
+
+`ingest-signals` and `--save-signals` skip an existing dedupe key.
+`--save-signals` stores only file signals read for that scan; it does not
+re-save DB signals. Candidate scan persistence remains controlled separately
+by `--save`.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

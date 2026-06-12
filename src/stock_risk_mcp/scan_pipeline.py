@@ -15,6 +15,8 @@ from stock_risk_mcp.candidate_universe import (
     ScanRunStatus,
 )
 from stock_risk_mcp.models import StrictModel
+from stock_risk_mcp.signal_enrichment import SignalEnricher
+from stock_risk_mcp.signals import TickerSignal
 from stock_risk_mcp.strategy_policy import StrategyPolicy
 
 
@@ -35,6 +37,8 @@ def run_candidate_scan(
     save: bool = False,
     account_equity: float = 10_000,
     cash_available: float = 5_000,
+    signals: list[TickerSignal] | None = None,
+    signal_counts: dict[str, int] | None = None,
 ) -> ScanPipelineResult:
     scan_run_id = uuid4().hex
     results = [
@@ -51,7 +55,14 @@ def run_candidate_scan(
         )
         for ticker in tickers
     ]
+    results = SignalEnricher().enrich_scan_results(results, as_of_date, signals or [])
     results = _apply_candidate_limit(results, policy.max_candidates)
+    counts = signal_counts or {
+        "db_signal_count": 0,
+        "file_signal_count": 0,
+        "merged_signal_count": 0,
+        "deduped_signal_count": 0,
+    }
     run = ScanRun(
         scan_run_id=scan_run_id,
         as_of_date=as_of_date,
@@ -66,6 +77,9 @@ def run_candidate_scan(
         notes=[
             "Candidate scan used only price history on or before as_of_date.",
             "Scan results are research records, not investment recommendations.",
+            *(f"{name}={counts[name]}" for name in (
+                "db_signal_count", "file_signal_count", "merged_signal_count", "deduped_signal_count"
+            )),
         ],
         created_at=datetime.now(),
     )
