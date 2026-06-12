@@ -25,7 +25,11 @@ from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.policy_comparison import compare_policy_replays
+from stock_risk_mcp.policy_evaluation_report import policy_evaluation_report
+from stock_risk_mcp.policy_evaluation_suite import evaluate_policy_suite
+from stock_risk_mcp.policy_promotion import activate_policy, approve_policy, create_policy_promotion_proposal
 from stock_risk_mcp.policy_replay import replay_policy_on_replay_run
+from stock_risk_mcp.policy_replay_batch import run_policy_replay_batch
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.replay_dataset import load_replay_dataset
@@ -225,6 +229,27 @@ def build_command_parser() -> argparse.ArgumentParser:
     policy_compare.add_argument("--baseline-policy-version", required=True)
     policy_compare.add_argument("--candidate-policy-id", required=True)
     policy_compare.add_argument("--candidate-policy-version", required=True)
+
+    suite = subparsers.add_parser("policy-evaluate-suite", help="Evaluate policies across multiple ReplayRuns.")
+    add_policy_replay_args(suite, storage_options=False, include_run_id=False)
+    suite.add_argument("--replay-run-id", action="append")
+    suite.add_argument("--baseline-policy-id", required=True)
+    suite.add_argument("--baseline-policy-version", required=True)
+    suite.add_argument("--candidate-policy-id", required=True)
+    suite.add_argument("--candidate-policy-version", required=True)
+    suite.add_argument("--min-replay-runs", type=int, default=5)
+    suite.add_argument("--min-completed-replays", type=int, default=3)
+    for name in ("policy-evaluation-suites", "policy-promotion-proposals"):
+        item = subparsers.add_parser(name)
+        item.add_argument("--db", type=Path, required=True)
+    proposal = subparsers.add_parser("policy-propose-promotion")
+    proposal.add_argument("--db", type=Path, required=True)
+    proposal.add_argument("--suite-id", required=True)
+    for name in ("policy-approve", "policy-activate"):
+        item = subparsers.add_parser(name)
+        item.add_argument("--db", type=Path, required=True)
+        item.add_argument("--policy-id", required=True)
+        item.add_argument("--policy-version", required=True)
     return parser
 
 
@@ -280,9 +305,12 @@ def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--horizon-days", type=int, required=True)
 
 
-def add_policy_replay_args(parser: argparse.ArgumentParser, storage_options: bool = True) -> None:
+def add_policy_replay_args(
+    parser: argparse.ArgumentParser, storage_options: bool = True, include_run_id: bool = True
+) -> None:
     parser.add_argument("--db", type=Path, required=True)
-    parser.add_argument("--replay-run-id", required=True)
+    if include_run_id:
+        parser.add_argument("--replay-run-id", required=True)
     parser.add_argument("--horizon-days", type=int, required=True)
     parser.add_argument("--account-equity", type=float, required=True)
     parser.add_argument("--cash-available", type=float, required=True)
@@ -331,6 +359,12 @@ def main(argv: list[str] | None = None) -> None:
         "policy-replay-active",
         "policy-replay-results",
         "policy-compare",
+        "policy-evaluate-suite",
+        "policy-evaluation-suites",
+        "policy-propose-promotion",
+        "policy-promotion-proposals",
+        "policy-approve",
+        "policy-activate",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -432,6 +466,23 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"results": [result.model_dump(mode="json") for result in results]}
     if args.command == "policy-compare":
         return run_policy_compare(args)
+    if args.command == "policy-evaluate-suite":
+        return run_policy_evaluate_suite(args)
+    if args.command == "policy-evaluation-suites":
+        return {"suites": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_policy_evaluation_suites()]}
+    if args.command == "policy-propose-promotion":
+        repository = RiskRepository(args.db)
+        suite = repository.get_policy_evaluation_suite(args.suite_id)
+        policy = repository.get_strategy_policy(suite.candidate_policy_id, suite.candidate_policy_version)
+        proposal = create_policy_promotion_proposal(suite, policy.status.value)
+        repository.save_policy_promotion_proposal(proposal)
+        return proposal.model_dump(mode="json")
+    if args.command == "policy-promotion-proposals":
+        return {"proposals": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_policy_promotion_proposals()]}
+    if args.command == "policy-approve":
+        return approve_policy(RiskRepository(args.db), args.policy_id, args.policy_version).model_dump(mode="json")
+    if args.command == "policy-activate":
+        return activate_policy(RiskRepository(args.db), args.policy_id, args.policy_version).model_dump(mode="json")
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -776,6 +827,19 @@ def run_policy_compare(args: argparse.Namespace) -> dict[str, object]:
         "recommendation": comparison.recommendation.value,
         "notes": comparison.notes,
     }
+
+
+def run_policy_evaluate_suite(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    run_ids = args.replay_run_id or [run.run_id for run in repository.list_replay_runs(limit=args.min_replay_runs)]
+    pairs = run_policy_replay_batch(
+        repository, _policy_replay_price_provider(args, repository), run_ids,
+        args.baseline_policy_id, args.baseline_policy_version, args.candidate_policy_id,
+        args.candidate_policy_version, args.horizon_days, args.account_equity, args.cash_available,
+    )
+    suite = evaluate_policy_suite(pairs, args.min_replay_runs, args.min_completed_replays)
+    repository.save_policy_evaluation_suite(suite)
+    return policy_evaluation_report(suite)
 
 
 def _policy_replay_price_provider(args: argparse.Namespace, repository: RiskRepository) -> AsOfPriceHistoryProvider:

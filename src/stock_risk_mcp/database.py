@@ -452,6 +452,47 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS policy_evaluation_suites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            suite_id TEXT NOT NULL UNIQUE,
+            baseline_policy_id TEXT NOT NULL,
+            baseline_policy_version TEXT NOT NULL,
+            candidate_policy_id TEXT NOT NULL,
+            candidate_policy_version TEXT NOT NULL,
+            replay_run_count INTEGER NOT NULL,
+            completed_pair_count INTEGER NOT NULL,
+            no_data_replay_count INTEGER NOT NULL,
+            incomplete_pair_count INTEGER NOT NULL,
+            baseline_avg_return_pct REAL,
+            candidate_avg_return_pct REAL,
+            return_delta_pct REAL,
+            baseline_avg_objective_score REAL,
+            candidate_avg_objective_score REAL,
+            objective_delta REAL,
+            baseline_win_rate REAL,
+            candidate_win_rate REAL,
+            win_rate_delta REAL,
+            baseline_loss_rate REAL,
+            candidate_loss_rate REAL,
+            no_data_rate REAL NOT NULL,
+            recommendation TEXT NOT NULL,
+            result_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS policy_promotion_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id TEXT NOT NULL UNIQUE,
+            suite_id TEXT NOT NULL,
+            candidate_policy_id TEXT NOT NULL,
+            candidate_policy_version TEXT NOT NULL,
+            from_status TEXT NOT NULL,
+            proposed_status TEXT NOT NULL,
+            recommendation TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

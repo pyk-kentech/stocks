@@ -556,6 +556,46 @@ of at least +5 accepts the candidate and at most -5 rejects it.
 This is a local paper-trading policy comparison. It does not guarantee real
 investment performance and never places real orders.
 
+## Policy Evaluation Suite And Promotion Gate
+
+The Policy Evaluation Suite compares baseline and candidate policies across
+multiple ReplayRuns. Performance metrics use only identical ReplayRun pairs
+where both policy replays are `COMPLETED`. Pairs containing `NO_DATA`, `FAILED`,
+`CREATED`, or missing results are excluded and reported as unavailable data.
+
+Data sufficiency takes priority over favorable performance:
+
+- fewer than five requested ReplayRuns
+- fewer than three completed pairs
+- unavailable-data rate above 0.4
+- any completed replay with fewer than three allocated candidates
+
+An adequate suite accepts only when objective delta is at least +5, return
+delta is positive, and candidate win rate does not deteriorate. Objective delta
+at most -5 or return delta below -2 rejects the candidate. Other results need
+more data.
+
+```bash
+python -m stock_risk_mcp.cli policy-evaluate-suite --db data/stock_risk_mcp.sqlite3 --baseline-policy-id default --baseline-policy-version v1 --candidate-policy-id default --candidate-policy-version v2 --horizon-days 10 --account-equity 10000 --cash-available 5000 --replay-run-id <run1> --replay-run-id <run2>
+python -m stock_risk_mcp.cli policy-evaluation-suites --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli policy-propose-promotion --db data/stock_risk_mcp.sqlite3 --suite-id <suite_id>
+python -m stock_risk_mcp.cli policy-promotion-proposals --db data/stock_risk_mcp.sqlite3
+```
+
+A promotion proposal does not change policy status. `policy-approve` explicitly
+changes a non-rejected policy to `APPROVED`. `policy-activate` accepts only an
+`APPROVED` policy, changes it to `ACTIVE`, and retires the prior active policy.
+Activation changes which soft policy the current policy-aware pipeline uses, so
+it requires deliberate operator review.
+
+```bash
+python -m stock_risk_mcp.cli policy-approve --db data/stock_risk_mcp.sqlite3 --policy-id default --policy-version v2
+python -m stock_risk_mcp.cli policy-activate --db data/stock_risk_mcp.sqlite3 --policy-id default --policy-version v2
+```
+
+This suite is based on local paper replay outcomes and does not guarantee real
+investment performance or place real orders.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

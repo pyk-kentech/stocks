@@ -55,6 +55,8 @@ from stock_risk_mcp.policy_replay_result import (
     PolicyReplayResult,
     PolicyReplayStatus,
 )
+from stock_risk_mcp.policy_evaluation_suite import PolicyEvaluationSuiteResult
+from stock_risk_mcp.policy_promotion import PolicyPromotionProposal
 from stock_risk_mcp.replay_snapshot import (
     ReplayBasketSnapshot,
     ReplayCandidateSnapshot,
@@ -884,6 +886,67 @@ class RiskRepository:
                 ).fetchall()
         return [_policy_comparison_result_from_row(row) for row in rows]
 
+    def save_policy_evaluation_suite(self, result: PolicyEvaluationSuiteResult) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO policy_evaluation_suites (
+                    suite_id, baseline_policy_id, baseline_policy_version, candidate_policy_id,
+                    candidate_policy_version, replay_run_count, completed_pair_count,
+                    no_data_replay_count, incomplete_pair_count, baseline_avg_return_pct,
+                    candidate_avg_return_pct, return_delta_pct, baseline_avg_objective_score,
+                    candidate_avg_objective_score, objective_delta, baseline_win_rate,
+                    candidate_win_rate, win_rate_delta, baseline_loss_rate, candidate_loss_rate,
+                    no_data_rate, recommendation, result_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    result.suite_id, result.baseline_policy_id, result.baseline_policy_version,
+                    result.candidate_policy_id, result.candidate_policy_version, result.replay_run_count,
+                    result.completed_pair_count, result.no_data_replay_count, result.incomplete_pair_count,
+                    result.baseline_avg_return_pct, result.candidate_avg_return_pct, result.return_delta_pct,
+                    result.baseline_avg_objective_score, result.candidate_avg_objective_score,
+                    result.objective_delta, result.baseline_win_rate, result.candidate_win_rate,
+                    result.win_rate_delta, result.baseline_loss_rate, result.candidate_loss_rate,
+                    result.no_data_rate, result.recommendation.value, result.model_dump_json(), result.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_policy_evaluation_suite(self, suite_id: str) -> PolicyEvaluationSuiteResult:
+        with self._connect() as connection:
+            row = connection.execute("SELECT result_json FROM policy_evaluation_suites WHERE suite_id = ?", (suite_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Policy evaluation suite not found: {suite_id}")
+        return PolicyEvaluationSuiteResult.model_validate_json(str(row["result_json"]))
+
+    def list_policy_evaluation_suites(self, limit: int = 50) -> list[PolicyEvaluationSuiteResult]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT result_json FROM policy_evaluation_suites ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [PolicyEvaluationSuiteResult.model_validate_json(str(row["result_json"])) for row in rows]
+
+    def save_policy_promotion_proposal(self, proposal: PolicyPromotionProposal) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO policy_promotion_proposals (
+                    proposal_id, suite_id, candidate_policy_id, candidate_policy_version, from_status,
+                    proposed_status, recommendation, reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (proposal.proposal_id, proposal.suite_id, proposal.candidate_policy_id, proposal.candidate_policy_version,
+                 proposal.from_status, proposal.proposed_status, proposal.recommendation.value, proposal.reason,
+                 proposal.created_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_policy_promotion_proposals(self, limit: int = 50) -> list[PolicyPromotionProposal]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM policy_promotion_proposals ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [PolicyPromotionProposal(
+            proposal_id=str(row["proposal_id"]), suite_id=str(row["suite_id"]),
+            candidate_policy_id=str(row["candidate_policy_id"]), candidate_policy_version=str(row["candidate_policy_version"]),
+            from_status=str(row["from_status"]), proposed_status=str(row["proposed_status"]),
+            recommendation=str(row["recommendation"]), reason=str(row["reason"] or ""),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+        ) for row in rows]
+
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -1281,6 +1344,8 @@ class RiskRepository:
             "replay_outcome_snapshots",
             "policy_replay_results",
             "policy_comparison_results",
+            "policy_evaluation_suites",
+            "policy_promotion_proposals",
             "data_sources",
             "ingestion_runs",
         }

@@ -650,6 +650,25 @@ Replay does not reuse ReplayTradePlanSnapshot as a policy result. Regenerated
 TradePlans are saved only with `--save-intermediate` and have no
 `policy_replay_id` linkage in this phase.
 
+## Policy Evaluation Suite And Promotion Gate
+
+Added multi-ReplayRun policy evaluation and explicit promotion controls.
+
+Implemented:
+
+- completed baseline/candidate pair-only performance aggregation
+- unavailable pair counts and conservative no-data rate
+- minimum ReplayRun, completed-pair, no-data-rate, and candidate-count gates
+- ACCEPT, REJECT, and NEED_MORE_DATA suite decisions
+- persisted evaluation suites and promotion proposals
+- promotion proposal creation without policy status mutation
+- explicit policy approval
+- approved-only activation with prior ACTIVE policy retirement
+- six evaluation and promotion CLI commands
+
+Policy activation is never automatic. The suite remains a local paper replay
+evaluation and does not guarantee real investment performance.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -671,7 +690,7 @@ The test suite grew over the work:
 Latest verified result:
 
 ```text
-142 passed
+153 passed
 ```
 
 ## Skill Path Issue
