@@ -531,6 +531,48 @@ python -m stock_risk_mcp.cli basket-performance --db data/stock_risk_mcp.sqlite3
 
 README documents the simplified assumptions: no fees, slippage, execution delay, partial fills, or real order execution.
 
+## Adaptive Policy Layer
+
+Added an Adaptive Policy Layer skeleton for validating, storing, proposing, and
+evaluating soft strategy policies from Basket Paper Trading outcomes.
+
+Added files:
+
+- `src/stock_risk_mcp/strategy_policy.py`
+- `src/stock_risk_mcp/strategy_objective.py`
+- `src/stock_risk_mcp/strategy_experiments.py`
+- `src/stock_risk_mcp/strategy_optimizer.py`
+- `src/stock_risk_mcp/strategy_memory.py`
+- `src/stock_risk_mcp/strategy_report.py`
+- six matching strategy test files
+
+Implemented:
+
+- default active strategy policy and strict validation
+- forbidden hard-risk override rejection
+- deterministic normalized `DRAFT` candidate generation
+- objective scoring with sample-size and drawdown penalties
+- `COMMON_OUTCOME_EVALUATION` experiments using all stored basket backtest results
+- strategy memory and limitation report helpers
+- SQLite persistence for policies, experiments, and memories
+
+Added CLI commands:
+
+```powershell
+python -m stock_risk_mcp.cli strategy-init --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-active --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-propose --db data/stock_risk_mcp.sqlite3 --n 5
+python -m stock_risk_mcp.cli strategy-evaluate --db data/stock_risk_mcp.sqlite3 --policy-id default --version v1 --horizon-days 10
+python -m stock_risk_mcp.cli strategy-experiments --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-policies --db data/stock_risk_mcp.sqlite3
+```
+
+The MVP does not reapply candidate policies to historical features and therefore
+does not compare actual candidate policy performance. `FEATURE_RESCORING` is not
+implemented. A future Policy Replay Engine must implement `FULL_POLICY_REPLAY`
+for defensible policy comparison. Policies with fewer than 30 samples must not
+be promoted.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -546,11 +588,12 @@ The test suite grew over the work:
 - ABC setup and trade plan layer tests passed
 - Basket Engine tests passed
 - paper trading and basket backtest tests passed
+- Adaptive Policy Layer tests passed
 
 Latest verified result:
 
 ```text
-92 passed
+111 passed
 ```
 
 ## Skill Path Issue

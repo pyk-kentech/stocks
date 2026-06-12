@@ -27,6 +27,8 @@ from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.service import RiskEvaluationService
 from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
+from stock_risk_mcp.strategy_optimizer import StrategyOptimizer
+from stock_risk_mcp.strategy_policy import create_default_strategy_policy
 from stock_risk_mcp.trade_plan import create_trade_plan
 
 
@@ -147,6 +149,30 @@ def build_command_parser() -> argparse.ArgumentParser:
 
     basket_performance = subparsers.add_parser("basket-performance", help="Summarize saved basket backtests.")
     basket_performance.add_argument("--db", type=Path, required=True)
+
+    strategy_init = subparsers.add_parser("strategy-init", help="Create or show the default active strategy policy.")
+    strategy_init.add_argument("--db", type=Path, required=True)
+
+    strategy_active = subparsers.add_parser("strategy-active", help="Show the active strategy policy.")
+    strategy_active.add_argument("--db", type=Path, required=True)
+
+    strategy_propose = subparsers.add_parser("strategy-propose", help="Create deterministic draft strategy policies.")
+    strategy_propose.add_argument("--db", type=Path, required=True)
+    strategy_propose.add_argument("--n", type=int, required=True)
+
+    strategy_evaluate = subparsers.add_parser(
+        "strategy-evaluate", help="Evaluate a policy using common stored basket outcomes."
+    )
+    strategy_evaluate.add_argument("--db", type=Path, required=True)
+    strategy_evaluate.add_argument("--policy-id", required=True)
+    strategy_evaluate.add_argument("--version", required=True)
+    strategy_evaluate.add_argument("--horizon-days", type=int, required=True)
+
+    strategy_experiments = subparsers.add_parser("strategy-experiments", help="List strategy experiments.")
+    strategy_experiments.add_argument("--db", type=Path, required=True)
+
+    strategy_policies = subparsers.add_parser("strategy-policies", help="List strategy policies.")
+    strategy_policies.add_argument("--db", type=Path, required=True)
     return parser
 
 
@@ -218,6 +244,12 @@ def main(argv: list[str] | None = None) -> None:
         "paper-trade-basket-from-file",
         "paper-trades",
         "basket-performance",
+        "strategy-init",
+        "strategy-active",
+        "strategy-propose",
+        "strategy-evaluate",
+        "strategy-experiments",
+        "strategy-policies",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -275,6 +307,21 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"trades": [trade.model_dump(mode="json") for trade in trades]}
     if args.command == "basket-performance":
         return RiskRepository(args.db).basket_performance_summary().model_dump(mode="json")
+    if args.command == "strategy-init":
+        return run_strategy_init(args)
+    if args.command == "strategy-active":
+        policy = RiskRepository(args.db).get_active_strategy_policy()
+        return policy.model_dump(mode="json") if policy else {"policy": None}
+    if args.command == "strategy-propose":
+        return run_strategy_propose(args)
+    if args.command == "strategy-evaluate":
+        return run_strategy_evaluate(args)
+    if args.command == "strategy-experiments":
+        experiments = RiskRepository(args.db).list_strategy_experiments()
+        return {"experiments": [item.model_dump(mode="json") for item in experiments]}
+    if args.command == "strategy-policies":
+        policies = RiskRepository(args.db).list_strategy_policies()
+        return {"policies": [item.model_dump(mode="json") for item in policies]}
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -518,6 +565,44 @@ def run_paper_trade_basket(args: argparse.Namespace, from_file: bool) -> dict[st
             "paper_trade_ids": trade_ids,
             "basket_backtest_result_id": result_id,
         },
+    }
+
+
+def run_strategy_init(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    try:
+        policy = repository.get_strategy_policy("default", "v1")
+    except LookupError:
+        policy = create_default_strategy_policy()
+        repository.save_strategy_policy(policy)
+    return policy.model_dump(mode="json")
+
+
+def run_strategy_propose(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    baseline = repository.get_active_strategy_policy()
+    if baseline is None:
+        raise LookupError("No active strategy policy. Run strategy-init first.")
+    policies = StrategyOptimizer().propose_candidate_policies(baseline, args.n)
+    ids = [repository.save_strategy_policy(policy) for policy in policies]
+    return {
+        "policies": [policy.model_dump(mode="json") for policy in policies],
+        "saved": {"db": str(args.db), "strategy_policy_ids": ids},
+    }
+
+
+def run_strategy_evaluate(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    policy = repository.get_strategy_policy(args.policy_id, args.version)
+    experiment = StrategyOptimizer(repository).evaluate_policy_from_basket_results(policy, args.horizon_days)
+    experiment_id = repository.save_strategy_experiment(experiment)
+    return {
+        **experiment.model_dump(mode="json"),
+        "warning": (
+            "COMMON_OUTCOME_EVALUATION is not actual candidate policy performance comparison; "
+            "the candidate was not replayed against historical features."
+        ),
+        "saved": {"db": str(args.db), "strategy_experiment_id": experiment_id},
     }
 
 

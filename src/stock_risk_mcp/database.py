@@ -286,6 +286,63 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS strategy_policies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            policy_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            weights_json TEXT NOT NULL,
+            setup_thresholds_json TEXT NOT NULL,
+            basket_rules_json TEXT NOT NULL,
+            risk_overrides_json TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            reason TEXT,
+            parent_policy_id TEXT,
+            parent_version TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(policy_id, version)
+        );
+
+        CREATE TABLE IF NOT EXISTS strategy_experiments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id TEXT NOT NULL UNIQUE,
+            baseline_policy_id TEXT NOT NULL,
+            baseline_version TEXT NOT NULL,
+            candidate_policy_id TEXT NOT NULL,
+            candidate_version TEXT NOT NULL,
+            evaluation_mode TEXT NOT NULL,
+            horizon_days INTEGER NOT NULL,
+            sample_count INTEGER NOT NULL,
+            avg_return_pct REAL,
+            median_return_pct REAL,
+            win_rate REAL,
+            loss_rate REAL,
+            profit_factor REAL,
+            avg_max_drawdown REAL,
+            avg_realized_pnl REAL,
+            objective_score REAL NOT NULL,
+            recommendation TEXT NOT NULL,
+            notes_json TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS strategy_memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memory_id TEXT NOT NULL UNIQUE,
+            basket_id TEXT,
+            ticker TEXT,
+            setup_grade TEXT,
+            decision TEXT NOT NULL,
+            features_json TEXT NOT NULL,
+            outcome TEXT,
+            realized_return_pct REAL,
+            realized_pnl REAL,
+            max_drawdown REAL,
+            policy_id TEXT,
+            policy_version TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

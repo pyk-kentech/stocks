@@ -478,6 +478,63 @@ python -m stock_risk_mcp.cli basket-performance --db data/stock_risk_mcp.sqlite3
 이 기능은 전략 검증용이며 실제 주문을 실행하지 않습니다. 수수료, 슬리피지,
 체결 지연, 부분 체결, bar 내부의 체결 순서는 아직 단순화되거나 생략되어 있습니다.
 
+## Adaptive Strategy Layer
+
+Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft
+strategy policy의 후보를 만들고 실험 결과를 기록합니다. 실제 주문 기능이나 외부
+API 호출은 없으며, 후보 정책은 기본적으로 `DRAFT`로 저장되고 자동으로
+`ACTIVE`가 되지 않습니다.
+
+Optimizer가 조정할 수 있는 범위:
+
+- soft scoring weights
+- A/B/C setup thresholds
+- basket candidate 및 concentration rules
+- basket allocation risk units와 허용 손실 한도
+
+Optimizer가 절대 변경할 수 없는 hard block / safety rule:
+
+- Nasdaq 미준수, 희석 위험, unknown dilution 차단
+- 시장가, 마진, 옵션 허용 여부
+- stop loss 비활성화
+- 일일 최대 손실, 단일 포지션 한도, 최소 현금 비율
+
+기본 정책 초기화 및 active 정책 조회:
+
+```bash
+python -m stock_risk_mcp.cli strategy-init --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-active --db data/stock_risk_mcp.sqlite3
+```
+
+결정론적 `DRAFT` 후보 생성:
+
+```bash
+python -m stock_risk_mcp.cli strategy-propose --db data/stock_risk_mcp.sqlite3 --n 5
+```
+
+저장된 전체 `basket_backtest_results`로 공통 성과 objective 계산:
+
+```bash
+python -m stock_risk_mcp.cli strategy-evaluate --db data/stock_risk_mcp.sqlite3 --policy-id default --version v1 --horizon-days 10
+```
+
+정책과 실험 기록 조회:
+
+```bash
+python -m stock_risk_mcp.cli strategy-policies --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-experiments --db data/stock_risk_mcp.sqlite3
+```
+
+현재 MVP는 `COMMON_OUTCOME_EVALUATION`만 구현합니다. 모든 정책이 같은 저장
+basket 성과를 사용하므로, 결과는 후보 정책 간 실제 우열 검증이 아닙니다.
+candidate policy를 과거 feature, indicator, trade plan, basket construction에
+재적용하지 않습니다. `FEATURE_RESCORING`은 구현하지 않았으며, 진짜 정책별 성과
+비교는 향후 Policy Replay Engine의 `FULL_POLICY_REPLAY`에서 수행해야 합니다.
+
+`sample_count < 30`인 실험은 항상 `NEED_MORE_DATA`이며 정책을 승격하면 안 됩니다.
+이 계층은 paper trading 기반 전략 실험 자동화일 뿐 실제 투자 성과를 보장하지
+않습니다.
+
 ## 안전 원칙
 
 - 실제 주문 실행 기능 없음

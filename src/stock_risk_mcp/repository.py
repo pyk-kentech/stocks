@@ -50,6 +50,15 @@ from stock_risk_mcp.paper_trading import (
     PaperTradeStatus,
 )
 from stock_risk_mcp.setup import SetupDirection, SetupGrade, TradeDecision, TradePlan
+from stock_risk_mcp.strategy_experiments import StrategyEvaluationMode, StrategyExperiment
+from stock_risk_mcp.strategy_memory import StrategyMemory
+from stock_risk_mcp.strategy_objective import StrategyRecommendation
+from stock_risk_mcp.strategy_policy import (
+    StrategyPolicy,
+    StrategyPolicyCreator,
+    StrategyPolicyStatus,
+    validate_strategy_policy,
+)
 
 
 @dataclass(frozen=True)
@@ -730,18 +739,162 @@ class RiskRepository:
             ).fetchone()
         return _basket_backtest_result_from_row(row) if row else None
 
-    def list_basket_backtest_results(self, limit: int = 50) -> list[BasketBacktestResult]:
+    def list_basket_backtest_results(self, limit: int | None = 50) -> list[BasketBacktestResult]:
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM basket_backtest_results ORDER BY id ASC LIMIT ?", (limit,)
-            ).fetchall()
+            if limit is None:
+                rows = connection.execute("SELECT * FROM basket_backtest_results ORDER BY id ASC").fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM basket_backtest_results ORDER BY id ASC LIMIT ?", (limit,)
+                ).fetchall()
         return [_basket_backtest_result_from_row(row) for row in rows]
 
     def basket_performance_summary(self) -> BasketPerformanceSummary:
         return summarize_basket_performance(
-            self.list_basket_backtest_results(limit=1_000_000),
+            self.list_basket_backtest_results(limit=None),
             self.list_paper_trades(limit=1_000_000),
         )
+
+    def save_strategy_policy(self, policy: StrategyPolicy) -> int:
+        validate_strategy_policy(policy)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO strategy_policies (
+                    policy_id, version, status, weights_json, setup_thresholds_json,
+                    basket_rules_json, risk_overrides_json, created_by, reason,
+                    parent_policy_id, parent_version, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    policy.policy_id,
+                    policy.version,
+                    policy.status.value,
+                    _json(policy.weights),
+                    _json(policy.setup_thresholds),
+                    _json(policy.basket_rules),
+                    _json(policy.risk_overrides),
+                    policy.created_by.value,
+                    policy.reason,
+                    policy.parent_policy_id,
+                    policy.parent_version,
+                    policy.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_strategy_policy(self, policy_id: str, version: str) -> StrategyPolicy:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM strategy_policies WHERE policy_id = ? AND version = ?",
+                (policy_id, version),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Strategy policy not found: {policy_id}/{version}")
+        return _strategy_policy_from_row(row)
+
+    def get_active_strategy_policy(self) -> StrategyPolicy | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM strategy_policies WHERE status = ? ORDER BY id DESC LIMIT 1",
+                (StrategyPolicyStatus.ACTIVE.value,),
+            ).fetchone()
+        return _strategy_policy_from_row(row) if row else None
+
+    def update_strategy_policy_status(self, policy_id: str, version: str, status: str) -> None:
+        normalized_status = StrategyPolicyStatus(status).value
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE strategy_policies SET status = ? WHERE policy_id = ? AND version = ?",
+                (normalized_status, policy_id, version),
+            )
+        if cursor.rowcount == 0:
+            raise LookupError(f"Strategy policy not found: {policy_id}/{version}")
+
+    def list_strategy_policies(self, limit: int = 50) -> list[StrategyPolicy]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM strategy_policies ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_strategy_policy_from_row(row) for row in rows]
+
+    def save_strategy_experiment(self, experiment: StrategyExperiment) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO strategy_experiments (
+                    experiment_id, baseline_policy_id, baseline_version,
+                    candidate_policy_id, candidate_version, evaluation_mode,
+                    horizon_days, sample_count, avg_return_pct, median_return_pct,
+                    win_rate, loss_rate, profit_factor, avg_max_drawdown,
+                    avg_realized_pnl, objective_score, recommendation, notes_json,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    experiment.experiment_id,
+                    experiment.baseline_policy_id,
+                    experiment.baseline_version,
+                    experiment.candidate_policy_id,
+                    experiment.candidate_version,
+                    experiment.evaluation_mode.value,
+                    experiment.horizon_days,
+                    experiment.sample_count,
+                    experiment.avg_return_pct,
+                    experiment.median_return_pct,
+                    experiment.win_rate,
+                    experiment.loss_rate,
+                    experiment.profit_factor,
+                    experiment.avg_max_drawdown,
+                    experiment.avg_realized_pnl,
+                    experiment.objective_score,
+                    experiment.recommendation.value,
+                    json.dumps(experiment.notes, ensure_ascii=False),
+                    experiment.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_strategy_experiments(self, limit: int = 50) -> list[StrategyExperiment]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM strategy_experiments ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_strategy_experiment_from_row(row) for row in rows]
+
+    def save_strategy_memory(self, memory: StrategyMemory) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO strategy_memories (
+                    memory_id, basket_id, ticker, setup_grade, decision,
+                    features_json, outcome, realized_return_pct, realized_pnl,
+                    max_drawdown, policy_id, policy_version, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    memory.memory_id,
+                    memory.basket_id,
+                    memory.ticker,
+                    memory.setup_grade,
+                    memory.decision,
+                    _json(memory.features_json),
+                    memory.outcome,
+                    memory.realized_return_pct,
+                    memory.realized_pnl,
+                    memory.max_drawdown,
+                    memory.policy_id,
+                    memory.policy_version,
+                    memory.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_strategy_memories(self, limit: int = 100) -> list[StrategyMemory]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM strategy_memories ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_strategy_memory_from_row(row) for row in rows]
 
     def upsert_data_source(self, source: DataSource) -> int:
         with self._connect() as connection:
@@ -903,6 +1056,9 @@ class RiskRepository:
             "basket_blocked_candidates",
             "paper_trades",
             "basket_backtest_results",
+            "strategy_policies",
+            "strategy_experiments",
+            "strategy_memories",
             "data_sources",
             "ingestion_runs",
         }
@@ -1144,5 +1300,64 @@ def _basket_backtest_result_from_row(row: sqlite3.Row) -> BasketBacktestResult:
         no_data_count=int(row["no_data_count"]),
         closed_trade_count=int(row["closed_trade_count"]),
         outcome=BacktestOutcome(str(row["outcome"])),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _strategy_policy_from_row(row: sqlite3.Row) -> StrategyPolicy:
+    return StrategyPolicy(
+        policy_id=str(row["policy_id"]),
+        version=str(row["version"]),
+        status=StrategyPolicyStatus(str(row["status"])),
+        weights=json.loads(str(row["weights_json"])),
+        setup_thresholds=json.loads(str(row["setup_thresholds_json"])),
+        basket_rules=json.loads(str(row["basket_rules_json"])),
+        risk_overrides=json.loads(str(row["risk_overrides_json"])),
+        created_by=StrategyPolicyCreator(str(row["created_by"])),
+        reason=str(row["reason"] or ""),
+        parent_policy_id=row["parent_policy_id"],
+        parent_version=row["parent_version"],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _strategy_experiment_from_row(row: sqlite3.Row) -> StrategyExperiment:
+    return StrategyExperiment(
+        experiment_id=str(row["experiment_id"]),
+        baseline_policy_id=str(row["baseline_policy_id"]),
+        baseline_version=str(row["baseline_version"]),
+        candidate_policy_id=str(row["candidate_policy_id"]),
+        candidate_version=str(row["candidate_version"]),
+        evaluation_mode=StrategyEvaluationMode(str(row["evaluation_mode"])),
+        horizon_days=int(row["horizon_days"]),
+        sample_count=int(row["sample_count"]),
+        avg_return_pct=float(row["avg_return_pct"]) if row["avg_return_pct"] is not None else None,
+        median_return_pct=float(row["median_return_pct"]) if row["median_return_pct"] is not None else None,
+        win_rate=float(row["win_rate"]) if row["win_rate"] is not None else None,
+        loss_rate=float(row["loss_rate"]) if row["loss_rate"] is not None else None,
+        profit_factor=float(row["profit_factor"]) if row["profit_factor"] is not None else None,
+        avg_max_drawdown=float(row["avg_max_drawdown"]) if row["avg_max_drawdown"] is not None else None,
+        avg_realized_pnl=float(row["avg_realized_pnl"]) if row["avg_realized_pnl"] is not None else None,
+        objective_score=float(row["objective_score"]),
+        recommendation=StrategyRecommendation(str(row["recommendation"])),
+        notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _strategy_memory_from_row(row: sqlite3.Row) -> StrategyMemory:
+    return StrategyMemory(
+        memory_id=str(row["memory_id"]),
+        basket_id=row["basket_id"],
+        ticker=row["ticker"],
+        setup_grade=row["setup_grade"],
+        decision=str(row["decision"]),
+        features_json=json.loads(str(row["features_json"])),
+        outcome=row["outcome"],
+        realized_return_pct=float(row["realized_return_pct"]) if row["realized_return_pct"] is not None else None,
+        realized_pnl=float(row["realized_pnl"]) if row["realized_pnl"] is not None else None,
+        max_drawdown=float(row["max_drawdown"]) if row["max_drawdown"] is not None else None,
+        policy_id=row["policy_id"],
+        policy_version=row["policy_version"],
         created_at=datetime.fromisoformat(str(row["created_at"])),
     )
