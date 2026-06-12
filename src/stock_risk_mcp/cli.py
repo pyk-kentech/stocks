@@ -15,11 +15,12 @@ from stock_risk_mcp.adapters.nasdaq_noncompliant_file import NasdaqNoncompliantF
 from stock_risk_mcp.adapters.price_history_market_data import PriceHistoryMarketDataAdapter
 from stock_risk_mcp.backtest import BacktestService
 from stock_risk_mcp.basket import BasketPolicy, candidate_from_trade_plan
+from stock_risk_mcp.basket_backtest import run_basket_backtest
 from stock_risk_mcp.basket_builder import build_basket
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
-from stock_risk_mcp.models import DataSource, IngestionStatus, SourceType, TradeProposal
+from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
@@ -130,6 +131,22 @@ def build_command_parser() -> argparse.ArgumentParser:
     show_basket = subparsers.add_parser("show-basket", help="Show a saved basket plan.")
     show_basket.add_argument("--db", type=Path, required=True)
     show_basket.add_argument("--basket-id", required=True)
+
+    paper_trade_basket = subparsers.add_parser("paper-trade-basket", help="Backtest a saved basket using DB prices.")
+    add_paper_trade_basket_args(paper_trade_basket)
+
+    paper_trade_file = subparsers.add_parser(
+        "paper-trade-basket-from-file", help="Backtest a saved basket using a local price history file."
+    )
+    add_paper_trade_basket_args(paper_trade_file)
+    paper_trade_file.add_argument("--price-history-file", type=Path, required=True)
+
+    paper_trades = subparsers.add_parser("paper-trades", help="List saved paper trades for a basket.")
+    paper_trades.add_argument("--db", type=Path, required=True)
+    paper_trades.add_argument("--basket-id", required=True)
+
+    basket_performance = subparsers.add_parser("basket-performance", help="Summarize saved basket backtests.")
+    basket_performance.add_argument("--db", type=Path, required=True)
     return parser
 
 
@@ -170,6 +187,12 @@ def add_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-same-theme-count", type=int, default=3)
 
 
+def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--db", type=Path, required=True)
+    parser.add_argument("--basket-id", required=True)
+    parser.add_argument("--horizon-days", type=int, required=True)
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = sys.argv[1:] if argv is None else argv
     commands = {
@@ -191,6 +214,10 @@ def main(argv: list[str] | None = None) -> None:
         "build-basket-from-trade-plans",
         "build-basket-and-save",
         "show-basket",
+        "paper-trade-basket",
+        "paper-trade-basket-from-file",
+        "paper-trades",
+        "basket-performance",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -239,6 +266,15 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return run_build_basket(args, save=True)
     if args.command == "show-basket":
         return RiskRepository(args.db).get_basket_plan(args.basket_id).model_dump(mode="json")
+    if args.command == "paper-trade-basket":
+        return run_paper_trade_basket(args, from_file=False)
+    if args.command == "paper-trade-basket-from-file":
+        return run_paper_trade_basket(args, from_file=True)
+    if args.command == "paper-trades":
+        trades = RiskRepository(args.db).list_paper_trades(args.basket_id)
+        return {"trades": [trade.model_dump(mode="json") for trade in trades]}
+    if args.command == "basket-performance":
+        return RiskRepository(args.db).basket_performance_summary().model_dump(mode="json")
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -458,6 +494,38 @@ def run_build_basket(args: argparse.Namespace, save: bool) -> dict[str, object]:
     if save:
         output["saved"] = {"db": str(args.db), "basket_plan_id": repository.save_basket_plan(plan)}
     return output
+
+
+def run_paper_trade_basket(args: argparse.Namespace, from_file: bool) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    plan = repository.get_basket_plan(args.basket_id)
+    if from_file:
+        bars = FilePriceHistoryAdapter(args.price_history_file).load_price_bars()
+        prices = _group_price_bars(bars)
+    else:
+        prices = {
+            allocation.ticker: repository.get_all_price_history(allocation.ticker)
+            for allocation in plan.allocations
+        }
+    result, trades = run_basket_backtest(plan, prices, plan.created_at.date(), args.horizon_days)
+    trade_ids = repository.save_paper_trades(trades)
+    result_id = repository.save_basket_backtest_result(result)
+    return {
+        **result.model_dump(mode="json"),
+        "trades": [trade.model_dump(mode="json") for trade in trades],
+        "saved": {
+            "db": str(args.db),
+            "paper_trade_ids": trade_ids,
+            "basket_backtest_result_id": result_id,
+        },
+    }
+
+
+def _group_price_bars(bars: list[PriceBar]) -> dict[str, list[PriceBar]]:
+    grouped: dict[str, list[PriceBar]] = {}
+    for bar in bars:
+        grouped.setdefault(bar.ticker, []).append(bar)
+    return grouped
 
 
 def build_proposal(args: argparse.Namespace) -> TradeProposal:

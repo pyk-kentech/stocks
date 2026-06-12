@@ -442,6 +442,42 @@ python -m stock_risk_mcp.mcp_server
 
 등록되는 tool은 `evaluate_trade_proposal`이며, 입력은 `ticker`, `side`, `reason`, `llm_confidence`, `intended_holding_days`입니다.
 
+## Paper Trading / Basket Backtest
+
+저장된 `BasketPlan`을 DB 또는 CSV/JSON 가격 히스토리에 재생해 allocation별
+`PaperTrade`와 합산 `BasketBacktestResult`를 생성하고 저장합니다.
+
+종료 사유:
+
+- `STOP_LOSS`: bar의 저가가 손절가에 닿음
+- `TAKE_PROFIT`: bar의 고가가 목표가에 닿음
+- `TIME_EXIT`: horizon까지 손절가와 목표가에 닿지 않음
+- `NO_DATA`: 사용할 수 있는 가격 데이터가 없음
+
+같은 bar에서 손절가와 목표가에 모두 닿으면 보수적으로 `STOP_LOSS`를 우선합니다.
+
+DB 가격 히스토리로 실행:
+
+```bash
+python -m stock_risk_mcp.cli paper-trade-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id> --horizon-days 10
+```
+
+로컬 가격 파일로 실행:
+
+```bash
+python -m stock_risk_mcp.cli paper-trade-basket-from-file --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id> --price-history-file data/prices.csv --horizon-days 10
+```
+
+저장된 paper trade 조회 및 전체 성과 요약:
+
+```bash
+python -m stock_risk_mcp.cli paper-trades --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id>
+python -m stock_risk_mcp.cli basket-performance --db data/stock_risk_mcp.sqlite3
+```
+
+이 기능은 전략 검증용이며 실제 주문을 실행하지 않습니다. 수수료, 슬리피지,
+체결 지연, 부분 체결, bar 내부의 체결 순서는 아직 단순화되거나 생략되어 있습니다.
+
 ## 안전 원칙
 
 - 실제 주문 실행 기능 없음

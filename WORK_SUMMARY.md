@@ -498,6 +498,39 @@ python -m stock_risk_mcp.cli show-basket --db data/stock_risk_mcp.sqlite3 --bask
 
 README states that BasketPlan is a paper trading/proposal object and that every candidate still requires individual Risk Engine and user review before any real-order proposal.
 
+## Paper Trading And Basket Backtest
+
+Added a local price-history paper trading layer for saved BasketPlans. It does not call external APIs and never places real orders.
+
+Added files:
+
+- `src/stock_risk_mcp/paper_trading.py`
+- `src/stock_risk_mcp/exits.py`
+- `src/stock_risk_mcp/basket_backtest.py`
+- `src/stock_risk_mcp/basket_performance.py`
+- `tests/test_paper_trading.py`
+- `tests/test_exits.py`
+- `tests/test_basket_backtest.py`
+- `tests/test_basket_performance.py`
+
+Implemented LONG stop-loss, take-profit, time-exit, and no-data outcomes. When one bar touches both stop and target, stop-loss takes priority. Basket results aggregate realized PnL, return, outcome counts, and performance summaries.
+
+Added database tables:
+
+- `paper_trades`
+- `basket_backtest_results`
+
+Added CLI commands:
+
+```powershell
+python -m stock_risk_mcp.cli paper-trade-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id> --horizon-days 10
+python -m stock_risk_mcp.cli paper-trade-basket-from-file --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id> --price-history-file data/prices.csv --horizon-days 10
+python -m stock_risk_mcp.cli paper-trades --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id>
+python -m stock_risk_mcp.cli basket-performance --db data/stock_risk_mcp.sqlite3
+```
+
+README documents the simplified assumptions: no fees, slippage, execution delay, partial fills, or real order execution.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -512,11 +545,12 @@ The test suite grew over the work:
 - indicator analysis layer tests passed
 - ABC setup and trade plan layer tests passed
 - Basket Engine tests passed
+- paper trading and basket backtest tests passed
 
 Latest verified result:
 
 ```text
-84 passed
+92 passed
 ```
 
 ## Skill Path Issue

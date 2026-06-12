@@ -242,6 +242,50 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id TEXT NOT NULL UNIQUE,
+            basket_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            setup_grade TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            stop_price REAL NOT NULL,
+            target_price REAL,
+            position_size REAL NOT NULL,
+            allocated_loss_amount REAL NOT NULL,
+            notional_value REAL NOT NULL,
+            entry_date TEXT NOT NULL,
+            exit_date TEXT,
+            exit_price REAL,
+            exit_reason TEXT,
+            realized_pnl REAL,
+            realized_return_pct REAL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS basket_backtest_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            basket_id TEXT NOT NULL,
+            horizon_days INTEGER NOT NULL,
+            entry_date TEXT NOT NULL,
+            exit_date TEXT,
+            total_notional_value REAL NOT NULL,
+            total_allocated_loss REAL NOT NULL,
+            realized_pnl REAL NOT NULL,
+            realized_return_pct REAL NOT NULL,
+            max_drawdown REAL,
+            max_gain REAL,
+            win_count INTEGER NOT NULL,
+            loss_count INTEGER NOT NULL,
+            flat_count INTEGER NOT NULL,
+            no_data_count INTEGER NOT NULL,
+            closed_trade_count INTEGER NOT NULL,
+            outcome TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

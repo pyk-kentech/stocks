@@ -20,7 +20,9 @@ from stock_risk_mcp.basket import (
 )
 from stock_risk_mcp.database import connect_db, create_schema
 from stock_risk_mcp.indicators import IndicatorSignal, IndicatorValue
+from stock_risk_mcp.basket_performance import summarize_basket_performance
 from stock_risk_mcp.models import (
+    BacktestOutcome,
     BacktestResult,
     CompanyRisk,
     DataSource,
@@ -39,6 +41,13 @@ from stock_risk_mcp.models import (
     SourceType,
     TossSignal,
     TradeProposal,
+)
+from stock_risk_mcp.paper_trading import (
+    BasketBacktestResult,
+    BasketPerformanceSummary,
+    ExitReason,
+    PaperTrade,
+    PaperTradeStatus,
 )
 from stock_risk_mcp.setup import SetupDirection, SetupGrade, TradeDecision, TradePlan
 
@@ -627,6 +636,113 @@ class RiskRepository:
             ).fetchall()
         return [_basket_allocation_from_row(row) for row in rows]
 
+    def save_paper_trade(self, trade: PaperTrade) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO paper_trades (
+                    trade_id, basket_id, ticker, direction, setup_grade,
+                    entry_price, stop_price, target_price, position_size,
+                    allocated_loss_amount, notional_value, entry_date, exit_date,
+                    exit_price, exit_reason, realized_pnl, realized_return_pct,
+                    status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trade.trade_id,
+                    trade.basket_id,
+                    trade.ticker,
+                    trade.direction.value,
+                    trade.setup_grade.value,
+                    trade.entry_price,
+                    trade.stop_price,
+                    trade.target_price,
+                    trade.position_size,
+                    trade.allocated_loss_amount,
+                    trade.notional_value,
+                    trade.entry_date.isoformat(),
+                    trade.exit_date.isoformat() if trade.exit_date else None,
+                    trade.exit_price,
+                    trade.exit_reason.value if trade.exit_reason else None,
+                    trade.realized_pnl,
+                    trade.realized_return_pct,
+                    trade.status.value,
+                    trade.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def save_paper_trades(self, trades: list[PaperTrade]) -> list[int]:
+        return [self.save_paper_trade(trade) for trade in trades]
+
+    def list_paper_trades(self, basket_id: str | None = None, limit: int = 100) -> list[PaperTrade]:
+        with self._connect() as connection:
+            if basket_id is None:
+                rows = connection.execute("SELECT * FROM paper_trades ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM paper_trades WHERE basket_id = ? ORDER BY id ASC LIMIT ?",
+                    (basket_id, limit),
+                ).fetchall()
+        return [_paper_trade_from_row(row) for row in rows]
+
+    def save_basket_backtest_result(self, result: BasketBacktestResult) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO basket_backtest_results (
+                    basket_id, horizon_days, entry_date, exit_date,
+                    total_notional_value, total_allocated_loss, realized_pnl,
+                    realized_return_pct, max_drawdown, max_gain, win_count,
+                    loss_count, flat_count, no_data_count, closed_trade_count,
+                    outcome, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.basket_id,
+                    result.horizon_days,
+                    result.entry_date.isoformat(),
+                    result.exit_date.isoformat() if result.exit_date else None,
+                    result.total_notional_value,
+                    result.total_allocated_loss,
+                    result.realized_pnl,
+                    result.realized_return_pct,
+                    result.max_drawdown,
+                    result.max_gain,
+                    result.win_count,
+                    result.loss_count,
+                    result.flat_count,
+                    result.no_data_count,
+                    result.closed_trade_count,
+                    result.outcome.value,
+                    result.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_basket_backtest_result(self, basket_id: str) -> BasketBacktestResult | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM basket_backtest_results WHERE basket_id = ? ORDER BY id DESC LIMIT 1",
+                (basket_id,),
+            ).fetchone()
+        return _basket_backtest_result_from_row(row) if row else None
+
+    def list_basket_backtest_results(self, limit: int = 50) -> list[BasketBacktestResult]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM basket_backtest_results ORDER BY id ASC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_basket_backtest_result_from_row(row) for row in rows]
+
+    def basket_performance_summary(self) -> BasketPerformanceSummary:
+        return summarize_basket_performance(
+            self.list_basket_backtest_results(limit=1_000_000),
+            self.list_paper_trades(limit=1_000_000),
+        )
+
     def upsert_data_source(self, source: DataSource) -> int:
         with self._connect() as connection:
             connection.execute(
@@ -785,6 +901,8 @@ class RiskRepository:
             "basket_plans",
             "basket_allocations",
             "basket_blocked_candidates",
+            "paper_trades",
+            "basket_backtest_results",
             "data_sources",
             "ingestion_runs",
         }
@@ -980,5 +1098,51 @@ def _basket_plan_from_row(
         risk_summary=BasketRiskSummary.model_validate_json(str(row["risk_summary_json"])),
         decision=TradeDecision(str(row["decision"])),
         beginner_summary=str(row["beginner_summary"] or ""),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _paper_trade_from_row(row: sqlite3.Row) -> PaperTrade:
+    return PaperTrade(
+        trade_id=str(row["trade_id"]),
+        basket_id=str(row["basket_id"]),
+        ticker=str(row["ticker"]),
+        direction=SetupDirection(str(row["direction"])),
+        setup_grade=SetupGrade(str(row["setup_grade"])),
+        entry_price=float(row["entry_price"]),
+        stop_price=float(row["stop_price"]),
+        target_price=float(row["target_price"]) if row["target_price"] is not None else None,
+        position_size=float(row["position_size"]),
+        allocated_loss_amount=float(row["allocated_loss_amount"]),
+        notional_value=float(row["notional_value"]),
+        entry_date=date.fromisoformat(str(row["entry_date"])),
+        exit_date=date.fromisoformat(str(row["exit_date"])) if row["exit_date"] else None,
+        exit_price=float(row["exit_price"]) if row["exit_price"] is not None else None,
+        exit_reason=ExitReason(str(row["exit_reason"])) if row["exit_reason"] else None,
+        realized_pnl=float(row["realized_pnl"]) if row["realized_pnl"] is not None else None,
+        realized_return_pct=float(row["realized_return_pct"]) if row["realized_return_pct"] is not None else None,
+        status=PaperTradeStatus(str(row["status"])),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _basket_backtest_result_from_row(row: sqlite3.Row) -> BasketBacktestResult:
+    return BasketBacktestResult(
+        basket_id=str(row["basket_id"]),
+        horizon_days=int(row["horizon_days"]),
+        entry_date=date.fromisoformat(str(row["entry_date"])),
+        exit_date=date.fromisoformat(str(row["exit_date"])) if row["exit_date"] else None,
+        total_notional_value=float(row["total_notional_value"]),
+        total_allocated_loss=float(row["total_allocated_loss"]),
+        realized_pnl=float(row["realized_pnl"]),
+        realized_return_pct=float(row["realized_return_pct"]),
+        max_drawdown=float(row["max_drawdown"]) if row["max_drawdown"] is not None else None,
+        max_gain=float(row["max_gain"]) if row["max_gain"] is not None else None,
+        win_count=int(row["win_count"]),
+        loss_count=int(row["loss_count"]),
+        flat_count=int(row["flat_count"]),
+        no_data_count=int(row["no_data_count"]),
+        closed_trade_count=int(row["closed_trade_count"]),
+        outcome=BacktestOutcome(str(row["outcome"])),
         created_at=datetime.fromisoformat(str(row["created_at"])),
     )
