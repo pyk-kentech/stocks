@@ -164,6 +164,23 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS indicator_values (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            indicator_code TEXT NOT NULL,
+            category TEXT NOT NULL,
+            value_json TEXT,
+            unit TEXT,
+            signal TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            interpretation TEXT,
+            beginner_explanation TEXT,
+            source_name TEXT,
+            source_type TEXT,
+            observed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

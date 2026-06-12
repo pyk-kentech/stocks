@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from stock_risk_mcp.compliance import ComplianceRecord
 from stock_risk_mcp.database import connect_db, create_schema
+from stock_risk_mcp.indicators import IndicatorSignal, IndicatorValue
 from stock_risk_mcp.models import (
     BacktestResult,
     CompanyRisk,
@@ -421,6 +422,61 @@ class RiskRepository:
             ).fetchall()
         return [_compliance_record_from_row(row) for row in rows]
 
+    def save_indicator_values(self, values: list[IndicatorValue]) -> list[int]:
+        ids: list[int] = []
+        with self._connect() as connection:
+            for value in values:
+                evidence = value.evidence
+                cursor = connection.execute(
+                    """
+                    INSERT INTO indicator_values (
+                        ticker, indicator_code, category, value_json, unit, signal,
+                        severity, interpretation, beginner_explanation, source_name,
+                        source_type, observed_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        value.ticker,
+                        value.indicator_code,
+                        value.category,
+                        json.dumps(value.value, ensure_ascii=False),
+                        value.unit,
+                        value.signal.value,
+                        value.severity.value,
+                        value.interpretation,
+                        value.beginner_explanation,
+                        evidence.source_name if evidence else None,
+                        evidence.source_type.value if evidence else None,
+                        evidence.observed_at.isoformat() if evidence and evidence.observed_at else None,
+                    ),
+                )
+                ids.append(int(cursor.lastrowid))
+        return ids
+
+    def get_indicator_values(self, ticker: str, latest_only: bool = True) -> list[IndicatorValue]:
+        latest_filter = """
+            AND id IN (
+                SELECT MAX(id)
+                FROM indicator_values
+                WHERE ticker = ?
+                GROUP BY indicator_code
+            )
+        """ if latest_only else ""
+        parameters = (ticker.strip().upper(), ticker.strip().upper()) if latest_only else (ticker.strip().upper(),)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM indicator_values
+                WHERE ticker = ?
+                {latest_filter}
+                ORDER BY id ASC
+                """,
+                parameters,
+            ).fetchall()
+        return [_indicator_value_from_row(row) for row in rows]
+
     def upsert_data_source(self, source: DataSource) -> int:
         with self._connect() as connection:
             connection.execute(
@@ -574,6 +630,7 @@ class RiskRepository:
             "backtest_results",
             "evaluation_reasons",
             "compliance_records",
+            "indicator_values",
             "data_sources",
             "ingestion_runs",
         }
@@ -661,4 +718,26 @@ def _compliance_record_from_row(row: sqlite3.Row) -> ComplianceRecord:
         source_url=row["source_url"],
         raw_reference=row["raw_reference"],
         observed_at=datetime.fromisoformat(str(row["observed_at"])),
+    )
+
+
+def _indicator_value_from_row(row: sqlite3.Row) -> IndicatorValue:
+    evidence = None
+    if row["source_name"] and row["source_type"]:
+        evidence = Evidence(
+            source_name=str(row["source_name"]),
+            source_type=SourceType(str(row["source_type"])),
+            observed_at=datetime.fromisoformat(str(row["observed_at"])) if row["observed_at"] else None,
+        )
+    return IndicatorValue(
+        ticker=str(row["ticker"]),
+        indicator_code=str(row["indicator_code"]),
+        category=str(row["category"]),
+        value=json.loads(row["value_json"]) if row["value_json"] is not None else None,
+        unit=row["unit"],
+        signal=IndicatorSignal(str(row["signal"])),
+        severity=Severity(str(row["severity"])),
+        interpretation=str(row["interpretation"] or ""),
+        beginner_explanation=str(row["beginner_explanation"] or ""),
+        evidence=evidence,
     )

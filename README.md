@@ -252,6 +252,44 @@ python -m stock_risk_mcp.cli evaluate-and-save \
 
 가격 데이터는 투자 성과를 보장하기 위한 데이터가 아니라 리스크 평가와 백테스트 검증을 재현 가능하게 만들기 위한 입력입니다.
 
+## Indicator Analysis Layer
+
+Indicator Analysis Layer는 로컬 가격 히스토리에서 기술적·유동성·변동성 지표를 계산하고, 초보자가 이해하기 쉬운 해석과 보조 점수를 생성합니다. 이 결과는 기존 Risk Engine hard block을 대체하지 않으며 매수 추천도 아닙니다. 리스크 해석과 전략 실험을 위한 보조 신호입니다.
+
+지원 지표:
+
+- 가격/추세: `RETURN_1D_PCT`, `RETURN_5D_PCT`, `RETURN_20D_PCT`, `RETURN_60D_PCT`, `SMA_20`, `SMA_60`, `SMA_120`, `DISTANCE_FROM_SMA_20_PCT`, `DISTANCE_FROM_SMA_60_PCT`
+- 거래량/유동성: `AVG_DOLLAR_VOLUME_20D`, `VOLUME_SPIKE_RATIO`, `DOLLAR_VOLUME_SPIKE_RATIO`
+- 변동성: `VOLATILITY_20D_PCT`, `ATR_14_PCT`, `MAX_DRAWDOWN_60D_PCT`
+- 기술적 지표: `RSI_14`, `BOLLINGER_POSITION`
+
+초보자용 의미:
+
+- 수익률과 이동평균 거리: 최근 급등·하락 또는 추세 이탈 여부를 확인합니다.
+- 평균 거래대금과 거래량 급증: 진입/청산 용이성과 갑작스러운 시장 관심을 확인합니다.
+- 변동성, ATR, 최대 낙폭: 가격 흔들림과 최근 손실 위험을 확인합니다.
+- RSI와 볼린저 위치: 과매수·과매도 또는 단기 과열 가능성을 참고합니다.
+
+파일 가격 히스토리 분석:
+
+```bash
+python -m stock_risk_mcp.cli analyze-indicators --ticker SAFE --price-history-file data/prices.csv
+```
+
+DB 가격 히스토리 분석:
+
+```bash
+python -m stock_risk_mcp.cli analyze-indicators --ticker SAFE --db data/stock_risk_mcp.sqlite3 --use-db-price-history
+```
+
+분석 결과 저장:
+
+```bash
+python -m stock_risk_mcp.cli analyze-indicators-and-save --ticker SAFE --price-history-file data/prices.csv --db data/stock_risk_mcp.sqlite3
+```
+
+계산에 필요한 가격 bar, 거래량, 고가 또는 저가 데이터가 부족하면 해당 지표의 값은 `None`, 신호는 `UNKNOWN`이 될 수 있습니다.
+
 ## 백테스트
 
 저장된 `risk_evaluations`와 `price_history`를 매칭해 리스크 엔진 판단 이후 수익률을 계산합니다. 평가일 또는 그 다음 거래일의 종가를 entry price로 사용하고, 지정한 horizon 이후 가장 가까운 거래일 종가를 exit price로 사용합니다.

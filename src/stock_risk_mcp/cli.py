@@ -16,6 +16,7 @@ from stock_risk_mcp.adapters.price_history_market_data import PriceHistoryMarket
 from stock_risk_mcp.backtest import BacktestService
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
+from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.models import DataSource, IngestionStatus, SourceType, TradeProposal
 from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.reporting import ReportService
@@ -91,6 +92,15 @@ def build_command_parser() -> argparse.ArgumentParser:
     ingestion_runs = subparsers.add_parser("ingestion-runs", help="List recent ingestion runs.")
     ingestion_runs.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
     ingestion_runs.add_argument("--limit", type=int, default=50)
+
+    analyze_indicators = subparsers.add_parser("analyze-indicators", help="Analyze indicators from local price history.")
+    add_indicator_args(analyze_indicators, require_db=False)
+
+    analyze_and_save = subparsers.add_parser(
+        "analyze-indicators-and-save",
+        help="Analyze indicators from local price history and save them to SQLite.",
+    )
+    add_indicator_args(analyze_and_save, require_db=True)
     return parser
 
 
@@ -102,6 +112,13 @@ def add_proposal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--holding-days", type=int, default=30, help="Intended holding period in days")
     parser.add_argument("--policy", type=Path, default=None, help="Optional path to a policy YAML file")
     parser.add_argument("--price-history-file", type=Path, default=None, help="CSV/JSON price history file for market data")
+
+
+def add_indicator_args(parser: argparse.ArgumentParser, require_db: bool) -> None:
+    parser.add_argument("--ticker", required=True, help="Ticker symbol")
+    parser.add_argument("--price-history-file", type=Path, default=None, help="CSV/JSON price history file")
+    parser.add_argument("--db", type=Path, required=require_db, default=None if not require_db else None)
+    parser.add_argument("--use-db-price-history", action="store_true", help="Use the SQLite price_history table")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -117,6 +134,8 @@ def main(argv: list[str] | None = None) -> None:
         "reasons",
         "sources",
         "ingestion-runs",
+        "analyze-indicators",
+        "analyze-indicators-and-save",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -148,6 +167,10 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return run_sources(args)
     if args.command == "ingestion-runs":
         return run_ingestion_runs(args)
+    if args.command == "analyze-indicators":
+        return run_analyze_indicators(args, save=False)
+    if args.command == "analyze-indicators-and-save":
+        return run_analyze_indicators(args, save=True)
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -295,6 +318,33 @@ def run_sources(args: argparse.Namespace) -> dict[str, object]:
 def run_ingestion_runs(args: argparse.Namespace) -> dict[str, object]:
     runs = RiskRepository(args.db).get_ingestion_runs(args.limit)
     return {"ingestion_runs": [run.model_dump(mode="json", exclude_none=True) for run in runs]}
+
+
+def run_analyze_indicators(args: argparse.Namespace, save: bool) -> dict[str, object]:
+    repository = RiskRepository(args.db) if args.db else None
+    if args.price_history_file:
+        bars = FilePriceHistoryAdapter(args.price_history_file).load_price_bars()
+        source_name = "price_history_file"
+        source_type = SourceType.FILE
+    elif args.use_db_price_history and repository is not None:
+        bars = repository.get_all_price_history(args.ticker)
+        source_name = "price_history_db"
+        source_type = SourceType.SYSTEM
+    else:
+        raise ValueError("Provide --price-history-file or --use-db-price-history with --db")
+
+    indicator_set, score = analyze_price_bars(args.ticker, bars, source_name, source_type)
+    output: dict[str, object] = {
+        **indicator_set.model_dump(mode="json"),
+        "score": score.model_dump(mode="json"),
+    }
+    if save:
+        if repository is None:
+            raise ValueError("--db is required when saving indicators")
+        ids = repository.save_indicator_values(indicator_set.indicators)
+        repository.upsert_data_source(_price_history_data_source(source_name, source_type))
+        output["saved"] = {"db": str(args.db), "indicator_values": len(ids), "indicator_value_ids": ids}
+    return output
 
 
 def build_proposal(args: argparse.Namespace) -> TradeProposal:

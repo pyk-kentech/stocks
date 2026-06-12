@@ -323,6 +323,64 @@ When DB mode is used, market-related reason evidence can use `source_name="price
 
 README was updated with price history CSV usage, DB/file evaluation modes, calculated fields, and the note that insufficient data leaves some fields as `None`.
 
+## Indicator Analysis Layer
+
+Added a price-history-based Indicator Analysis Layer. It is an auxiliary analysis layer only and does not replace existing Risk Engine hard blocks.
+
+Added files:
+
+- `src/stock_risk_mcp/indicators.py`
+- `src/stock_risk_mcp/indicator_calculators.py`
+- `src/stock_risk_mcp/indicator_interpreter.py`
+- `src/stock_risk_mcp/indicator_scoring.py`
+- `tests/test_indicators.py`
+- `tests/test_indicator_calculators.py`
+- `tests/test_indicator_interpreter.py`
+- `tests/test_indicator_scoring.py`
+
+Added model support:
+
+- `IndicatorSignal`
+- `IndicatorValue`
+- `IndicatorSet`
+- `IndicatorScore`
+
+Supported indicators:
+
+- returns: 1D, 5D, 20D, 60D
+- SMA: 20, 60, 120
+- distance from SMA: 20, 60
+- average dollar volume and volume/dollar-volume spike ratios
+- 20D volatility, ATR 14%, maximum drawdown 60D
+- RSI 14 and Bollinger position
+
+Implemented:
+
+- insufficient-data handling with `None` and `UNKNOWN`
+- beginner-friendly Korean interpretations
+- severity-weighted auxiliary indicator scoring
+- price-history evidence using `price_history_file` or `price_history_db`
+- local file and DB price-history analysis
+
+Added database table:
+
+- `indicator_values`
+
+Added repository methods:
+
+- `save_indicator_values(values)`
+- `get_indicator_values(ticker, latest_only=True)`
+
+Added CLI commands:
+
+```powershell
+python -m stock_risk_mcp.cli analyze-indicators --ticker SAFE --price-history-file data/prices.csv
+python -m stock_risk_mcp.cli analyze-indicators --ticker SAFE --db data/stock_risk_mcp.sqlite3 --use-db-price-history
+python -m stock_risk_mcp.cli analyze-indicators-and-save --ticker SAFE --price-history-file data/prices.csv --db data/stock_risk_mcp.sqlite3
+```
+
+README was updated with supported indicators, beginner meanings, CLI usage, and the warning that indicators are not buy recommendations.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -334,11 +392,12 @@ The test suite grew over the work:
 - evidence/provenance tests passed
 - Nasdaq noncompliant file compliance tests passed
 - price history market data adapter tests passed
+- indicator analysis layer tests passed
 
 Latest verified result:
 
 ```text
-54 passed
+63 passed
 ```
 
 ## Skill Path Issue
