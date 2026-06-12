@@ -596,6 +596,43 @@ python -m stock_risk_mcp.cli policy-activate --db data/stock_risk_mcp.sqlite3 --
 This suite is based on local paper replay outcomes and does not guarantee real
 investment performance or place real orders.
 
+## Candidate Scanner And Universe Builder
+
+The Candidate Scanner builds a research universe from local price history. It
+is not a buy recommendation, does not call external APIs, does not request
+realtime data, does not calculate outcomes, and never places orders.
+
+Every scan uses only price bars with `date <= as_of_date`. DB, local
+CSV/JSON, and explicit `--ticker` universes are supported. The scanner reuses
+the existing Indicator, policy-aware Setup, and TradePlan pipeline, then
+applies liquidity, spike, price, return, setup, compliance, and score filters.
+If no local compliance record exists, compliance is recorded as UNKNOWN with
+a warning; the candidate is not excluded solely because the data is absent.
+
+```bash
+python -m stock_risk_mcp.cli scan-candidates --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --save
+python -m stock_risk_mcp.cli scan-candidates --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --price-history-file data/prices.csv --use-active-policy
+python -m stock_risk_mcp.cli scan-candidates --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --ticker AAA --ticker BBB
+python -m stock_risk_mcp.cli scan-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli scan-results --db data/stock_risk_mcp.sqlite3 --scan-run-id <scan_run_id> --decision INCLUDE
+```
+
+`scan-candidates` prints results without persistence by default. `--save`
+stores `scan_runs` and `candidate_scan_results`; it does not save TradePlans.
+Basket conversion is also output-only by default, and writes official basket
+tables only with `--save-basket`.
+
+```bash
+python -m stock_risk_mcp.cli scan-to-basket --db data/stock_risk_mcp.sqlite3 --scan-run-id <scan_run_id> --account-equity 10000 --cash-available 5000
+python -m stock_risk_mcp.cli scan-to-basket --db data/stock_risk_mcp.sqlite3 --scan-run-id <scan_run_id> --account-equity 10000 --cash-available 5000 --save-basket
+python -m stock_risk_mcp.cli scan-to-replay-snapshot --db data/stock_risk_mcp.sqlite3 --scan-run-id <scan_run_id> --as-of-date 2026-06-13
+```
+
+Replay conversion stores selected candidate scan results, including score,
+decision, reasons, warnings, and TradePlan metadata, as replay candidate
+snapshots. It does not create an official basket or perform
+`FULL_POLICY_REPLAY`.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

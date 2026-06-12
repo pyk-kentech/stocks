@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from stock_risk_mcp.compliance import ComplianceRecord
+from stock_risk_mcp.candidate_universe import CandidateScanResult, ScanRun
 from stock_risk_mcp.basket import (
     BasketAllocation,
     BasketCandidate,
@@ -292,6 +293,14 @@ class RiskRepository:
                 (ticker.strip().upper(),),
             ).fetchall()
         return [PriceBar.model_validate(dict(row)) for row in rows]
+
+    def list_price_history_tickers(self, as_of_date: date) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT DISTINCT ticker FROM price_history WHERE date <= ? ORDER BY ticker",
+                (as_of_date.isoformat(),),
+            ).fetchall()
+        return [str(row["ticker"]) for row in rows]
 
     def get_risk_evaluation_for_backtest(self, risk_evaluation_id: int) -> RiskEvaluationRecord:
         with self._connect() as connection:
@@ -947,6 +956,108 @@ class RiskRepository:
             created_at=datetime.fromisoformat(str(row["created_at"])),
         ) for row in rows]
 
+    def save_scan_run(self, run: ScanRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO scan_runs (
+                    scan_run_id, as_of_date, source, policy_id, policy_version,
+                    universe_size, included_count, watch_count, excluded_count,
+                    status, notes_json, run_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run.scan_run_id,
+                    run.as_of_date.isoformat(),
+                    run.source.value,
+                    run.policy_id,
+                    run.policy_version,
+                    run.universe_size,
+                    run.included_count,
+                    run.watch_count,
+                    run.excluded_count,
+                    run.status.value,
+                    _json(run.notes),
+                    run.model_dump_json(),
+                    run.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_scan_run(self, scan_run_id: str) -> ScanRun:
+        with self._connect() as connection:
+            row = connection.execute("SELECT run_json FROM scan_runs WHERE scan_run_id = ?", (scan_run_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Scan run not found: {scan_run_id}")
+        return ScanRun.model_validate_json(str(row["run_json"]))
+
+    def list_scan_runs(self, limit: int = 50) -> list[ScanRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT run_json FROM scan_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [ScanRun.model_validate_json(str(row["run_json"])) for row in rows]
+
+    def save_candidate_scan_results(self, results: list[CandidateScanResult]) -> list[int]:
+        ids = []
+        with self._connect() as connection:
+            for result in results:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO candidate_scan_results (
+                        scan_run_id, ticker, as_of_date, decision, score, setup_grade,
+                        setup_score, trade_plan_decision, price, return_1d_pct,
+                        return_5d_pct, return_20d_pct, avg_dollar_volume_20d,
+                        volume_spike_ratio, dollar_volume_spike_ratio, volatility_20d_pct,
+                        risk_reward_ratio, sector, theme, reasons_json, warnings_json,
+                        metadata_json, result_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        result.scan_run_id,
+                        result.ticker,
+                        result.as_of_date.isoformat(),
+                        result.decision.value,
+                        result.score,
+                        result.setup_grade,
+                        result.setup_score,
+                        result.trade_plan_decision,
+                        result.price,
+                        result.return_1d_pct,
+                        result.return_5d_pct,
+                        result.return_20d_pct,
+                        result.avg_dollar_volume_20d,
+                        result.volume_spike_ratio,
+                        result.dollar_volume_spike_ratio,
+                        result.volatility_20d_pct,
+                        result.risk_reward_ratio,
+                        result.sector,
+                        result.theme,
+                        _json(result.reasons),
+                        _json(result.warnings),
+                        _json(result.metadata),
+                        result.model_dump_json(),
+                    ),
+                )
+                ids.append(int(cursor.lastrowid))
+        return ids
+
+    def list_candidate_scan_results(
+        self, scan_run_id: str, decision: str | None = None, limit: int = 200
+    ) -> list[CandidateScanResult]:
+        with self._connect() as connection:
+            if decision is None:
+                rows = connection.execute(
+                    "SELECT result_json FROM candidate_scan_results WHERE scan_run_id = ? ORDER BY id LIMIT ?",
+                    (scan_run_id, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT result_json FROM candidate_scan_results WHERE scan_run_id = ? AND decision = ? ORDER BY id LIMIT ?",
+                    (scan_run_id, decision, limit),
+                ).fetchall()
+        return [CandidateScanResult.model_validate_json(str(row["result_json"])) for row in rows]
+
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -1346,6 +1457,8 @@ class RiskRepository:
             "policy_comparison_results",
             "policy_evaluation_suites",
             "policy_promotion_proposals",
+            "scan_runs",
+            "candidate_scan_results",
             "data_sources",
             "ingestion_runs",
         }
@@ -1363,7 +1476,7 @@ def _model_json(model: BaseModel) -> str:
     return _json(model.model_dump(mode="json"))
 
 
-def _json(payload: dict[str, Any]) -> str:
+def _json(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 

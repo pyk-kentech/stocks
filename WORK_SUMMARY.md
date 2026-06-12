@@ -669,6 +669,27 @@ Implemented:
 Policy activation is never automatic. The suite remains a local paper replay
 evaluation and does not guarantee real investment performance.
 
+## Candidate Scanner And Universe Builder
+
+Added a local, strict as-of candidate universe layer that feeds existing
+TradePlan, Basket, Replay Snapshot, and future policy replay workflows.
+
+Implemented:
+
+- DB, price-history-file, and manual ticker universe loading
+- strict `date <= as_of_date` price-history use
+- existing Indicator, policy-aware Setup, and TradePlan pipeline reuse
+- deterministic candidate scoring, hard filters, ranking, and max-candidate limit
+- local compliance record exclusion and UNKNOWN-data warnings
+- `scan_runs` and `candidate_scan_results` persistence with migration-safe columns
+- scan-to-basket output-only default and opt-in official basket persistence
+- scan-to-replay candidate snapshot conversion preserving scan metadata
+- five scanner CLI commands
+
+The scanner does not call external APIs, use realtime data, calculate future
+outcomes, recommend purchases, or execute orders. Scan and basket persistence
+remain opt-in so research records do not mix with official proposal records.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -686,11 +707,12 @@ The test suite grew over the work:
 - paper trading and basket backtest tests passed
 - Adaptive Policy Layer tests passed
 - Policy-Aware Scoring Integration tests passed
+- Candidate Scanner and Universe Builder tests passed
 
 Latest verified result:
 
 ```text
-153 passed
+163 passed
 ```
 
 ## Skill Path Issue

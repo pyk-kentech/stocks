@@ -19,6 +19,13 @@ from stock_risk_mcp.backtest import BacktestService
 from stock_risk_mcp.basket import BasketPolicy, candidate_from_trade_plan
 from stock_risk_mcp.basket_backtest import run_basket_backtest
 from stock_risk_mcp.basket_builder import build_basket
+from stock_risk_mcp.candidate_universe import (
+    CandidateScanPolicy,
+    CandidateSource,
+    load_db_universe,
+    load_file_universe,
+    load_manual_universe,
+)
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
@@ -34,6 +41,8 @@ from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.replay_dataset import load_replay_dataset
 from stock_risk_mcp.replay_run import ReplayRunService
+from stock_risk_mcp.scan_pipeline import run_candidate_scan
+from stock_risk_mcp.scan_run import create_basket_from_scan_run, create_replay_snapshot_from_scan_run
 from stock_risk_mcp.service import RiskEvaluationService
 from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
@@ -250,6 +259,39 @@ def build_command_parser() -> argparse.ArgumentParser:
         item.add_argument("--db", type=Path, required=True)
         item.add_argument("--policy-id", required=True)
         item.add_argument("--policy-version", required=True)
+
+    scan_candidates = subparsers.add_parser("scan-candidates", help="Build a local as-of candidate universe.")
+    scan_candidates.add_argument("--db", type=Path, required=True)
+    scan_candidates.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    scan_candidates.add_argument("--price-history-file", type=Path)
+    scan_candidates.add_argument("--ticker", action="append")
+    scan_candidates.add_argument("--max-candidates", type=int, default=100)
+    scan_candidates.add_argument("--min-avg-dollar-volume-20d", type=float, default=10_000_000)
+    scan_candidates.add_argument("--min-volume-spike-ratio", type=float, default=1.5)
+    scan_candidates.add_argument("--save", action="store_true")
+    add_strategy_policy_args(scan_candidates)
+
+    scan_runs = subparsers.add_parser("scan-runs", help="List saved candidate scan runs.")
+    scan_runs.add_argument("--db", type=Path, required=True)
+    scan_runs.add_argument("--limit", type=int, default=50)
+
+    scan_results = subparsers.add_parser("scan-results", help="List saved candidate scan results.")
+    scan_results.add_argument("--db", type=Path, required=True)
+    scan_results.add_argument("--scan-run-id", required=True)
+    scan_results.add_argument("--decision", choices=["INCLUDE", "WATCH", "EXCLUDE"])
+    scan_results.add_argument("--limit", type=int, default=200)
+
+    scan_to_basket = subparsers.add_parser("scan-to-basket", help="Build a basket from saved scan results.")
+    scan_to_basket.add_argument("--scan-run-id", required=True)
+    scan_to_basket.add_argument("--include-watch", action="store_true")
+    scan_to_basket.add_argument("--save-basket", action="store_true")
+    add_basket_args(scan_to_basket)
+
+    scan_to_replay = subparsers.add_parser("scan-to-replay-snapshot", help="Snapshot saved scan candidates.")
+    scan_to_replay.add_argument("--db", type=Path, required=True)
+    scan_to_replay.add_argument("--scan-run-id", required=True)
+    scan_to_replay.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    scan_to_replay.add_argument("--include-watch", action="store_true")
     return parser
 
 
@@ -365,6 +407,11 @@ def main(argv: list[str] | None = None) -> None:
         "policy-promotion-proposals",
         "policy-approve",
         "policy-activate",
+        "scan-candidates",
+        "scan-runs",
+        "scan-results",
+        "scan-to-basket",
+        "scan-to-replay-snapshot",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -483,6 +530,21 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return approve_policy(RiskRepository(args.db), args.policy_id, args.policy_version).model_dump(mode="json")
     if args.command == "policy-activate":
         return activate_policy(RiskRepository(args.db), args.policy_id, args.policy_version).model_dump(mode="json")
+    if args.command == "scan-candidates":
+        return run_scan_candidates(args)
+    if args.command == "scan-runs":
+        runs = RiskRepository(args.db).list_scan_runs(args.limit)
+        return {"scan_runs": [item.model_dump(mode="json") for item in runs]}
+    if args.command == "scan-results":
+        results = RiskRepository(args.db).list_candidate_scan_results(args.scan_run_id, args.decision, args.limit)
+        return {"results": [item.model_dump(mode="json") for item in results]}
+    if args.command == "scan-to-basket":
+        return run_scan_to_basket(args)
+    if args.command == "scan-to-replay-snapshot":
+        replay = create_replay_snapshot_from_scan_run(
+            RiskRepository(args.db), args.scan_run_id, args.as_of_date, include_watch=args.include_watch
+        )
+        return replay.model_dump(mode="json")
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -768,6 +830,70 @@ def run_strategy_evaluate(args: argparse.Namespace) -> dict[str, object]:
         ),
         "saved": {"db": str(args.db), "strategy_experiment_id": experiment_id},
     }
+
+
+def run_scan_candidates(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    if args.ticker:
+        source = CandidateSource.MANUAL_LIST
+        tickers = load_manual_universe(args.ticker)
+    elif args.price_history_file:
+        source = CandidateSource.PRICE_HISTORY_FILE
+        tickers = load_file_universe(args.price_history_file, args.as_of_date)
+    else:
+        source = CandidateSource.PRICE_HISTORY_DB
+        tickers = load_db_universe(repository, args.as_of_date)
+    policy = CandidateScanPolicy(
+        max_candidates=args.max_candidates,
+        min_avg_dollar_volume_20d=args.min_avg_dollar_volume_20d,
+        min_volume_spike_ratio=args.min_volume_spike_ratio,
+    )
+    output = run_candidate_scan(
+        repository=repository,
+        price_provider=AsOfPriceHistoryProvider(
+            repository=None if args.price_history_file else repository,
+            price_history_file=args.price_history_file,
+        ),
+        tickers=tickers,
+        as_of_date=args.as_of_date,
+        source=source,
+        policy=policy,
+        strategy_policy=_resolve_strategy_policy(args, repository),
+        save=args.save,
+    )
+    return {
+        **output.run.model_dump(mode="json"),
+        "saved": output.saved,
+        "top_candidates": [item.model_dump(mode="json") for item in output.results],
+    }
+
+
+def run_scan_to_basket(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    strategy_policy = _resolve_strategy_policy(args, repository)
+    policy = BasketPolicy(
+        account_equity=args.account_equity,
+        cash_available=args.cash_available,
+        max_candidates=args.max_candidates,
+        min_candidates=args.min_candidates,
+        max_basket_loss_pct=args.max_basket_loss_pct,
+        max_basket_notional_pct=args.max_basket_notional_pct,
+        max_same_sector_count=args.max_same_sector_count,
+        max_same_theme_count=args.max_same_theme_count,
+    )
+    if strategy_policy is not None:
+        policy = apply_strategy_policy_to_basket_policy(policy, strategy_policy)
+    basket, saved = create_basket_from_scan_run(
+        repository,
+        args.scan_run_id,
+        args.account_equity,
+        args.cash_available,
+        include_watch=args.include_watch,
+        save_basket=args.save_basket,
+        basket_policy=policy,
+        strategy_policy=strategy_policy,
+    )
+    return {**basket.model_dump(mode="json"), "saved_to_basket_plans": saved}
 
 
 def run_policy_replay(args: argparse.Namespace, active: bool) -> dict[str, object]:

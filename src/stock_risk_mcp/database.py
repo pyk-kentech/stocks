@@ -493,6 +493,51 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS scan_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_run_id TEXT NOT NULL UNIQUE,
+            as_of_date TEXT NOT NULL,
+            source TEXT NOT NULL,
+            policy_id TEXT,
+            policy_version TEXT,
+            universe_size INTEGER NOT NULL,
+            included_count INTEGER NOT NULL,
+            watch_count INTEGER NOT NULL,
+            excluded_count INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            notes_json TEXT,
+            run_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS candidate_scan_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            setup_grade TEXT,
+            setup_score INTEGER,
+            trade_plan_decision TEXT,
+            price REAL,
+            return_1d_pct REAL,
+            return_5d_pct REAL,
+            return_20d_pct REAL,
+            avg_dollar_volume_20d REAL,
+            volume_spike_ratio REAL,
+            dollar_volume_spike_ratio REAL,
+            volatility_20d_pct REAL,
+            risk_reward_ratio REAL,
+            sector TEXT,
+            theme TEXT,
+            reasons_json TEXT,
+            warnings_json TEXT,
+            metadata_json TEXT,
+            result_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -540,6 +585,47 @@ def create_schema(connection: sqlite3.Connection) -> None:
         connection,
         "basket_backtest_results",
         {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT"},
+    )
+    _add_missing_columns(
+        connection,
+        "scan_runs",
+        {
+            "as_of_date": "TEXT",
+            "source": "TEXT",
+            "policy_id": "TEXT",
+            "policy_version": "TEXT",
+            "universe_size": "INTEGER",
+            "included_count": "INTEGER",
+            "watch_count": "INTEGER",
+            "excluded_count": "INTEGER",
+            "status": "TEXT",
+            "notes_json": "TEXT",
+        },
+    )
+    _add_missing_columns(
+        connection,
+        "candidate_scan_results",
+        {
+            "as_of_date": "TEXT",
+            "score": "INTEGER",
+            "setup_grade": "TEXT",
+            "setup_score": "INTEGER",
+            "trade_plan_decision": "TEXT",
+            "price": "REAL",
+            "return_1d_pct": "REAL",
+            "return_5d_pct": "REAL",
+            "return_20d_pct": "REAL",
+            "avg_dollar_volume_20d": "REAL",
+            "volume_spike_ratio": "REAL",
+            "dollar_volume_spike_ratio": "REAL",
+            "volatility_20d_pct": "REAL",
+            "risk_reward_ratio": "REAL",
+            "sector": "TEXT",
+            "theme": "TEXT",
+            "reasons_json": "TEXT",
+            "warnings_json": "TEXT",
+            "metadata_json": "TEXT",
+        },
     )
 
 
