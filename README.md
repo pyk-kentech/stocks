@@ -338,6 +338,55 @@ python -m stock_risk_mcp.cli create-trade-plan-and-save \
 
 `TradePlan.decision`의 `PROPOSE` 또는 `REVIEW`는 주문 승인이 아닙니다. 뉴스, 상장 유지, 희석, 유동성, 포트폴리오 한도 등을 확인하는 기존 Risk Engine 검사를 반드시 별도로 수행해야 합니다.
 
+## Basket Engine
+
+Basket Engine은 여러 개의 저장된 `TradePlan`을 모아 급등 예상주 paper trading 바스켓 후보를 구성합니다. 개별 종목 Risk Engine을 대체하지 않으며 실제 주문도 실행하지 않습니다. 역할은 바스켓 전체 손실, 총 노출, 종목별 리스크 배분, 섹터·테마 집중 위험을 관리하는 것입니다.
+
+`BasketPolicy` 주요 설정:
+
+- `max_basket_loss_pct`: 계좌 자산 대비 바스켓 전체 최대 손실 한도
+- `max_basket_notional_pct`: 계좌 자산 대비 바스켓 전체 최대 명목금액
+- `max_single_candidate_loss_pct`: 종목 하나에 배분 가능한 최대 손실
+- `max_single_position_pct`: 종목 하나의 최대 명목 비중
+- `max_candidates`, `min_candidates`: 바스켓 후보 수 제한
+- `max_same_sector_count`, `max_same_theme_count`: 동일 섹터·테마 집중 제한
+
+셋업별 risk unit:
+
+- A 셋업: `1.0`
+- B 셋업: `0.5`
+- C 및 NO_TRADE: `0.0`
+
+전체 허용 손실은 risk unit 비율에 따라 후보에 배분됩니다. 각 배분은 개별 TradePlan의 최대 손실, 단일 후보 손실 한도, 현금, 단일 포지션 비중, 남은 바스켓 명목금액 한도를 넘을 수 없습니다. 동일 섹터나 테마 후보가 제한을 초과하면 낮은 score 후보부터 제외됩니다. DB TradePlan에 섹터나 테마 정보가 없으면 `UNKNOWN`으로 처리합니다.
+
+최근 저장 TradePlan으로 바스켓 생성:
+
+```bash
+python -m stock_risk_mcp.cli build-basket-from-trade-plans \
+  --db data/stock_risk_mcp.sqlite3 \
+  --account-equity 10000 \
+  --cash-available 5000 \
+  --max-candidates 10
+```
+
+바스켓 생성 및 저장:
+
+```bash
+python -m stock_risk_mcp.cli build-basket-and-save \
+  --db data/stock_risk_mcp.sqlite3 \
+  --account-equity 10000 \
+  --cash-available 5000 \
+  --max-candidates 10
+```
+
+저장 바스켓 조회:
+
+```bash
+python -m stock_risk_mcp.cli show-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id>
+```
+
+`BasketPlan`은 paper trading/proposal 후보입니다. 실제 주문을 검토하기 전 각 종목은 기존 Risk Engine을 통과해야 하며 사용자가 뉴스와 공시를 다시 확인해야 합니다.
+
 ## 백테스트
 
 저장된 `risk_evaluations`와 `price_history`를 매칭해 리스크 엔진 판단 이후 수익률을 계산합니다. 평가일 또는 그 다음 거래일의 종가를 entry price로 사용하고, 지정한 horizon 이후 가장 가까운 거래일 종가를 exit price로 사용합니다.

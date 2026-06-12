@@ -14,6 +14,8 @@ from stock_risk_mcp.adapters.mock_company_risk import MockCompanyRiskAdapter
 from stock_risk_mcp.adapters.nasdaq_noncompliant_file import NasdaqNoncompliantFileAdapter
 from stock_risk_mcp.adapters.price_history_market_data import PriceHistoryMarketDataAdapter
 from stock_risk_mcp.backtest import BacktestService
+from stock_risk_mcp.basket import BasketPolicy, candidate_from_trade_plan
+from stock_risk_mcp.basket_builder import build_basket
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
@@ -22,7 +24,7 @@ from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.service import RiskEvaluationService
-from stock_risk_mcp.setup import TradeSizingPolicy
+from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
 from stock_risk_mcp.trade_plan import create_trade_plan
 
@@ -116,6 +118,18 @@ def build_command_parser() -> argparse.ArgumentParser:
         help="Create and save a paper trade plan from local price history.",
     )
     add_trade_plan_args(create_plan_and_save, require_db=True)
+
+    build_basket_parser = subparsers.add_parser(
+        "build-basket-from-trade-plans", help="Build a paper basket from recent saved trade plans."
+    )
+    add_basket_args(build_basket_parser)
+
+    build_basket_save = subparsers.add_parser("build-basket-and-save", help="Build and save a paper basket.")
+    add_basket_args(build_basket_save)
+
+    show_basket = subparsers.add_parser("show-basket", help="Show a saved basket plan.")
+    show_basket.add_argument("--db", type=Path, required=True)
+    show_basket.add_argument("--basket-id", required=True)
     return parser
 
 
@@ -144,6 +158,18 @@ def add_trade_plan_args(parser: argparse.ArgumentParser, require_db: bool) -> No
     parser.add_argument("--max-position-pct", type=float, default=5.0)
 
 
+def add_basket_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--db", type=Path, required=True)
+    parser.add_argument("--account-equity", type=float, required=True)
+    parser.add_argument("--cash-available", type=float, required=True)
+    parser.add_argument("--max-candidates", type=int, default=10)
+    parser.add_argument("--min-candidates", type=int, default=3)
+    parser.add_argument("--max-basket-loss-pct", type=float, default=1.0)
+    parser.add_argument("--max-basket-notional-pct", type=float, default=25.0)
+    parser.add_argument("--max-same-sector-count", type=int, default=3)
+    parser.add_argument("--max-same-theme-count", type=int, default=3)
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = sys.argv[1:] if argv is None else argv
     commands = {
@@ -162,6 +188,9 @@ def main(argv: list[str] | None = None) -> None:
         "analyze-setup",
         "create-trade-plan",
         "create-trade-plan-and-save",
+        "build-basket-from-trade-plans",
+        "build-basket-and-save",
+        "show-basket",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -204,6 +233,12 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return run_create_trade_plan(args, save=False)
     if args.command == "create-trade-plan-and-save":
         return run_create_trade_plan(args, save=True)
+    if args.command == "build-basket-from-trade-plans":
+        return run_build_basket(args, save=False)
+    if args.command == "build-basket-and-save":
+        return run_build_basket(args, save=True)
+    if args.command == "show-basket":
+        return RiskRepository(args.db).get_basket_plan(args.basket_id).model_dump(mode="json")
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -399,6 +434,30 @@ def _load_price_bars_for_analysis(args: argparse.Namespace):
     if args.use_db_price_history and repository is not None:
         return repository.get_all_price_history(args.ticker), repository, "price_history_db", SourceType.SYSTEM
     raise ValueError("Provide --price-history-file or --use-db-price-history with --db")
+
+
+def run_build_basket(args: argparse.Namespace, save: bool) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    trade_plans = [
+        plan
+        for plan in repository.list_trade_plans(limit=max(args.max_candidates * 3, 50))
+        if plan.decision in {TradeDecision.PROPOSE, TradeDecision.REVIEW}
+    ]
+    policy = BasketPolicy(
+        account_equity=args.account_equity,
+        cash_available=args.cash_available,
+        max_candidates=args.max_candidates,
+        min_candidates=args.min_candidates,
+        max_basket_loss_pct=args.max_basket_loss_pct,
+        max_basket_notional_pct=args.max_basket_notional_pct,
+        max_same_sector_count=args.max_same_sector_count,
+        max_same_theme_count=args.max_same_theme_count,
+    )
+    plan = build_basket([candidate_from_trade_plan(item) for item in trade_plans], policy)
+    output = plan.model_dump(mode="json")
+    if save:
+        output["saved"] = {"db": str(args.db), "basket_plan_id": repository.save_basket_plan(plan)}
+    return output
 
 
 def build_proposal(args: argparse.Namespace) -> TradeProposal:

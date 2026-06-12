@@ -202,6 +202,46 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS basket_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            basket_id TEXT NOT NULL UNIQUE,
+            basket_name TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            policy_json TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            risk_summary_json TEXT NOT NULL,
+            beginner_summary TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS basket_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            basket_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            setup_grade TEXT NOT NULL,
+            allocated_loss_amount REAL,
+            allocated_notional_value REAL,
+            position_size REAL,
+            entry_price REAL,
+            stop_price REAL,
+            target_price REAL,
+            risk_reward_ratio REAL,
+            allocation_reason TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS basket_blocked_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            basket_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            setup_grade TEXT,
+            decision TEXT,
+            score INTEGER,
+            reasons_json TEXT,
+            warnings_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

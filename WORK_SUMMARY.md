@@ -439,6 +439,65 @@ python -m stock_risk_mcp.cli create-trade-plan-and-save --ticker SAFE --price-hi
 
 README explicitly states that TradePlan is a paper trade proposal only and must pass the existing Risk Engine before any real-order proposal.
 
+## Basket Engine
+
+Added a Basket Engine that combines saved TradePlans into a paper trading/proposal basket while managing basket-level portfolio risk. It does not execute orders and does not replace individual Risk Engine checks.
+
+Added files:
+
+- `src/stock_risk_mcp/basket.py`
+- `src/stock_risk_mcp/basket_scoring.py`
+- `src/stock_risk_mcp/basket_allocator.py`
+- `src/stock_risk_mcp/basket_risk.py`
+- `src/stock_risk_mcp/basket_builder.py`
+- `tests/test_basket.py`
+- `tests/test_basket_scoring.py`
+- `tests/test_basket_allocator.py`
+- `tests/test_basket_risk.py`
+- `tests/test_basket_builder.py`
+
+Added model support:
+
+- `BasketMode`
+- `BasketCandidate`
+- `BasketPolicy`
+- `BasketAllocation`
+- `BasketRiskSummary`
+- `BasketPlan`
+
+Implemented:
+
+- candidate scoring from setup grade, RR, setup score, decision, and sizing validity
+- invalid, BLOCK, NO_TRADE, and disabled C candidate filtering
+- A/B setup risk-unit proportional loss allocation
+- single-candidate and basket-wide loss/notional caps
+- cash and remaining basket-notional limits
+- sector/theme concentration filtering, with missing values treated as `UNKNOWN`
+- PROPOSE, REVIEW, BLOCK, and NO_TRADE basket decisions
+
+Added database tables:
+
+- `basket_plans`
+- `basket_allocations`
+- `basket_blocked_candidates`
+
+Added repository methods:
+
+- `save_basket_plan(plan)`
+- `get_basket_plan(basket_id)`
+- `list_basket_plans(limit=50)`
+- `get_basket_allocations(basket_id)`
+
+Added CLI commands:
+
+```powershell
+python -m stock_risk_mcp.cli build-basket-from-trade-plans --db data/stock_risk_mcp.sqlite3 --account-equity 10000 --cash-available 5000 --max-candidates 10
+python -m stock_risk_mcp.cli build-basket-and-save --db data/stock_risk_mcp.sqlite3 --account-equity 10000 --cash-available 5000 --max-candidates 10
+python -m stock_risk_mcp.cli show-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id>
+```
+
+README states that BasketPlan is a paper trading/proposal object and that every candidate still requires individual Risk Engine and user review before any real-order proposal.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -452,11 +511,12 @@ The test suite grew over the work:
 - price history market data adapter tests passed
 - indicator analysis layer tests passed
 - ABC setup and trade plan layer tests passed
+- Basket Engine tests passed
 
 Latest verified result:
 
 ```text
-75 passed
+84 passed
 ```
 
 ## Skill Path Issue

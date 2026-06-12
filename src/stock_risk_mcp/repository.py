@@ -10,6 +10,14 @@ from typing import Any
 from pydantic import BaseModel
 
 from stock_risk_mcp.compliance import ComplianceRecord
+from stock_risk_mcp.basket import (
+    BasketAllocation,
+    BasketCandidate,
+    BasketMode,
+    BasketPlan,
+    BasketPolicy,
+    BasketRiskSummary,
+)
 from stock_risk_mcp.database import connect_db, create_schema
 from stock_risk_mcp.indicators import IndicatorSignal, IndicatorValue
 from stock_risk_mcp.models import (
@@ -529,6 +537,96 @@ class RiskRepository:
                 ).fetchall()
         return [_trade_plan_from_row(row) for row in rows]
 
+    def save_basket_plan(self, plan: BasketPlan) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO basket_plans (
+                    basket_id, basket_name, mode, policy_json, decision,
+                    risk_summary_json, beginner_summary, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan.basket_id,
+                    plan.basket_name,
+                    plan.mode.value,
+                    plan.policy.model_dump_json(),
+                    plan.decision.value,
+                    plan.risk_summary.model_dump_json(),
+                    plan.beginner_summary,
+                    plan.created_at.isoformat(),
+                ),
+            )
+            for allocation in plan.allocations:
+                connection.execute(
+                    """
+                    INSERT INTO basket_allocations (
+                        basket_id, ticker, setup_grade, allocated_loss_amount,
+                        allocated_notional_value, position_size, entry_price,
+                        stop_price, target_price, risk_reward_ratio, allocation_reason
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        plan.basket_id,
+                        allocation.ticker,
+                        allocation.setup_grade.value,
+                        allocation.allocated_loss_amount,
+                        allocation.allocated_notional_value,
+                        allocation.position_size,
+                        allocation.entry_price,
+                        allocation.stop_price,
+                        allocation.target_price,
+                        allocation.risk_reward_ratio,
+                        allocation.allocation_reason,
+                    ),
+                )
+            for candidate in plan.blocked:
+                connection.execute(
+                    """
+                    INSERT INTO basket_blocked_candidates (
+                        basket_id, ticker, setup_grade, decision, score,
+                        reasons_json, warnings_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        plan.basket_id,
+                        candidate.ticker,
+                        candidate.setup_grade.value,
+                        candidate.decision.value,
+                        candidate.score,
+                        json.dumps(candidate.reasons, ensure_ascii=False),
+                        json.dumps(candidate.warnings, ensure_ascii=False),
+                    ),
+                )
+            return int(cursor.lastrowid)
+
+    def get_basket_plan(self, basket_id: str) -> BasketPlan:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM basket_plans WHERE basket_id = ?", (basket_id,)).fetchone()
+            blocked_rows = connection.execute(
+                "SELECT * FROM basket_blocked_candidates WHERE basket_id = ? ORDER BY id ASC", (basket_id,)
+            ).fetchall()
+        if row is None:
+            raise LookupError(f"Basket plan not found: {basket_id}")
+        allocations = self.get_basket_allocations(basket_id)
+        blocked = [_blocked_candidate_from_row(item) for item in blocked_rows]
+        return _basket_plan_from_row(row, allocations, blocked)
+
+    def list_basket_plans(self, limit: int = 50) -> list[BasketPlan]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT basket_id FROM basket_plans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self.get_basket_plan(str(row["basket_id"])) for row in rows]
+
+    def get_basket_allocations(self, basket_id: str) -> list[BasketAllocation]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM basket_allocations WHERE basket_id = ? ORDER BY id ASC", (basket_id,)
+            ).fetchall()
+        return [_basket_allocation_from_row(row) for row in rows]
+
     def upsert_data_source(self, source: DataSource) -> int:
         with self._connect() as connection:
             connection.execute(
@@ -684,6 +782,9 @@ class RiskRepository:
             "compliance_records",
             "indicator_values",
             "trade_plans",
+            "basket_plans",
+            "basket_allocations",
+            "basket_blocked_candidates",
             "data_sources",
             "ingestion_runs",
         }
@@ -814,4 +915,70 @@ def _trade_plan_from_row(row: sqlite3.Row) -> TradePlan:
         reasons=json.loads(row["reasons_json"]) if row["reasons_json"] else [],
         warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
         beginner_summary=str(row["beginner_summary"] or ""),
+    )
+
+
+def _basket_allocation_from_row(row: sqlite3.Row) -> BasketAllocation:
+    return BasketAllocation(
+        ticker=str(row["ticker"]),
+        setup_grade=SetupGrade(str(row["setup_grade"])),
+        allocated_loss_amount=float(row["allocated_loss_amount"]),
+        allocated_notional_value=float(row["allocated_notional_value"]),
+        position_size=float(row["position_size"]),
+        entry_price=float(row["entry_price"]),
+        stop_price=float(row["stop_price"]),
+        target_price=float(row["target_price"]) if row["target_price"] is not None else None,
+        risk_reward_ratio=float(row["risk_reward_ratio"]) if row["risk_reward_ratio"] is not None else None,
+        allocation_reason=str(row["allocation_reason"] or ""),
+    )
+
+
+def _blocked_candidate_from_row(row: sqlite3.Row) -> BasketCandidate:
+    return BasketCandidate(
+        ticker=str(row["ticker"]),
+        setup_grade=SetupGrade(str(row["setup_grade"])),
+        setup_score=0,
+        decision=TradeDecision(str(row["decision"])),
+        score=int(row["score"]),
+        reasons=json.loads(row["reasons_json"]) if row["reasons_json"] else [],
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+    )
+
+
+def _basket_plan_from_row(
+    row: sqlite3.Row,
+    allocations: list[BasketAllocation],
+    blocked: list[BasketCandidate],
+) -> BasketPlan:
+    allocation_candidates = [
+        BasketCandidate(
+            ticker=item.ticker,
+            setup_grade=item.setup_grade,
+            setup_score=0,
+            decision=TradeDecision.PROPOSE,
+            entry_price=item.entry_price,
+            stop_price=item.stop_price,
+            target_price=item.target_price,
+            risk_reward_ratio=item.risk_reward_ratio,
+            max_loss_amount=item.allocated_loss_amount,
+            position_size=item.position_size,
+            notional_value=item.allocated_notional_value,
+            score=0,
+            reasons=[],
+            warnings=[],
+        )
+        for item in allocations
+    ]
+    return BasketPlan(
+        basket_id=str(row["basket_id"]),
+        basket_name=str(row["basket_name"]),
+        mode=BasketMode(str(row["mode"])),
+        policy=BasketPolicy.model_validate_json(str(row["policy_json"])),
+        candidates=[*allocation_candidates, *blocked],
+        allocations=allocations,
+        blocked=blocked,
+        risk_summary=BasketRiskSummary.model_validate_json(str(row["risk_summary_json"])),
+        decision=TradeDecision(str(row["decision"])),
+        beginner_summary=str(row["beginner_summary"] or ""),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
     )
