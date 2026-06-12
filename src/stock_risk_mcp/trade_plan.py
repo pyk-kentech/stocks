@@ -52,6 +52,9 @@ def create_trade_plan(setup: SetupSignal, bars: list[PriceBar], policy: TradeSiz
         reasons=[*setup.reasons, "가격 히스토리 기반 진입/손절/목표가를 계산했습니다."],
         warnings=[*setup.warnings, "실제 주문 전 기존 Risk Engine 최종 검사가 필요합니다."],
         beginner_summary=f"{setup.grade.value} 셋업 후보지만 실제 주문이 아닌 paper trade proposal입니다.",
+        policy_id=setup.policy_id,
+        policy_version=setup.policy_version,
+        setup_scoring_mode=setup.scoring_mode,
     )
 
 
@@ -89,6 +92,9 @@ def _no_trade_plan(setup: SetupSignal) -> TradePlan:
         reasons=setup.reasons,
         warnings=setup.warnings,
         beginner_summary="C 또는 NO_TRADE 셋업은 기본적으로 매매하지 않습니다.",
+        policy_id=setup.policy_id,
+        policy_version=setup.policy_version,
+        setup_scoring_mode=setup.scoring_mode,
     )
 
 
@@ -102,4 +108,7 @@ def _blocked_plan(setup: SetupSignal, reason: str) -> TradePlan:
         reasons=[*setup.reasons, reason],
         warnings=setup.warnings,
         beginner_summary=reason,
+        policy_id=setup.policy_id,
+        policy_version=setup.policy_version,
+        setup_scoring_mode=setup.scoring_mode,
     )

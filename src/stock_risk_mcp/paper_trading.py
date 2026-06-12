@@ -46,6 +46,9 @@ class PaperTrade(StrictModel):
     realized_return_pct: float | None = None
     status: PaperTradeStatus
     created_at: datetime
+    policy_id: str | None = None
+    policy_version: str | None = None
+    basket_scoring_mode: str | None = None
 
 
 class BasketBacktestResult(StrictModel):
@@ -66,6 +69,9 @@ class BasketBacktestResult(StrictModel):
     closed_trade_count: int
     outcome: BacktestOutcome
     created_at: datetime
+    policy_id: str | None = None
+    policy_version: str | None = None
+    basket_scoring_mode: str | None = None
 
 
 class BasketPerformanceSummary(StrictModel):
@@ -80,7 +86,14 @@ class BasketPerformanceSummary(StrictModel):
     by_exit_reason: dict
 
 
-def create_paper_trade(basket_id: str, allocation: BasketAllocation, entry_date: date) -> PaperTrade:
+def create_paper_trade(
+    basket_id: str,
+    allocation: BasketAllocation,
+    entry_date: date,
+    policy_id: str | None = None,
+    policy_version: str | None = None,
+    basket_scoring_mode: str | None = None,
+) -> PaperTrade:
     return PaperTrade(
         trade_id=uuid4().hex,
         basket_id=basket_id,
@@ -96,6 +109,9 @@ def create_paper_trade(basket_id: str, allocation: BasketAllocation, entry_date:
         entry_date=entry_date,
         status=PaperTradeStatus.OPEN,
         created_at=datetime.now(),
+        policy_id=policy_id,
+        policy_version=policy_version,
+        basket_scoring_mode=basket_scoring_mode,
     )
 
 

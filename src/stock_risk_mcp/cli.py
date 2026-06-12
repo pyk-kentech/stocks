@@ -28,7 +28,7 @@ from stock_risk_mcp.service import RiskEvaluationService
 from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
 from stock_risk_mcp.strategy_optimizer import StrategyOptimizer
-from stock_risk_mcp.strategy_policy import create_default_strategy_policy
+from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.trade_plan import create_trade_plan
 
 
@@ -111,7 +111,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     add_indicator_args(analyze_and_save, require_db=True)
 
     analyze_setup = subparsers.add_parser("analyze-setup", help="Grade an ABC setup from local price history.")
-    add_indicator_args(analyze_setup, require_db=False)
+    add_indicator_args(analyze_setup, require_db=False, support_policy=True)
 
     create_plan = subparsers.add_parser("create-trade-plan", help="Create a paper trade plan from local price history.")
     add_trade_plan_args(create_plan, require_db=False)
@@ -186,15 +186,17 @@ def add_proposal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--price-history-file", type=Path, default=None, help="CSV/JSON price history file for market data")
 
 
-def add_indicator_args(parser: argparse.ArgumentParser, require_db: bool) -> None:
+def add_indicator_args(parser: argparse.ArgumentParser, require_db: bool, support_policy: bool = False) -> None:
     parser.add_argument("--ticker", required=True, help="Ticker symbol")
     parser.add_argument("--price-history-file", type=Path, default=None, help="CSV/JSON price history file")
     parser.add_argument("--db", type=Path, required=require_db, default=None if not require_db else None)
     parser.add_argument("--use-db-price-history", action="store_true", help="Use the SQLite price_history table")
+    if support_policy:
+        add_strategy_policy_args(parser)
 
 
 def add_trade_plan_args(parser: argparse.ArgumentParser, require_db: bool) -> None:
-    add_indicator_args(parser, require_db=require_db)
+    add_indicator_args(parser, require_db=require_db, support_policy=True)
     parser.add_argument("--account-equity", type=float, required=True)
     parser.add_argument("--cash-available", type=float, required=True)
     parser.add_argument("--max-single-trade-loss-pct", type=float, default=0.25)
@@ -211,6 +213,13 @@ def add_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-basket-notional-pct", type=float, default=25.0)
     parser.add_argument("--max-same-sector-count", type=int, default=3)
     parser.add_argument("--max-same-theme-count", type=int, default=3)
+    add_strategy_policy_args(parser)
+
+
+def add_strategy_policy_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--use-active-policy", action="store_true")
+    parser.add_argument("--policy-id")
+    parser.add_argument("--policy-version")
 
 
 def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
@@ -507,7 +516,7 @@ def run_create_trade_plan(args: argparse.Namespace, save: bool) -> dict[str, obj
 def _analyze_setup(args: argparse.Namespace):
     bars, _, source_name, source_type = _load_price_bars_for_analysis(args)
     indicator_set, _ = analyze_price_bars(args.ticker, bars, source_name, source_type)
-    return SetupGrader().grade(indicator_set), bars
+    return SetupGrader().grade(indicator_set, _resolve_strategy_policy(args)), bars
 
 
 def _load_price_bars_for_analysis(args: argparse.Namespace):
@@ -521,6 +530,7 @@ def _load_price_bars_for_analysis(args: argparse.Namespace):
 
 def run_build_basket(args: argparse.Namespace, save: bool) -> dict[str, object]:
     repository = RiskRepository(args.db)
+    strategy_policy = _resolve_strategy_policy(args, repository)
     trade_plans = [
         plan
         for plan in repository.list_trade_plans(limit=max(args.max_candidates * 3, 50))
@@ -536,7 +546,9 @@ def run_build_basket(args: argparse.Namespace, save: bool) -> dict[str, object]:
         max_same_sector_count=args.max_same_sector_count,
         max_same_theme_count=args.max_same_theme_count,
     )
-    plan = build_basket([candidate_from_trade_plan(item) for item in trade_plans], policy)
+    if strategy_policy is not None:
+        policy = apply_strategy_policy_to_basket_policy(policy, strategy_policy)
+    plan = build_basket([candidate_from_trade_plan(item) for item in trade_plans], policy, strategy_policy)
     output = plan.model_dump(mode="json")
     if save:
         output["saved"] = {"db": str(args.db), "basket_plan_id": repository.save_basket_plan(plan)}
@@ -611,6 +623,32 @@ def _group_price_bars(bars: list[PriceBar]) -> dict[str, list[PriceBar]]:
     for bar in bars:
         grouped.setdefault(bar.ticker, []).append(bar)
     return grouped
+
+
+def _resolve_strategy_policy(
+    args: argparse.Namespace,
+    repository: RiskRepository | None = None,
+):
+    use_active = bool(getattr(args, "use_active_policy", False))
+    policy_id = getattr(args, "policy_id", None)
+    policy_version = getattr(args, "policy_version", None)
+    if use_active and (policy_id or policy_version):
+        raise ValueError("--use-active-policy cannot be combined with --policy-id/--policy-version")
+    if bool(policy_id) != bool(policy_version):
+        raise ValueError("--policy-id and --policy-version must be provided together")
+    if not use_active and not policy_id:
+        return None
+    db_path = getattr(args, "db", None)
+    if repository is None:
+        if db_path is None:
+            raise ValueError("--db is required when selecting a strategy policy")
+        repository = RiskRepository(db_path)
+    if use_active:
+        policy = repository.get_active_strategy_policy()
+        if policy is None:
+            raise LookupError("No active strategy policy. Run strategy-init first.")
+        return policy
+    return repository.get_strategy_policy(policy_id, policy_version)
 
 
 def build_proposal(args: argparse.Namespace) -> TradeProposal:

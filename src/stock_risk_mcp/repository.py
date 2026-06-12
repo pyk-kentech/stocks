@@ -512,9 +512,10 @@ class RiskRepository:
                     ticker, direction, setup_grade, setup_score, entry_price,
                     stop_price, target_price, risk_reward_ratio, max_loss_amount,
                     max_loss_currency, position_size, notional_value, decision,
-                    reasons_json, warnings_json, beginner_summary
+                    reasons_json, warnings_json, beginner_summary, policy_id,
+                    policy_version, setup_scoring_mode
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     plan.ticker,
@@ -533,6 +534,9 @@ class RiskRepository:
                     json.dumps(plan.reasons, ensure_ascii=False),
                     json.dumps(plan.warnings, ensure_ascii=False),
                     plan.beginner_summary,
+                    plan.policy_id,
+                    plan.policy_version,
+                    plan.setup_scoring_mode,
                 ),
             )
             return int(cursor.lastrowid)
@@ -561,9 +565,10 @@ class RiskRepository:
                 """
                 INSERT INTO basket_plans (
                     basket_id, basket_name, mode, policy_json, decision,
-                    risk_summary_json, beginner_summary, created_at
+                    risk_summary_json, beginner_summary, created_at, policy_id,
+                    policy_version, basket_scoring_mode
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     plan.basket_id,
@@ -574,6 +579,9 @@ class RiskRepository:
                     plan.risk_summary.model_dump_json(),
                     plan.beginner_summary,
                     plan.created_at.isoformat(),
+                    plan.policy_id,
+                    plan.policy_version,
+                    plan.basket_scoring_mode,
                 ),
             )
             for allocation in plan.allocations:
@@ -654,9 +662,9 @@ class RiskRepository:
                     entry_price, stop_price, target_price, position_size,
                     allocated_loss_amount, notional_value, entry_date, exit_date,
                     exit_price, exit_reason, realized_pnl, realized_return_pct,
-                    status, created_at
+                    status, created_at, policy_id, policy_version, basket_scoring_mode
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trade.trade_id,
@@ -678,6 +686,9 @@ class RiskRepository:
                     trade.realized_return_pct,
                     trade.status.value,
                     trade.created_at.isoformat(),
+                    trade.policy_id,
+                    trade.policy_version,
+                    trade.basket_scoring_mode,
                 ),
             )
             return int(cursor.lastrowid)
@@ -705,9 +716,9 @@ class RiskRepository:
                     total_notional_value, total_allocated_loss, realized_pnl,
                     realized_return_pct, max_drawdown, max_gain, win_count,
                     loss_count, flat_count, no_data_count, closed_trade_count,
-                    outcome, created_at
+                    outcome, created_at, policy_id, policy_version, basket_scoring_mode
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.basket_id,
@@ -727,6 +738,9 @@ class RiskRepository:
                     result.closed_trade_count,
                     result.outcome.value,
                     result.created_at.isoformat(),
+                    result.policy_id,
+                    result.policy_version,
+                    result.basket_scoring_mode,
                 ),
             )
             return int(cursor.lastrowid)
@@ -1189,6 +1203,9 @@ def _trade_plan_from_row(row: sqlite3.Row) -> TradePlan:
         reasons=json.loads(row["reasons_json"]) if row["reasons_json"] else [],
         warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
         beginner_summary=str(row["beginner_summary"] or ""),
+        policy_id=row["policy_id"],
+        policy_version=row["policy_version"],
+        setup_scoring_mode=row["setup_scoring_mode"],
     )
 
 
@@ -1255,6 +1272,9 @@ def _basket_plan_from_row(
         decision=TradeDecision(str(row["decision"])),
         beginner_summary=str(row["beginner_summary"] or ""),
         created_at=datetime.fromisoformat(str(row["created_at"])),
+        policy_id=row["policy_id"],
+        policy_version=row["policy_version"],
+        basket_scoring_mode=str(row["basket_scoring_mode"] or "FIXED_RULES"),
     )
 
 
@@ -1279,6 +1299,9 @@ def _paper_trade_from_row(row: sqlite3.Row) -> PaperTrade:
         realized_return_pct=float(row["realized_return_pct"]) if row["realized_return_pct"] is not None else None,
         status=PaperTradeStatus(str(row["status"])),
         created_at=datetime.fromisoformat(str(row["created_at"])),
+        policy_id=row["policy_id"],
+        policy_version=row["policy_version"],
+        basket_scoring_mode=row["basket_scoring_mode"],
     )
 
 
@@ -1301,6 +1324,9 @@ def _basket_backtest_result_from_row(row: sqlite3.Row) -> BasketBacktestResult:
         closed_trade_count=int(row["closed_trade_count"]),
         outcome=BacktestOutcome(str(row["outcome"])),
         created_at=datetime.fromisoformat(str(row["created_at"])),
+        policy_id=row["policy_id"],
+        policy_version=row["policy_version"],
+        basket_scoring_mode=row["basket_scoring_mode"],
     )
 
 

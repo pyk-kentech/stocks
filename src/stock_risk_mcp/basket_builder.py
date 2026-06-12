@@ -7,10 +7,23 @@ from stock_risk_mcp.basket_allocator import allocate_candidates
 from stock_risk_mcp.basket_risk import summarize_basket_risk
 from stock_risk_mcp.basket_scoring import score_candidate
 from stock_risk_mcp.setup import SetupGrade, TradeDecision
+from stock_risk_mcp.strategy_policy import StrategyPolicy
 
 
-def build_basket(candidates: list[BasketCandidate], policy: BasketPolicy) -> BasketPlan:
-    scored = [score_candidate(candidate) for candidate in candidates]
+def build_basket(
+    candidates: list[BasketCandidate],
+    policy: BasketPolicy,
+    strategy_policy: StrategyPolicy | None = None,
+) -> BasketPlan:
+    if strategy_policy is None:
+        scored = [score_candidate(candidate) for candidate in candidates]
+    else:
+        scored = [
+            candidate
+            if candidate.decision in {TradeDecision.BLOCK, TradeDecision.NO_TRADE}
+            else score_candidate(candidate, strategy_policy)
+            for candidate in candidates
+        ]
     eligible: list[BasketCandidate] = []
     blocked: list[BasketCandidate] = []
     blocked_reasons: list[str] = []
@@ -43,6 +56,9 @@ def build_basket(candidates: list[BasketCandidate], policy: BasketPolicy) -> Bas
         decision=decision,
         beginner_summary=_summary(decision),
         created_at=datetime.now(),
+        policy_id=strategy_policy.policy_id if strategy_policy else None,
+        policy_version=strategy_policy.version if strategy_policy else None,
+        basket_scoring_mode="POLICY_WEIGHTED" if strategy_policy else "FIXED_RULES",
     )
 
 

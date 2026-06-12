@@ -573,6 +573,33 @@ implemented. A future Policy Replay Engine must implement `FULL_POLICY_REPLAY`
 for defensible policy comparison. Policies with fewer than 30 samples must not
 be promoted.
 
+## Policy-Aware Scoring Integration
+
+Connected optional StrategyPolicy values to the current Setup, TradePlan,
+Basket, Paper Trading, and StrategyMemory pipeline.
+
+Implemented:
+
+- existing `FIXED_RULES` behavior when no policy is selected
+- policy-weighted normalized setup indicator components and policy thresholds
+- optional policy ID/version and scoring mode metadata propagation
+- TradePlan, BasketPlan, PaperTrade, and BasketBacktestResult persistence
+- safe nullable-column migration for existing SQLite databases
+- policy-aware basket candidate scoring with fixed 0.40 decision weight
+- setup/RR redistribution across the remaining 0.60 using StrategyPolicy weights
+- pre-score BLOCK/NO_TRADE filtering in policy-aware basket construction
+- allowed soft BasketPolicy mapping without changing hard-risk safety fields
+
+Added policy selection flags to setup, trade-plan, and basket CLI flows:
+
+```powershell
+--use-active-policy
+--policy-id <policy_id> --policy-version <version>
+```
+
+This applies a policy only to the current pipeline. It is not
+`FULL_POLICY_REPLAY` and does not reconstruct historical features or decisions.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -589,11 +616,12 @@ The test suite grew over the work:
 - Basket Engine tests passed
 - paper trading and basket backtest tests passed
 - Adaptive Policy Layer tests passed
+- Policy-Aware Scoring Integration tests passed
 
 Latest verified result:
 
 ```text
-111 passed
+124 passed
 ```
 
 ## Skill Path Issue

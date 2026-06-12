@@ -199,6 +199,9 @@ def create_schema(connection: sqlite3.Connection) -> None:
             reasons_json TEXT,
             warnings_json TEXT,
             beginner_summary TEXT,
+            policy_id TEXT,
+            policy_version TEXT,
+            setup_scoring_mode TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -211,7 +214,10 @@ def create_schema(connection: sqlite3.Connection) -> None:
             decision TEXT NOT NULL,
             risk_summary_json TEXT NOT NULL,
             beginner_summary TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            policy_id TEXT,
+            policy_version TEXT,
+            basket_scoring_mode TEXT
         );
 
         CREATE TABLE IF NOT EXISTS basket_allocations (
@@ -262,7 +268,10 @@ def create_schema(connection: sqlite3.Connection) -> None:
             realized_pnl REAL,
             realized_return_pct REAL,
             status TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            policy_id TEXT,
+            policy_version TEXT,
+            basket_scoring_mode TEXT
         );
 
         CREATE TABLE IF NOT EXISTS basket_backtest_results (
@@ -283,7 +292,10 @@ def create_schema(connection: sqlite3.Connection) -> None:
             no_data_count INTEGER NOT NULL,
             closed_trade_count INTEGER NOT NULL,
             outcome TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            policy_id TEXT,
+            policy_version TEXT,
+            basket_scoring_mode TEXT
         );
 
         CREATE TABLE IF NOT EXISTS strategy_policies (
@@ -367,3 +379,34 @@ def create_schema(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    _add_missing_columns(
+        connection,
+        "trade_plans",
+        {
+            "policy_id": "TEXT",
+            "policy_version": "TEXT",
+            "setup_scoring_mode": "TEXT",
+        },
+    )
+    _add_missing_columns(
+        connection,
+        "basket_plans",
+        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT"},
+    )
+    _add_missing_columns(
+        connection,
+        "paper_trades",
+        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT"},
+    )
+    _add_missing_columns(
+        connection,
+        "basket_backtest_results",
+        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT"},
+    )
+
+
+def _add_missing_columns(connection: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {str(row["name"]) for row in connection.execute(f"PRAGMA table_info({table})")}
+    for name, column_type in columns.items():
+        if name not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}")

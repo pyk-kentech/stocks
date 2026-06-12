@@ -103,6 +103,9 @@ class BasketPlan(StrictModel):
     decision: TradeDecision
     beginner_summary: str
     created_at: datetime
+    policy_id: str | None = None
+    policy_version: str | None = None
+    basket_scoring_mode: str = "FIXED_RULES"
 
 
 def candidate_from_trade_plan(plan: TradePlan, trade_plan_id: int | None = None) -> BasketCandidate:

@@ -36,6 +36,9 @@ class SetupSignal(StrictModel):
     warnings: list[str]
     indicator_codes_used: list[str]
     beginner_summary: str
+    policy_id: str | None = None
+    policy_version: str | None = None
+    scoring_mode: str = "FIXED_RULES"
 
     @field_validator("ticker")
     @classmethod
@@ -60,6 +63,9 @@ class TradePlan(StrictModel):
     reasons: list[str]
     warnings: list[str]
     beginner_summary: str
+    policy_id: str | None = None
+    policy_version: str | None = None
+    setup_scoring_mode: str | None = None
 
     @field_validator("ticker")
     @classmethod

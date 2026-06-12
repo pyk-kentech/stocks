@@ -136,3 +136,31 @@ def create_default_strategy_policy() -> StrategyPolicy:
         reason="Default adaptive strategy policy",
         created_at=datetime.now(),
     )
+
+
+def apply_strategy_policy_to_basket_policy(base, strategy: StrategyPolicy):
+    from stock_risk_mcp.basket import BasketPolicy
+    from stock_risk_mcp.setup import SetupGrade
+
+    basket_updates = {
+        key: strategy.basket_rules[key]
+        for key in (
+            "max_candidates",
+            "min_candidates",
+            "max_same_sector_count",
+            "max_same_theme_count",
+            "allow_review_candidates",
+            "allow_c_setup",
+        )
+        if key in strategy.basket_rules
+    }
+    for key in ("max_basket_loss_pct", "max_basket_notional_pct", "max_single_candidate_loss_pct"):
+        if key in strategy.risk_overrides:
+            basket_updates[key] = strategy.risk_overrides[key]
+    risk_units = base.setup_risk_units.copy()
+    for grade in (SetupGrade.A, SetupGrade.B, SetupGrade.C):
+        key = f"{grade.value}_risk_unit"
+        if key in strategy.risk_overrides:
+            risk_units[grade] = float(strategy.risk_overrides[key])
+    basket_updates["setup_risk_units"] = risk_units
+    return BasketPolicy.model_validate({**base.model_dump(), **basket_updates})

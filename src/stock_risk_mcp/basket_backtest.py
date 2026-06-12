@@ -23,7 +23,14 @@ def run_basket_backtest(
 ) -> tuple[BasketBacktestResult, list[PaperTrade]]:
     trades: list[PaperTrade] = []
     for allocation in plan.allocations:
-        trade = create_paper_trade(plan.basket_id, allocation, entry_date)
+        trade = create_paper_trade(
+            plan.basket_id,
+            allocation,
+            entry_date,
+            plan.policy_id,
+            plan.policy_version,
+            plan.basket_scoring_mode,
+        )
         exit_result = simulate_long_exit(
             trade.entry_price,
             trade.stop_price,
@@ -61,6 +68,9 @@ def run_basket_backtest(
         closed_trade_count=len(closed),
         outcome=outcome,
         created_at=datetime.now(),
+        policy_id=plan.policy_id,
+        policy_version=plan.policy_version,
+        basket_scoring_mode=plan.basket_scoring_mode,
     )
     return result, trades
 
