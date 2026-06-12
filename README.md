@@ -478,6 +478,44 @@ python -m stock_risk_mcp.cli basket-performance --db data/stock_risk_mcp.sqlite3
 이 기능은 전략 검증용이며 실제 주문을 실행하지 않습니다. 수수료, 슬리피지,
 체결 지연, 부분 체결, bar 내부의 체결 순서는 아직 단순화되거나 생략되어 있습니다.
 
+## Replay Snapshot Layer
+
+The Replay Snapshot Layer stores reproducible inputs and outputs for a future
+Policy Replay Engine. It is a snapshot storage layer, not `FULL_POLICY_REPLAY`.
+It does not regenerate indicators, TradePlans, or BasketPlans using an
+`as_of_date` cutoff. `as_of_date` is metadata only, so snapshots built from
+recent TradePlans may contain information that was not available on that date.
+
+Snapshot an existing official basket:
+
+```bash
+python -m stock_risk_mcp.cli replay-snapshot-from-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id> --as-of-date 2026-06-13
+```
+
+Build snapshots from recent TradePlans:
+
+```bash
+python -m stock_risk_mcp.cli replay-snapshot-from-recent-trade-plans --db data/stock_risk_mcp.sqlite3 --account-equity 10000 --cash-available 5000
+```
+
+The recent-TradePlan command is snapshot-only by default. It does not write to
+`basket_plans`, `basket_allocations`, or `basket_blocked_candidates`. Its
+replay-only `basket_id` may therefore have no matching row in `basket_plans`.
+Use `--save-basket` only when the generated basket must also become an official
+paper-trading/proposal basket. CLI output and `ReplayRun.notes` record
+`saved_to_basket_plans: true/false`.
+
+Inspect saved replay data:
+
+```bash
+python -m stock_risk_mcp.cli replay-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli replay-show --db data/stock_risk_mcp.sqlite3 --run-id <run_id>
+```
+
+A future `FULL_POLICY_REPLAY` implementation must use the same candidate
+universe and data restricted by the same as-of cutoff to regenerate indicators,
+TradePlans, and BasketPlans separately for each candidate policy.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

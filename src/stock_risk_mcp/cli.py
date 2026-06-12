@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 from stock_risk_mcp.adapters.file_price_history import FilePriceHistoryAdapter
@@ -24,6 +25,8 @@ from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceT
 from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
+from stock_risk_mcp.replay_dataset import load_replay_dataset
+from stock_risk_mcp.replay_run import ReplayRunService
 from stock_risk_mcp.service import RiskEvaluationService
 from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
@@ -173,6 +176,32 @@ def build_command_parser() -> argparse.ArgumentParser:
 
     strategy_policies = subparsers.add_parser("strategy-policies", help="List strategy policies.")
     strategy_policies.add_argument("--db", type=Path, required=True)
+
+    replay_basket = subparsers.add_parser("replay-snapshot-from-basket", help="Snapshot an existing saved basket.")
+    replay_basket.add_argument("--db", type=Path, required=True)
+    replay_basket.add_argument("--basket-id", required=True)
+    replay_basket.add_argument("--as-of-date", type=date.fromisoformat)
+
+    replay_recent = subparsers.add_parser(
+        "replay-snapshot-from-recent-trade-plans",
+        help="Build and store replay snapshots from recent saved trade plans.",
+    )
+    replay_recent.add_argument("--db", type=Path, required=True)
+    replay_recent.add_argument("--account-equity", type=float, required=True)
+    replay_recent.add_argument("--cash-available", type=float, required=True)
+    replay_recent.add_argument("--max-candidates", type=int, default=10)
+    replay_recent.add_argument("--horizon-days", type=int, default=10)
+    replay_recent.add_argument("--as-of-date", type=date.fromisoformat)
+    replay_recent.add_argument("--save-basket", action="store_true")
+    add_strategy_policy_args(replay_recent)
+
+    replay_runs = subparsers.add_parser("replay-runs", help="List replay snapshot runs.")
+    replay_runs.add_argument("--db", type=Path, required=True)
+    replay_runs.add_argument("--limit", type=int, default=50)
+
+    replay_show = subparsers.add_parser("replay-show", help="Show a replay snapshot dataset.")
+    replay_show.add_argument("--db", type=Path, required=True)
+    replay_show.add_argument("--run-id", required=True)
     return parser
 
 
@@ -259,6 +288,10 @@ def main(argv: list[str] | None = None) -> None:
         "strategy-evaluate",
         "strategy-experiments",
         "strategy-policies",
+        "replay-snapshot-from-basket",
+        "replay-snapshot-from-recent-trade-plans",
+        "replay-runs",
+        "replay-show",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -331,6 +364,26 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "strategy-policies":
         policies = RiskRepository(args.db).list_strategy_policies()
         return {"policies": [item.model_dump(mode="json") for item in policies]}
+    if args.command == "replay-snapshot-from-basket":
+        result = ReplayRunService(RiskRepository(args.db)).snapshot_from_basket(args.basket_id, args.as_of_date)
+        return result.model_dump(mode="json")
+    if args.command == "replay-snapshot-from-recent-trade-plans":
+        repository = RiskRepository(args.db)
+        result = ReplayRunService(repository).snapshot_from_recent_trade_plans(
+            account_equity=args.account_equity,
+            cash_available=args.cash_available,
+            max_candidates=args.max_candidates,
+            horizon_days=args.horizon_days,
+            as_of_date=args.as_of_date,
+            save_basket=args.save_basket,
+            strategy_policy=_resolve_strategy_policy(args, repository),
+        )
+        return result.model_dump(mode="json")
+    if args.command == "replay-runs":
+        runs = RiskRepository(args.db).list_replay_runs(args.limit)
+        return {"runs": [run.model_dump(mode="json") for run in runs]}
+    if args.command == "replay-show":
+        return load_replay_dataset(RiskRepository(args.db), args.run_id).model_dump(mode="json")
     raise ValueError(f"Unsupported command: {args.command}")
 
 

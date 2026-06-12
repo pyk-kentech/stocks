@@ -600,6 +600,36 @@ Added policy selection flags to setup, trade-plan, and basket CLI flows:
 This applies a policy only to the current pipeline. It is not
 `FULL_POLICY_REPLAY` and does not reconstruct historical features or decisions.
 
+## Replay Snapshot Layer
+
+Added replay run, candidate, TradePlan, basket, and outcome snapshot persistence
+as the input storage foundation for a future Policy Replay Engine.
+
+Implemented:
+
+- snapshot creation from an existing official BasketPlan
+- snapshot creation from recent saved TradePlans through the current pipeline
+- snapshot-only default for recent TradePlans
+- optional official basket persistence only with `--save-basket`
+- replay-only basket IDs that may not exist in `basket_plans`
+- explicit `saved_to_basket_plans: true/false` notes and CLI output
+- optional replay outcome snapshot when usable local DB prices are available
+- replay run list and complete dataset inspection commands
+
+`as_of_date` is metadata only in this layer. It does not enforce historical
+cutoffs or regenerate indicators, TradePlans, or BasketPlans. A future
+`FULL_POLICY_REPLAY` must use the same candidate universe and cutoff-restricted
+data to regenerate the pipeline separately for each policy.
+
+Added CLI commands:
+
+```powershell
+python -m stock_risk_mcp.cli replay-snapshot-from-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id>
+python -m stock_risk_mcp.cli replay-snapshot-from-recent-trade-plans --db data/stock_risk_mcp.sqlite3 --account-equity 10000 --cash-available 5000
+python -m stock_risk_mcp.cli replay-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli replay-show --db data/stock_risk_mcp.sqlite3 --run-id <run_id>
+```
+
 ## Test Status
 
 The test suite grew over the work:
@@ -621,7 +651,7 @@ The test suite grew over the work:
 Latest verified result:
 
 ```text
-124 passed
+131 passed
 ```
 
 ## Skill Path Issue

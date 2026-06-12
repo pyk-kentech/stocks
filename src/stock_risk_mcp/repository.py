@@ -49,6 +49,15 @@ from stock_risk_mcp.paper_trading import (
     PaperTrade,
     PaperTradeStatus,
 )
+from stock_risk_mcp.replay_snapshot import (
+    ReplayBasketSnapshot,
+    ReplayCandidateSnapshot,
+    ReplayOutcomeSnapshot,
+    ReplayRun,
+    ReplayRunStatus,
+    ReplaySnapshotMode,
+    ReplayTradePlanSnapshot,
+)
 from stock_risk_mcp.setup import SetupDirection, SetupGrade, TradeDecision, TradePlan
 from stock_risk_mcp.strategy_experiments import StrategyEvaluationMode, StrategyExperiment
 from stock_risk_mcp.strategy_memory import StrategyMemory
@@ -769,6 +778,108 @@ class RiskRepository:
             self.list_paper_trades(limit=1_000_000),
         )
 
+    def save_replay_run(self, run: ReplayRun) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO replay_runs (
+                    run_id, status, snapshot_mode, source_type, source_basket_id,
+                    as_of_date, policy_id, policy_version, notes_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run.run_id, run.status.value, run.snapshot_mode.value, run.source_type,
+                    run.source_basket_id, run.as_of_date.isoformat() if run.as_of_date else None,
+                    run.policy_id, run.policy_version, _json(run.notes), run.created_at.isoformat(),
+                ),
+            )
+
+    def get_replay_run(self, run_id: str) -> ReplayRun:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Replay run not found: {run_id}")
+        return _replay_run_from_row(row)
+
+    def list_replay_runs(self, limit: int = 50) -> list[ReplayRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM replay_runs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [_replay_run_from_row(row) for row in rows]
+
+    def save_replay_candidate_snapshot(self, snapshot: ReplayCandidateSnapshot) -> int:
+        return self._save_replay_snapshot(
+            "replay_candidate_snapshots", ("run_id", "ticker", "source", "snapshot_json"),
+            (snapshot.run_id, snapshot.ticker, snapshot.source, _json(snapshot.snapshot_json)),
+        )
+
+    def list_replay_candidate_snapshots(self, run_id: str) -> list[ReplayCandidateSnapshot]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM replay_candidate_snapshots WHERE run_id = ? ORDER BY id", (run_id,)
+            ).fetchall()
+        return [
+            ReplayCandidateSnapshot(
+                run_id=str(row["run_id"]), ticker=str(row["ticker"]), source=str(row["source"]),
+                snapshot_json=json.loads(str(row["snapshot_json"])),
+            )
+            for row in rows
+        ]
+
+    def save_replay_trade_plan_snapshot(self, snapshot: ReplayTradePlanSnapshot) -> int:
+        return self._save_replay_snapshot(
+            "replay_trade_plan_snapshots",
+            ("run_id", "ticker", "trade_plan_id", "decision", "snapshot_json"),
+            (snapshot.run_id, snapshot.ticker, snapshot.trade_plan_id, snapshot.decision, _json(snapshot.snapshot_json)),
+        )
+
+    def list_replay_trade_plan_snapshots(self, run_id: str) -> list[ReplayTradePlanSnapshot]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM replay_trade_plan_snapshots WHERE run_id = ? ORDER BY id", (run_id,)
+            ).fetchall()
+        return [
+            ReplayTradePlanSnapshot(
+                run_id=str(row["run_id"]), ticker=str(row["ticker"]), trade_plan_id=row["trade_plan_id"],
+                decision=str(row["decision"]), snapshot_json=json.loads(str(row["snapshot_json"])),
+            )
+            for row in rows
+        ]
+
+    def save_replay_basket_snapshot(self, snapshot: ReplayBasketSnapshot) -> int:
+        return self._save_replay_snapshot(
+            "replay_basket_snapshots",
+            ("run_id", "basket_id", "decision", "policy_id", "policy_version", "scoring_mode", "snapshot_json"),
+            (
+                snapshot.run_id, snapshot.basket_id, snapshot.decision, snapshot.policy_id,
+                snapshot.policy_version, snapshot.scoring_mode, _json(snapshot.snapshot_json),
+            ),
+        )
+
+    def get_replay_basket_snapshot(self, run_id: str) -> ReplayBasketSnapshot | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM replay_basket_snapshots WHERE run_id = ?", (run_id,)).fetchone()
+        return _replay_basket_snapshot_from_row(row) if row else None
+
+    def save_replay_outcome_snapshot(self, snapshot: ReplayOutcomeSnapshot) -> int:
+        return self._save_replay_snapshot(
+            "replay_outcome_snapshots",
+            ("run_id", "basket_id", "outcome", "realized_return_pct", "snapshot_json"),
+            (snapshot.run_id, snapshot.basket_id, snapshot.outcome, snapshot.realized_return_pct, _json(snapshot.snapshot_json)),
+        )
+
+    def get_replay_outcome_snapshot(self, run_id: str) -> ReplayOutcomeSnapshot | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM replay_outcome_snapshots WHERE run_id = ?", (run_id,)).fetchone()
+        return _replay_outcome_snapshot_from_row(row) if row else None
+
+    def _save_replay_snapshot(self, table: str, columns: tuple[str, ...], values: tuple[Any, ...]) -> int:
+        placeholders = ", ".join("?" for _ in columns)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"INSERT OR REPLACE INTO {table} ({', '.join(columns)}) VALUES ({placeholders})", values
+            )
+            return int(cursor.lastrowid)
+
     def save_strategy_policy(self, policy: StrategyPolicy) -> int:
         validate_strategy_policy(policy)
         with self._connect() as connection:
@@ -1073,6 +1184,11 @@ class RiskRepository:
             "strategy_policies",
             "strategy_experiments",
             "strategy_memories",
+            "replay_runs",
+            "replay_candidate_snapshots",
+            "replay_trade_plan_snapshots",
+            "replay_basket_snapshots",
+            "replay_outcome_snapshots",
             "data_sources",
             "ingestion_runs",
         }
@@ -1386,4 +1502,35 @@ def _strategy_memory_from_row(row: sqlite3.Row) -> StrategyMemory:
         policy_id=row["policy_id"],
         policy_version=row["policy_version"],
         created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _replay_run_from_row(row: sqlite3.Row) -> ReplayRun:
+    return ReplayRun(
+        run_id=str(row["run_id"]),
+        status=ReplayRunStatus(str(row["status"])),
+        snapshot_mode=ReplaySnapshotMode(str(row["snapshot_mode"])),
+        source_type=str(row["source_type"]),
+        source_basket_id=row["source_basket_id"],
+        as_of_date=date.fromisoformat(str(row["as_of_date"])) if row["as_of_date"] else None,
+        policy_id=row["policy_id"],
+        policy_version=row["policy_version"],
+        notes=json.loads(str(row["notes_json"])),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _replay_basket_snapshot_from_row(row: sqlite3.Row) -> ReplayBasketSnapshot:
+    return ReplayBasketSnapshot(
+        run_id=str(row["run_id"]), basket_id=str(row["basket_id"]), decision=str(row["decision"]),
+        policy_id=row["policy_id"], policy_version=row["policy_version"], scoring_mode=str(row["scoring_mode"]),
+        snapshot_json=json.loads(str(row["snapshot_json"])),
+    )
+
+
+def _replay_outcome_snapshot_from_row(row: sqlite3.Row) -> ReplayOutcomeSnapshot:
+    return ReplayOutcomeSnapshot(
+        run_id=str(row["run_id"]), basket_id=str(row["basket_id"]), outcome=str(row["outcome"]),
+        realized_return_pct=float(row["realized_return_pct"]),
+        snapshot_json=json.loads(str(row["snapshot_json"])),
     )

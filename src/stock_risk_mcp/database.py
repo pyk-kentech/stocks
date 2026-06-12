@@ -355,6 +355,56 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS replay_runs (
+            run_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            snapshot_mode TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_basket_id TEXT,
+            as_of_date TEXT,
+            policy_id TEXT,
+            policy_version TEXT,
+            notes_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_candidate_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            source TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_trade_plan_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            trade_plan_id INTEGER,
+            decision TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_basket_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL UNIQUE,
+            basket_id TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            policy_id TEXT,
+            policy_version TEXT,
+            scoring_mode TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_outcome_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL UNIQUE,
+            basket_id TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            realized_return_pct REAL NOT NULL,
+            snapshot_json TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
