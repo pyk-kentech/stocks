@@ -22,6 +22,9 @@ from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.service import RiskEvaluationService
+from stock_risk_mcp.setup import TradeSizingPolicy
+from stock_risk_mcp.setup_grading import SetupGrader
+from stock_risk_mcp.trade_plan import create_trade_plan
 
 
 def build_legacy_parser() -> argparse.ArgumentParser:
@@ -101,6 +104,18 @@ def build_command_parser() -> argparse.ArgumentParser:
         help="Analyze indicators from local price history and save them to SQLite.",
     )
     add_indicator_args(analyze_and_save, require_db=True)
+
+    analyze_setup = subparsers.add_parser("analyze-setup", help="Grade an ABC setup from local price history.")
+    add_indicator_args(analyze_setup, require_db=False)
+
+    create_plan = subparsers.add_parser("create-trade-plan", help="Create a paper trade plan from local price history.")
+    add_trade_plan_args(create_plan, require_db=False)
+
+    create_plan_and_save = subparsers.add_parser(
+        "create-trade-plan-and-save",
+        help="Create and save a paper trade plan from local price history.",
+    )
+    add_trade_plan_args(create_plan_and_save, require_db=True)
     return parser
 
 
@@ -121,6 +136,14 @@ def add_indicator_args(parser: argparse.ArgumentParser, require_db: bool) -> Non
     parser.add_argument("--use-db-price-history", action="store_true", help="Use the SQLite price_history table")
 
 
+def add_trade_plan_args(parser: argparse.ArgumentParser, require_db: bool) -> None:
+    add_indicator_args(parser, require_db=require_db)
+    parser.add_argument("--account-equity", type=float, required=True)
+    parser.add_argument("--cash-available", type=float, required=True)
+    parser.add_argument("--max-single-trade-loss-pct", type=float, default=0.25)
+    parser.add_argument("--max-position-pct", type=float, default=5.0)
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = sys.argv[1:] if argv is None else argv
     commands = {
@@ -136,6 +159,9 @@ def main(argv: list[str] | None = None) -> None:
         "ingestion-runs",
         "analyze-indicators",
         "analyze-indicators-and-save",
+        "analyze-setup",
+        "create-trade-plan",
+        "create-trade-plan-and-save",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -171,6 +197,13 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return run_analyze_indicators(args, save=False)
     if args.command == "analyze-indicators-and-save":
         return run_analyze_indicators(args, save=True)
+    if args.command == "analyze-setup":
+        setup, _ = _analyze_setup(args)
+        return setup.model_dump(mode="json")
+    if args.command == "create-trade-plan":
+        return run_create_trade_plan(args, save=False)
+    if args.command == "create-trade-plan-and-save":
+        return run_create_trade_plan(args, save=True)
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -321,17 +354,7 @@ def run_ingestion_runs(args: argparse.Namespace) -> dict[str, object]:
 
 
 def run_analyze_indicators(args: argparse.Namespace, save: bool) -> dict[str, object]:
-    repository = RiskRepository(args.db) if args.db else None
-    if args.price_history_file:
-        bars = FilePriceHistoryAdapter(args.price_history_file).load_price_bars()
-        source_name = "price_history_file"
-        source_type = SourceType.FILE
-    elif args.use_db_price_history and repository is not None:
-        bars = repository.get_all_price_history(args.ticker)
-        source_name = "price_history_db"
-        source_type = SourceType.SYSTEM
-    else:
-        raise ValueError("Provide --price-history-file or --use-db-price-history with --db")
+    bars, repository, source_name, source_type = _load_price_bars_for_analysis(args)
 
     indicator_set, score = analyze_price_bars(args.ticker, bars, source_name, source_type)
     output: dict[str, object] = {
@@ -345,6 +368,37 @@ def run_analyze_indicators(args: argparse.Namespace, save: bool) -> dict[str, ob
         repository.upsert_data_source(_price_history_data_source(source_name, source_type))
         output["saved"] = {"db": str(args.db), "indicator_values": len(ids), "indicator_value_ids": ids}
     return output
+
+
+def run_create_trade_plan(args: argparse.Namespace, save: bool) -> dict[str, object]:
+    setup, bars = _analyze_setup(args)
+    policy = TradeSizingPolicy(
+        account_equity=args.account_equity,
+        cash_available=args.cash_available,
+        max_single_trade_loss_pct=args.max_single_trade_loss_pct,
+        max_position_pct=args.max_position_pct,
+    )
+    plan = create_trade_plan(setup, bars, policy)
+    output = plan.model_dump(mode="json")
+    if save:
+        repository = RiskRepository(args.db)
+        output["saved"] = {"db": str(args.db), "trade_plan_id": repository.save_trade_plan(plan)}
+    return output
+
+
+def _analyze_setup(args: argparse.Namespace):
+    bars, _, source_name, source_type = _load_price_bars_for_analysis(args)
+    indicator_set, _ = analyze_price_bars(args.ticker, bars, source_name, source_type)
+    return SetupGrader().grade(indicator_set), bars
+
+
+def _load_price_bars_for_analysis(args: argparse.Namespace):
+    repository = RiskRepository(args.db) if args.db else None
+    if args.price_history_file:
+        return FilePriceHistoryAdapter(args.price_history_file).load_price_bars(), repository, "price_history_file", SourceType.FILE
+    if args.use_db_price_history and repository is not None:
+        return repository.get_all_price_history(args.ticker), repository, "price_history_db", SourceType.SYSTEM
+    raise ValueError("Provide --price-history-file or --use-db-price-history with --db")
 
 
 def build_proposal(args: argparse.Namespace) -> TradeProposal:

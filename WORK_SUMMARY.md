@@ -381,6 +381,64 @@ python -m stock_risk_mcp.cli analyze-indicators-and-save --ticker SAFE --price-h
 
 README was updated with supported indicators, beginner meanings, CLI usage, and the warning that indicators are not buy recommendations.
 
+## ABC Setup And Trade Plan Layer
+
+Added a LONG-focused ABC Setup and paper TradePlan layer on top of Indicator Analysis. This layer does not execute orders and does not replace the existing Risk Engine.
+
+Added files:
+
+- `src/stock_risk_mcp/setup.py`
+- `src/stock_risk_mcp/setup_grading.py`
+- `src/stock_risk_mcp/trade_plan.py`
+- `src/stock_risk_mcp/trade_sizing.py`
+- `src/stock_risk_mcp/risk_reward.py`
+- `tests/test_setup.py`
+- `tests/test_setup_grading.py`
+- `tests/test_trade_plan.py`
+- `tests/test_trade_sizing.py`
+- `tests/test_risk_reward.py`
+
+Added model support:
+
+- `SetupDirection`
+- `SetupGrade`
+- `TradeDecision`
+- `SetupSignal`
+- `TradePlan`
+- `TradeSizingPolicy`
+- `RiskRewardResult`
+
+Implemented:
+
+- IndicatorSet-based LONG setup scoring and A/B/C/NO_TRADE grading
+- latest-close entry price
+- conservative LONG stop using the lower of 20-bar swing low and `latest close - 1.5 * ATR`
+- grade-based target RR: A=4.0, B=3.0
+- minimum RR validation: A=3.0, B=2.5
+- maximum-loss-based position sizing
+- cash and maximum-position notional caps
+- C and NO_TRADE default no-trade behavior
+
+Added database table:
+
+- `trade_plans`
+
+Added repository methods:
+
+- `save_trade_plan(plan)`
+- `get_trade_plan(plan_id)`
+- `list_trade_plans(ticker=None, limit=50)`
+
+Added CLI commands:
+
+```powershell
+python -m stock_risk_mcp.cli analyze-setup --ticker SAFE --price-history-file data/prices.csv
+python -m stock_risk_mcp.cli create-trade-plan --ticker SAFE --price-history-file data/prices.csv --account-equity 10000 --cash-available 5000
+python -m stock_risk_mcp.cli create-trade-plan-and-save --ticker SAFE --price-history-file data/prices.csv --db data/stock_risk_mcp.sqlite3 --account-equity 10000 --cash-available 5000
+```
+
+README explicitly states that TradePlan is a paper trade proposal only and must pass the existing Risk Engine before any real-order proposal.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -393,11 +451,12 @@ The test suite grew over the work:
 - Nasdaq noncompliant file compliance tests passed
 - price history market data adapter tests passed
 - indicator analysis layer tests passed
+- ABC setup and trade plan layer tests passed
 
 Latest verified result:
 
 ```text
-63 passed
+75 passed
 ```
 
 ## Skill Path Issue

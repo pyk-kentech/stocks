@@ -32,6 +32,7 @@ from stock_risk_mcp.models import (
     TossSignal,
     TradeProposal,
 )
+from stock_risk_mcp.setup import SetupDirection, SetupGrade, TradeDecision, TradePlan
 
 
 @dataclass(frozen=True)
@@ -477,6 +478,57 @@ class RiskRepository:
             ).fetchall()
         return [_indicator_value_from_row(row) for row in rows]
 
+    def save_trade_plan(self, plan: TradePlan) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO trade_plans (
+                    ticker, direction, setup_grade, setup_score, entry_price,
+                    stop_price, target_price, risk_reward_ratio, max_loss_amount,
+                    max_loss_currency, position_size, notional_value, decision,
+                    reasons_json, warnings_json, beginner_summary
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan.ticker,
+                    plan.direction.value,
+                    plan.setup_grade.value,
+                    plan.setup_score,
+                    plan.entry_price,
+                    plan.stop_price,
+                    plan.target_price,
+                    plan.risk_reward_ratio,
+                    plan.max_loss_amount,
+                    plan.max_loss_currency,
+                    plan.position_size,
+                    plan.notional_value,
+                    plan.decision.value,
+                    json.dumps(plan.reasons, ensure_ascii=False),
+                    json.dumps(plan.warnings, ensure_ascii=False),
+                    plan.beginner_summary,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_trade_plan(self, plan_id: int) -> TradePlan:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM trade_plans WHERE id = ?", (plan_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Trade plan not found: {plan_id}")
+        return _trade_plan_from_row(row)
+
+    def list_trade_plans(self, ticker: str | None = None, limit: int = 50) -> list[TradePlan]:
+        with self._connect() as connection:
+            if ticker is None:
+                rows = connection.execute("SELECT * FROM trade_plans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM trade_plans WHERE ticker = ? ORDER BY id DESC LIMIT ?",
+                    (ticker.strip().upper(), limit),
+                ).fetchall()
+        return [_trade_plan_from_row(row) for row in rows]
+
     def upsert_data_source(self, source: DataSource) -> int:
         with self._connect() as connection:
             connection.execute(
@@ -631,6 +683,7 @@ class RiskRepository:
             "evaluation_reasons",
             "compliance_records",
             "indicator_values",
+            "trade_plans",
             "data_sources",
             "ingestion_runs",
         }
@@ -740,4 +793,25 @@ def _indicator_value_from_row(row: sqlite3.Row) -> IndicatorValue:
         interpretation=str(row["interpretation"] or ""),
         beginner_explanation=str(row["beginner_explanation"] or ""),
         evidence=evidence,
+    )
+
+
+def _trade_plan_from_row(row: sqlite3.Row) -> TradePlan:
+    return TradePlan(
+        ticker=str(row["ticker"]),
+        direction=SetupDirection(str(row["direction"])),
+        setup_grade=SetupGrade(str(row["setup_grade"])),
+        setup_score=int(row["setup_score"]),
+        entry_price=float(row["entry_price"]) if row["entry_price"] is not None else None,
+        stop_price=float(row["stop_price"]) if row["stop_price"] is not None else None,
+        target_price=float(row["target_price"]) if row["target_price"] is not None else None,
+        risk_reward_ratio=float(row["risk_reward_ratio"]) if row["risk_reward_ratio"] is not None else None,
+        max_loss_amount=float(row["max_loss_amount"]) if row["max_loss_amount"] is not None else None,
+        max_loss_currency=str(row["max_loss_currency"] or "USD"),
+        position_size=float(row["position_size"]) if row["position_size"] is not None else None,
+        notional_value=float(row["notional_value"]) if row["notional_value"] is not None else None,
+        decision=TradeDecision(str(row["decision"])),
+        reasons=json.loads(row["reasons_json"]) if row["reasons_json"] else [],
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        beginner_summary=str(row["beginner_summary"] or ""),
     )

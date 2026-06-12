@@ -181,6 +181,27 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS trade_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            setup_grade TEXT NOT NULL,
+            setup_score INTEGER,
+            entry_price REAL,
+            stop_price REAL,
+            target_price REAL,
+            risk_reward_ratio REAL,
+            max_loss_amount REAL,
+            max_loss_currency TEXT,
+            position_size REAL,
+            notional_value REAL,
+            decision TEXT NOT NULL,
+            reasons_json TEXT,
+            warnings_json TEXT,
+            beginner_summary TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

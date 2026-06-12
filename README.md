@@ -290,6 +290,54 @@ python -m stock_risk_mcp.cli analyze-indicators-and-save --ticker SAFE --price-h
 
 계산에 필요한 가격 bar, 거래량, 고가 또는 저가 데이터가 부족하면 해당 지표의 값은 `None`, 신호는 `UNKNOWN`이 될 수 있습니다.
 
+## ABC Setup And Trade Plan
+
+ABC Setup Layer는 Indicator Analysis 결과를 LONG 중심의 paper trade 후보로 정리합니다. 실제 주문 기능이 아니며, 생성된 `TradePlan`도 주문 제안 전에 반드시 기존 Risk Engine 최종 검사를 통과해야 합니다.
+
+셋업 등급:
+
+- `A`: 강한 후보. 최소 손익비 3.0 이상을 요구하며 기본 목표 손익비는 4.0입니다.
+- `B`: 검토 후보. 최소 손익비 2.5 이상을 요구하며 기본 목표 손익비는 3.0입니다.
+- `C`: 약한 후보. 기본적으로 매매하지 않습니다.
+- `NO_TRADE`: 현재 조건에서는 매매 후보를 만들지 않습니다.
+
+LONG TradePlan 계산 방식:
+
+- 진입가: 최신 종가
+- 손절가: 최근 20개 bar의 swing low와 `latest close - 1.5 * ATR` 중 더 낮은 보수적 가격
+- 목표가: `entry_price + risk_per_share * grade target_rr`
+- 포지션 크기: 계좌 자산 대비 최대 손실금액을 주당 위험금액으로 나눠 계산
+- 명목금액 한도: `cash_available`과 `account_equity * max_position_pct` 중 작은 값
+
+셋업 분석:
+
+```bash
+python -m stock_risk_mcp.cli analyze-setup --ticker SAFE --price-history-file data/prices.csv
+```
+
+paper TradePlan 생성:
+
+```bash
+python -m stock_risk_mcp.cli create-trade-plan \
+  --ticker SAFE \
+  --price-history-file data/prices.csv \
+  --account-equity 10000 \
+  --cash-available 5000
+```
+
+TradePlan 생성 및 저장:
+
+```bash
+python -m stock_risk_mcp.cli create-trade-plan-and-save \
+  --ticker SAFE \
+  --price-history-file data/prices.csv \
+  --db data/stock_risk_mcp.sqlite3 \
+  --account-equity 10000 \
+  --cash-available 5000
+```
+
+`TradePlan.decision`의 `PROPOSE` 또는 `REVIEW`는 주문 승인이 아닙니다. 뉴스, 상장 유지, 희석, 유동성, 포트폴리오 한도 등을 확인하는 기존 Risk Engine 검사를 반드시 별도로 수행해야 합니다.
+
 ## 백테스트
 
 저장된 `risk_evaluations`와 `price_history`를 매칭해 리스크 엔진 판단 이후 수익률을 계산합니다. 평가일 또는 그 다음 거래일의 종가를 entry price로 사용하고, 지정한 horizon 이후 가장 가까운 거래일 종가를 exit price로 사용합니다.
