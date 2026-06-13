@@ -776,6 +776,54 @@ failed ImportRun and returns traceable JSON. Future real providers can
 implement the same `BaseConnector.fetch` contract while preserving normalized
 file output and run recording.
 
+### Public HTTP Data Connector
+
+The Public HTTP Data Connector is an opt-in adapter for explicitly configured
+public CSV/JSON URLs. Network access is OFF by default and requires
+`--enable-network`. The default registry never auto-registers public HTTP
+providers; they exist only when `--provider-config-file` is supplied.
+
+Every initial URL and redirect target must use HTTP/HTTPS and exactly match a
+configured `allowed_hosts` entry. Subdomains are not implicitly allowed. CLI
+`--allowed-host` values further restrict the config allowlist by intersection.
+URL usernames/passwords and credential-like headers such as `Authorization`,
+`Cookie`, and `X-API-Key` are blocked. Logged URLs omit query strings and
+fragments.
+
+This layer does not support authentication, sessions, cookies, private API
+keys, brokerage access, Toss or other login-based scraping, or order
+execution. Download and validation failures are isolated in `ConnectorRun`
+records. Tests use injected fake clients and make no external network calls.
+
+Example provider config:
+
+```json
+{
+  "providers": [
+    {
+      "provider_name": "sample_prices",
+      "url": "https://example.com/prices.csv",
+      "data_kind": "PRICE_HISTORY",
+      "output_format": "CSV",
+      "allowed_hosts": ["example.com"],
+      "enabled": true
+    }
+  ]
+}
+```
+
+```bash
+python -m stock_risk_mcp.cli validate-provider-config --provider-config-file configs/providers.json
+python -m stock_risk_mcp.cli run-http-connector --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-config-file configs/providers.json --provider sample_prices --output-dir data/provider_outputs --enable-network
+python -m stock_risk_mcp.cli run-connectors-and-import --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --output-dir data/provider_outputs --provider-config-file configs/providers.json --enable-network
+```
+
+Run `system-smoke` before attaching or enabling a real public provider:
+
+```bash
+python -m stock_risk_mcp.cli system-smoke --db data/smoke.sqlite3 --output-dir smoke_outputs
+```
+
 ## Analysis Report Layer
 
 The Analysis Report Layer converts stored pipeline, candidate scan, basket,

@@ -5,6 +5,8 @@ from stock_risk_mcp.cli import main
 from stock_risk_mcp.connector_pipeline import run_connectors, run_connectors_and_import
 from stock_risk_mcp.connector_registry import ConnectorRegistry, default_connector_registry
 from stock_risk_mcp.connector_run import ConnectorMode, ConnectorType
+from stock_risk_mcp.http_connector import PublicHTTPConnector
+from stock_risk_mcp.provider_config import HTTPProviderConfig, ProviderDataKind
 from stock_risk_mcp.repository import RiskRepository
 
 
@@ -78,6 +80,48 @@ def test_connector_cli_returns_failed_json_when_all_connectors_fail(tmp_path, ca
     assert result["output_file_count"] == 0
     assert result["import_run_id"]
     assert result["connector_error_summary"][0]["status"] == "FAILED"
+
+
+def test_public_http_output_flows_into_import_with_fake_client(tmp_path) -> None:
+    repository = RiskRepository(tmp_path / "risk.sqlite3")
+    registry = ConnectorRegistry()
+    registry.register_connector(PublicHTTPConnector(_provider(), enable_network=True, client=PriceClient()))
+
+    result = run_connectors_and_import(
+        repository, registry, date(2026, 6, 13), tmp_path / "outputs", ["sample_prices"], [],
+    )
+
+    assert result["overall_status"] == "COMPLETED"
+    assert repository.get_all_price_history("AAA")
+
+
+def test_public_http_cli_validation_and_network_disabled_run(tmp_path, capsys) -> None:
+    config = tmp_path / "providers.json"
+    config.write_text(json.dumps({"providers": [_provider().model_dump(mode="json")]}), encoding="utf-8")
+
+    validated = _run(capsys, ["validate-provider-config", "--provider-config-file", str(config)])
+    result = _run(capsys, [
+        "run-http-connector", "--db", str(tmp_path / "risk.sqlite3"), "--as-of-date", "2026-06-13",
+        "--provider-config-file", str(config), "--provider", "sample_prices",
+        "--output-dir", str(tmp_path / "outputs"),
+    ])
+
+    assert validated["providers"][0]["status"] == "VALID"
+    assert result["connector_run"]["status"] == "DISABLED"
+
+
+class PriceClient:
+    def get(self, *args, **kwargs):
+        body = b"ticker,date,open,high,low,close,volume\nAAA,2026-06-13,1,2,1,2,100\n"
+        return {"status_code": 200, "headers": {"Content-Type": "text/csv"}, "body": body}
+
+
+def _provider() -> HTTPProviderConfig:
+    return HTTPProviderConfig(
+        provider_name="sample_prices", url="https://example.com/prices.csv",
+        data_kind=ProviderDataKind.PRICE_HISTORY, output_format="CSV",
+        allowed_hosts=["example.com"], enabled=True,
+    )
 
 
 def _run(capsys, args):

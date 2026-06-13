@@ -38,7 +38,7 @@ from stock_risk_mcp.agent_context import build_agent_context_from_pipeline, buil
 from stock_risk_mcp.agent_prompt import build_agent_prompt
 from stock_risk_mcp.agent_tools import read_only_tool_manifest
 from stock_risk_mcp.connector_pipeline import run_connectors, run_connectors_and_import
-from stock_risk_mcp.connector_registry import default_connector_registry
+from stock_risk_mcp.connector_registry import default_connector_registry, register_http_providers
 from stock_risk_mcp.data_import import run_unified_import
 from stock_risk_mcp.dashboard import build_daily_dashboard, build_overview_dashboard, build_pipeline_dashboard, build_policy_dashboard
 from stock_risk_mcp.dashboard_models import DashboardBuildResult, DashboardBuildStatus, DashboardType
@@ -72,6 +72,7 @@ from stock_risk_mcp.policy_evaluation_suite import evaluate_policy_suite
 from stock_risk_mcp.policy_promotion import activate_policy, approve_policy, create_policy_promotion_proposal
 from stock_risk_mcp.policy_replay import replay_policy_on_replay_run
 from stock_risk_mcp.policy_replay_batch import run_policy_replay_batch
+from stock_risk_mcp.provider_config import load_provider_configs, validate_provider_config_file
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.release_check import build_release_check
 from stock_risk_mcp.report_json import render_json
@@ -154,14 +155,26 @@ def build_command_parser() -> argparse.ArgumentParser:
     import_show.add_argument("--db", type=Path, required=True)
     import_show.add_argument("--import-run-id", required=True)
 
-    subparsers.add_parser("connectors", help="List registered network-free connectors.")
+    subparsers.add_parser("connectors", help="List registered connectors.")
     for name in ("run-connectors", "run-connectors-and-import"):
         connector_command = subparsers.add_parser(name)
         connector_command.add_argument("--db", type=Path, required=True)
         connector_command.add_argument("--as-of-date", type=date.fromisoformat, required=True)
         connector_command.add_argument("--output-dir", type=Path, required=True)
-        connector_command.add_argument("--connector", action="append", required=True)
+        connector_command.add_argument("--connector", action="append", default=[])
         connector_command.add_argument("--ticker", action="append", default=[])
+        add_http_provider_args(connector_command)
+    validate_provider = subparsers.add_parser("validate-provider-config")
+    validate_provider.add_argument("--provider-config-file", type=Path, required=True)
+    validate_provider.add_argument("--allowed-host", action="append", default=None)
+    run_http = subparsers.add_parser("run-http-connector")
+    run_http.add_argument("--db", type=Path, required=True)
+    run_http.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    run_http.add_argument("--output-dir", type=Path, required=True)
+    run_http.add_argument("--provider-config-file", type=Path, required=True)
+    run_http.add_argument("--provider", required=True)
+    run_http.add_argument("--enable-network", action="store_true")
+    run_http.add_argument("--allowed-host", action="append", default=None)
     connector_runs = subparsers.add_parser("connector-runs", help="List connector runs.")
     connector_runs.add_argument("--db", type=Path, required=True)
     connector_runs.add_argument("--limit", type=int, default=50)
@@ -625,6 +638,22 @@ def add_pipeline_dashboard_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dashboard-output-file", type=Path)
 
 
+def add_http_provider_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--provider-config-file", type=Path)
+    parser.add_argument("--enable-network", action="store_true")
+    parser.add_argument("--allowed-host", action="append", default=None)
+
+
+def _connector_registry_and_names(args: argparse.Namespace):
+    registry = default_connector_registry()
+    names = list(args.connector)
+    if args.provider_config_file:
+        configs = load_provider_configs(args.provider_config_file)
+        register_http_providers(registry, configs, args.enable_network, args.allowed_host)
+        names.extend(config.provider_name for config in configs if config.provider_name not in names)
+    return registry, names
+
+
 def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--basket-id", required=True)
@@ -659,6 +688,8 @@ def main(argv: list[str] | None = None) -> None:
         "connectors",
         "run-connectors",
         "run-connectors-and-import",
+        "validate-provider-config",
+        "run-http-connector",
         "connector-runs",
         "connector-show",
         "report-pipeline",
@@ -777,9 +808,10 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             for item in default_connector_registry().list_connectors()
         ]}
     if args.command == "run-connectors":
+        registry, connector_names = _connector_registry_and_names(args)
         results = run_connectors(
-            RiskRepository(args.db), default_connector_registry(), args.as_of_date,
-            args.output_dir, args.connector, args.ticker,
+            RiskRepository(args.db), registry, args.as_of_date,
+            args.output_dir, connector_names, args.ticker,
         )
         return {
             "as_of_date": args.as_of_date.isoformat(),
@@ -787,10 +819,29 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             "output_file_count": sum(item.output is not None for item in results),
         }
     if args.command == "run-connectors-and-import":
+        registry, connector_names = _connector_registry_and_names(args)
         return run_connectors_and_import(
-            RiskRepository(args.db), default_connector_registry(), args.as_of_date,
-            args.output_dir, args.connector, args.ticker,
+            RiskRepository(args.db), registry, args.as_of_date,
+            args.output_dir, connector_names, args.ticker,
         )
+    if args.command == "validate-provider-config":
+        return {"providers": validate_provider_config_file(args.provider_config_file, args.allowed_host)}
+    if args.command == "run-http-connector":
+        configs = load_provider_configs(args.provider_config_file)
+        selected = [item for item in configs if item.provider_name == args.provider]
+        if not selected:
+            raise LookupError(f"Provider not found: {args.provider}")
+        registry = register_http_providers(
+            default_connector_registry(), selected, args.enable_network, args.allowed_host,
+        )
+        result = run_connectors(
+            RiskRepository(args.db), registry, args.as_of_date, args.output_dir, [args.provider], [],
+        )[0]
+        return {
+            "as_of_date": args.as_of_date.isoformat(),
+            "connector_run": result.connector_run.model_dump(mode="json"),
+            "output": result.output.model_dump(mode="json") if result.output else None,
+        }
     if args.command == "connector-runs":
         return {"connector_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_connector_runs(args.limit)]}
     if args.command == "connector-show":

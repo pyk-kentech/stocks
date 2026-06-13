@@ -24,6 +24,7 @@ class ConnectorMode(StrEnum):
     MOCK = "MOCK"
     LOCAL_FILE = "LOCAL_FILE"
     MANUAL_EXPORT = "MANUAL_EXPORT"
+    PUBLIC_HTTP = "PUBLIC_HTTP"
     DISABLED = "DISABLED"
 
 

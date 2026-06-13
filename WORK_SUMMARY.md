@@ -978,3 +978,30 @@ Latest verified result after the End-to-End Demo / Release Hardening Layer:
 ```text
 258 passed
 ```
+
+## Public HTTP Data Connector / Network Safety Layer
+
+Added an explicitly enabled, allowlisted public CSV/JSON download adapter that
+feeds the existing connector and Unified Import pipeline.
+
+Implemented:
+
+- default-off networking with explicit `--enable-network`
+- exact-host allowlists and optional runtime allowlist intersection
+- HTTP/HTTPS-only URL validation, redirect revalidation, and credential blocking
+- query/fragment-free URL logging and bounded downloads
+- transport-injected stdlib downloader with fake-client tests only
+- JSON/YAML provider config loading and provider-level validation CLI
+- dynamically registered Public HTTP connectors that never join the default registry
+- `run-http-connector` and provider-aware `run-connectors-and-import`
+- isolated ConnectorRun failure/disabled records and successful import handoff
+
+This layer does not implement authentication, cookie/session use, private API
+keys, login-based Toss or brokerage scraping, external orders, or investment
+advice. Network access remains opt-in.
+
+Latest verified result after the Public HTTP Data Connector / Network Safety Layer:
+
+```text
+268 passed
+```
