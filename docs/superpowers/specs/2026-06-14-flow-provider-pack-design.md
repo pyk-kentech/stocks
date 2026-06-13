@@ -117,6 +117,7 @@ Rich normalized records contain:
 - `currency`
 - `market`
 - `raw_payload_json`
+- `provider_record_mode = RICH_FLOW_PROVIDER`
 
 Optional numeric values are normalized to `float | None`. Missing optional
 text values remain `None`. The title is generated from the calculated
@@ -154,9 +155,21 @@ market scales differ.
 
 ## Import And Enrichment
 
-Unified Import recognizes explicit rich Flow Provider Pack records by their
-`score_delta`. It preserves normalized direction, severity, score, source,
-title, and raw payload.
+Unified Import recognizes explicit rich Flow Provider Pack records through
+`provider_record_mode == RICH_FLOW_PROVIDER` together with the
+`FOREIGN_INSTITUTION_FLOW` import source. It may also verify that at least one
+rich flow field is present. `score_delta` is a result value and is never used
+as the sole record-type discriminator.
+
+Rich flow fields are:
+
+- `foreign_net_buy_amount`
+- `institution_net_buy_amount`
+- `foreign_net_buy_shares`
+- `institution_net_buy_shares`
+
+For recognized rich Flow records, import preserves normalized direction,
+severity, score, source, title, and raw payload.
 
 Legacy Flow import continues to use the existing common signal scoring path.
 The shared `signal_scoring.py` behavior is not changed.
@@ -216,6 +229,7 @@ Tests must cover:
 - shares fallback only when amount mappings are absent
 - raw payload preservation
 - imported `FOREIGN_INSTITUTION_FLOW` signal
+- explicit rich flow metadata discrimination without relying on `score_delta`
 - no default HIGH or CRITICAL Flow signal
 - positive Flow does not promote EXCLUDE
 - legacy/common signal scoring remains unchanged
