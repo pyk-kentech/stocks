@@ -50,6 +50,7 @@ from stock_risk_mcp.paper_trading import (
     PaperTrade,
     PaperTradeStatus,
 )
+from stock_risk_mcp.pipeline_run import PipelineAlert, PipelineRun
 from stock_risk_mcp.policy_replay_result import (
     PolicyComparisonResult,
     PolicyReplayMode,
@@ -1110,6 +1111,71 @@ class RiskRepository:
     def get_signals_for_ticker_asof(self, ticker: str, as_of_date: date) -> list[TickerSignal]:
         return self.list_ticker_signals(ticker=ticker, as_of_date=as_of_date)
 
+    def save_pipeline_run(self, run: PipelineRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO pipeline_runs (
+                    pipeline_run_id, mode, as_of_date, policy_id, policy_version,
+                    scan_run_id, basket_id, replay_run_id, policy_replay_id,
+                    evaluation_suite_id, status, candidate_count, included_count,
+                    watch_count, basket_allocation_count, alert_count, notes_json,
+                    error, run_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                _pipeline_run_values(run),
+            )
+            return int(cursor.lastrowid)
+
+    def update_pipeline_run(self, run: PipelineRun) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE pipeline_runs SET
+                    mode=?, as_of_date=?, policy_id=?, policy_version=?, scan_run_id=?,
+                    basket_id=?, replay_run_id=?, policy_replay_id=?, evaluation_suite_id=?,
+                    status=?, candidate_count=?, included_count=?, watch_count=?,
+                    basket_allocation_count=?, alert_count=?, notes_json=?, error=?,
+                    run_json=?, created_at=?, completed_at=?
+                WHERE pipeline_run_id=?""",
+                (*_pipeline_run_values(run)[1:], run.pipeline_run_id),
+            )
+
+    def get_pipeline_run(self, pipeline_run_id: str) -> PipelineRun:
+        with self._connect() as connection:
+            row = connection.execute("SELECT run_json FROM pipeline_runs WHERE pipeline_run_id=?", (pipeline_run_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Pipeline run not found: {pipeline_run_id}")
+        return PipelineRun.model_validate_json(str(row["run_json"]))
+
+    def list_pipeline_runs(self, limit: int = 50) -> list[PipelineRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT run_json FROM pipeline_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [PipelineRun.model_validate_json(str(row["run_json"])) for row in rows]
+
+    def save_pipeline_alerts(self, alerts: list[PipelineAlert]) -> list[int]:
+        ids = []
+        with self._connect() as connection:
+            for alert in alerts:
+                cursor = connection.execute(
+                    """INSERT INTO pipeline_alerts (
+                        alert_id, pipeline_run_id, alert_type, severity, ticker,
+                        title, message, metadata_json, alert_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        alert.alert_id, alert.pipeline_run_id, alert.alert_type.value, alert.severity.value,
+                        alert.ticker, alert.title, alert.message, _json(alert.metadata),
+                        alert.model_dump_json(), alert.created_at.isoformat(),
+                    ),
+                )
+                ids.append(int(cursor.lastrowid))
+        return ids
+
+    def list_pipeline_alerts(self, pipeline_run_id: str | None = None, limit: int = 100) -> list[PipelineAlert]:
+        with self._connect() as connection:
+            if pipeline_run_id:
+                rows = connection.execute("SELECT alert_json FROM pipeline_alerts WHERE pipeline_run_id=? ORDER BY id LIMIT ?", (pipeline_run_id, limit)).fetchall()
+            else:
+                rows = connection.execute("SELECT alert_json FROM pipeline_alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [PipelineAlert.model_validate_json(str(row["alert_json"])) for row in rows]
+
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -1512,6 +1578,8 @@ class RiskRepository:
             "scan_runs",
             "candidate_scan_results",
             "ticker_signals",
+            "pipeline_runs",
+            "pipeline_alerts",
             "data_sources",
             "ingestion_runs",
         }
@@ -1551,6 +1619,16 @@ def _ticker_signal_from_row(row: sqlite3.Row) -> TickerSignal:
         metadata=json.loads(str(row["metadata_json"])) if row["metadata_json"] else {},
         reasons=json.loads(str(row["reasons_json"])) if row["reasons_json"] else [],
         warnings=json.loads(str(row["warnings_json"])) if row["warnings_json"] else [],
+    )
+
+
+def _pipeline_run_values(run: PipelineRun) -> tuple[Any, ...]:
+    return (
+        run.pipeline_run_id, run.mode.value, run.as_of_date.isoformat(), run.policy_id, run.policy_version,
+        run.scan_run_id, run.basket_id, run.replay_run_id, run.policy_replay_id, run.evaluation_suite_id,
+        run.status.value, run.candidate_count, run.included_count, run.watch_count,
+        run.basket_allocation_count, run.alert_count, _json(run.notes), run.error,
+        run.model_dump_json(), run.created_at.isoformat(), run.completed_at.isoformat() if run.completed_at else None,
     )
 
 

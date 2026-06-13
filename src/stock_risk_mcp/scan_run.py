@@ -40,6 +40,7 @@ def create_replay_snapshot_from_scan_run(
     as_of_date: date,
     *,
     include_watch: bool = False,
+    basket_saved_to_plans: bool = False,
 ) -> ReplayRun:
     scan_run = repository.get_scan_run(scan_run_id)
     replay = ReplayRun(
@@ -52,7 +53,12 @@ def create_replay_snapshot_from_scan_run(
         policy_version=scan_run.policy_version,
         notes=[
             f"Created from candidate scan run {scan_run_id}.",
-            "Candidate snapshots preserve scan metadata; no basket was saved.",
+            (
+                "Basket was also saved to basket_plans."
+                if basket_saved_to_plans
+                else "Replay snapshot basket_id may not exist in basket_plans."
+            ),
+            "Candidate snapshots preserve scan metadata.",
         ],
         created_at=datetime.now(),
     )

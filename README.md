@@ -674,6 +674,55 @@ python -m stock_risk_mcp.cli scan-candidates --db data/stock_risk_mcp.sqlite3 --
 re-save DB signals. Candidate scan persistence remains controlled separately
 by `--save`.
 
+## Operational Pipeline And Watch Loop
+
+The Operational Pipeline composes the existing local Candidate Scanner,
+Signal Enrichment, Basket Engine, Paper Trading, Replay Snapshot, Policy
+Replay, and Policy Evaluation Suite. It automates paper-trading operations,
+not trading. It never calls external APIs, requests realtime data, or places
+orders.
+
+One-shot execution is the default:
+
+```bash
+python -m stock_risk_mcp.cli run-scan-pipeline --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --use-active-policy
+python -m stock_risk_mcp.cli run-paper-pipeline --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --account-equity 10000 --cash-available 5000 --horizon-days 10 --use-active-policy
+python -m stock_risk_mcp.cli run-policy-evaluation-pipeline --db data/stock_risk_mcp.sqlite3 --baseline-policy-id default --baseline-policy-version v1 --candidate-policy-id default --candidate-policy-version v2 --horizon-days 10 --account-equity 10000 --cash-available 5000
+```
+
+Every execution stores a PipelineRun and generated alerts. Errors are recorded
+as FAILED or PARTIAL runs with PIPELINE_ERROR alerts instead of silently
+discarding completed stages. Policy evaluation stores its suite but never
+creates promotion proposals or changes policy status.
+
+Paper storage is conservative:
+
+- default `save_basket=false`: BasketPlan and paper outcome remain unofficial;
+  paper results are computed in memory and are not written to `paper_trades`
+  or `basket_backtest_results`
+- `--save-basket`: stores the official BasketPlan and any computed paper result
+- `--no-paper-trade`: skips paper outcome calculation and storage
+- replay snapshot storage remains independent, so a replay-only `basket_id`
+  may not exist in `basket_plans`
+
+Inspect stored operations:
+
+```bash
+python -m stock_risk_mcp.cli pipeline-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli pipeline-show --db data/stock_risk_mcp.sqlite3 --pipeline-run-id <pipeline_run_id>
+python -m stock_risk_mcp.cli alerts --db data/stock_risk_mcp.sqlite3 --pipeline-run-id <pipeline_run_id>
+```
+
+Repeated execution occurs only through the explicit watch loop. Every
+iteration creates an independent PipelineRun. The loop stops at
+`--max-iterations` when provided or safely on KeyboardInterrupt.
+
+```bash
+python -m stock_risk_mcp.cli watch-loop --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --account-equity 10000 --cash-available 5000 --interval-seconds 60 --max-iterations 3 --use-active-policy
+```
+
+The watch loop performs local paper operations only and never places orders.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

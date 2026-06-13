@@ -557,6 +557,45 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pipeline_run_id TEXT NOT NULL UNIQUE,
+            mode TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            policy_id TEXT,
+            policy_version TEXT,
+            scan_run_id TEXT,
+            basket_id TEXT,
+            replay_run_id TEXT,
+            policy_replay_id TEXT,
+            evaluation_suite_id TEXT,
+            status TEXT NOT NULL,
+            candidate_count INTEGER NOT NULL,
+            included_count INTEGER NOT NULL,
+            watch_count INTEGER NOT NULL,
+            basket_allocation_count INTEGER NOT NULL,
+            alert_count INTEGER NOT NULL,
+            notes_json TEXT,
+            error TEXT,
+            run_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS pipeline_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_id TEXT NOT NULL UNIQUE,
+            pipeline_run_id TEXT NOT NULL,
+            alert_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            ticker TEXT,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            metadata_json TEXT,
+            alert_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS data_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,

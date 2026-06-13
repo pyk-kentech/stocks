@@ -713,6 +713,29 @@ Signal Enrichment is an auxiliary research layer. It does not replace Risk
 Engine hard blocks, call external APIs, request realtime data, or execute
 orders.
 
+## Operational Pipeline And Watch Loop
+
+Added persisted one-shot and explicit repeated paper-operation workflows that
+compose the existing scanner, signal, basket, replay, paper, and policy
+evaluation layers.
+
+Implemented:
+
+- persisted PipelineRun lifecycle and PipelineAlert records
+- deterministic candidate, critical-signal, basket, paper, policy, and error alerts
+- scan-only operational pipeline
+- paper basket pipeline with scan, basket, replay snapshot, and optional paper outcome
+- memory-only paper result when `save_basket=false`
+- official basket and paper persistence only when `save_basket=true`
+- explicit paper skip option
+- policy evaluation pipeline without automatic promotion proposals
+- PARTIAL/FAILED error recording that preserves completed stage IDs
+- PipelineSummary generation and operational run/alert inspection commands
+- explicit bounded watch loop with independent run records per iteration
+
+The default remains one-shot. The watch loop must be explicitly invoked and
+never places orders, calls external APIs, or requests realtime data.
+
 ## Test Status
 
 The test suite grew over the work:
@@ -732,11 +755,12 @@ The test suite grew over the work:
 - Policy-Aware Scoring Integration tests passed
 - Candidate Scanner and Universe Builder tests passed
 - Signal Enrichment Layer tests passed
+- Operational Pipeline and Watch Loop tests passed
 
 Latest verified result:
 
 ```text
-174 passed
+185 passed
 ```
 
 ## Skill Path Issue

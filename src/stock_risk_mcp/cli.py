@@ -33,6 +33,9 @@ from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.news_signal_file import load_news_signals
+from stock_risk_mcp.operational_pipeline import OperationalPipeline
+from stock_risk_mcp.pipeline_report import build_pipeline_summary
+from stock_risk_mcp.pipeline_run import PipelineMode
 from stock_risk_mcp.policy import load_policy
 from stock_risk_mcp.policy_comparison import compare_policy_replays
 from stock_risk_mcp.policy_evaluation_report import policy_evaluation_report
@@ -54,6 +57,7 @@ from stock_risk_mcp.strategy_optimizer import StrategyOptimizer
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.trade_plan import create_trade_plan
 from stock_risk_mcp.toss_signal_file import load_toss_signals
+from stock_risk_mcp.watch_loop import run_watch_loop
 
 
 def build_legacy_parser() -> argparse.ArgumentParser:
@@ -311,6 +315,49 @@ def build_command_parser() -> argparse.ArgumentParser:
     scan_to_replay.add_argument("--scan-run-id", required=True)
     scan_to_replay.add_argument("--as-of-date", type=date.fromisoformat, required=True)
     scan_to_replay.add_argument("--include-watch", action="store_true")
+
+    run_scan_pipeline = subparsers.add_parser("run-scan-pipeline", help="Run the persisted one-shot scan pipeline.")
+    add_operational_scan_args(run_scan_pipeline)
+
+    run_paper_pipeline = subparsers.add_parser("run-paper-pipeline", help="Run the local paper basket pipeline.")
+    add_operational_scan_args(run_paper_pipeline)
+    run_paper_pipeline.add_argument("--account-equity", type=float, required=True)
+    run_paper_pipeline.add_argument("--cash-available", type=float, required=True)
+    run_paper_pipeline.add_argument("--horizon-days", type=int, required=True)
+    run_paper_pipeline.add_argument("--include-watch", action="store_true")
+    run_paper_pipeline.add_argument("--save-basket", action="store_true")
+    run_paper_pipeline.add_argument("--no-paper-trade", action="store_true")
+    run_paper_pipeline.add_argument("--no-replay-snapshot", action="store_true")
+
+    run_policy_pipeline = subparsers.add_parser("run-policy-evaluation-pipeline", help="Run policy replay evaluation.")
+    add_policy_replay_args(run_policy_pipeline, storage_options=False, include_run_id=False)
+    run_policy_pipeline.add_argument("--replay-run-id", action="append")
+    run_policy_pipeline.add_argument("--baseline-policy-id", required=True)
+    run_policy_pipeline.add_argument("--baseline-policy-version", required=True)
+    run_policy_pipeline.add_argument("--candidate-policy-id", required=True)
+    run_policy_pipeline.add_argument("--candidate-policy-version", required=True)
+
+    pipeline_runs = subparsers.add_parser("pipeline-runs", help="List operational pipeline runs.")
+    pipeline_runs.add_argument("--db", type=Path, required=True)
+    pipeline_runs.add_argument("--limit", type=int, default=50)
+    pipeline_show = subparsers.add_parser("pipeline-show", help="Show an operational pipeline run.")
+    pipeline_show.add_argument("--db", type=Path, required=True)
+    pipeline_show.add_argument("--pipeline-run-id", required=True)
+    pipeline_alerts = subparsers.add_parser("alerts", help="List operational pipeline alerts.")
+    pipeline_alerts.add_argument("--db", type=Path, required=True)
+    pipeline_alerts.add_argument("--pipeline-run-id")
+    pipeline_alerts.add_argument("--limit", type=int, default=100)
+
+    watch = subparsers.add_parser("watch-loop", help="Run an explicit bounded local paper watch loop.")
+    add_operational_scan_args(watch)
+    watch.add_argument("--account-equity", type=float, required=True)
+    watch.add_argument("--cash-available", type=float, required=True)
+    watch.add_argument("--horizon-days", type=int, default=10)
+    watch.add_argument("--interval-seconds", type=float, required=True)
+    watch.add_argument("--max-iterations", type=int)
+    watch.add_argument("--include-watch", action="store_true")
+    watch.add_argument("--save-basket", action="store_true")
+    watch.add_argument("--no-paper-trade", action="store_true")
     return parser
 
 
@@ -365,6 +412,15 @@ def add_signal_file_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dilution-signal-file", type=Path)
     parser.add_argument("--toss-signal-file", type=Path)
     parser.add_argument("--flow-signal-file", type=Path)
+
+
+def add_operational_scan_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--db", type=Path, required=True)
+    parser.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    parser.add_argument("--price-history-file", type=Path)
+    parser.add_argument("--ignore-db-signals", action="store_true")
+    add_signal_file_args(parser)
+    add_strategy_policy_args(parser)
 
 
 def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
@@ -440,6 +496,13 @@ def main(argv: list[str] | None = None) -> None:
         "scan-to-replay-snapshot",
         "ingest-signals",
         "signals",
+        "run-scan-pipeline",
+        "run-paper-pipeline",
+        "run-policy-evaluation-pipeline",
+        "pipeline-runs",
+        "pipeline-show",
+        "alerts",
+        "watch-loop",
     }
     if args_list and args_list[0] in commands:
         args = build_command_parser().parse_args(args_list)
@@ -578,6 +641,45 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "signals":
         items = RiskRepository(args.db).list_ticker_signals(args.ticker, args.as_of_date, args.limit)
         return {"signals": [item.model_dump(mode="json") for item in items]}
+    if args.command == "run-scan-pipeline":
+        repository = RiskRepository(args.db)
+        execution = OperationalPipeline(repository).run_scan_only_pipeline(
+            args.as_of_date, price_history_file=args.price_history_file,
+            signal_files=_operational_signal_files(args), ignore_db_signals=args.ignore_db_signals,
+            strategy_policy=_resolve_strategy_policy(args, repository),
+        )
+        return _operational_output(execution)
+    if args.command == "run-paper-pipeline":
+        return _run_operational_paper(args)
+    if args.command == "run-policy-evaluation-pipeline":
+        repository = RiskRepository(args.db)
+        execution = OperationalPipeline(repository).run_replay_evaluation_pipeline(
+            args.replay_run_id, args.baseline_policy_id, args.baseline_policy_version,
+            args.candidate_policy_id, args.candidate_policy_version, args.horizon_days,
+            args.account_equity, args.cash_available, price_history_file=args.price_history_file,
+        )
+        return _operational_output(execution)
+    if args.command == "pipeline-runs":
+        return {"pipeline_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_pipeline_runs(args.limit)]}
+    if args.command == "pipeline-show":
+        repository = RiskRepository(args.db)
+        run = repository.get_pipeline_run(args.pipeline_run_id)
+        alerts = repository.list_pipeline_alerts(args.pipeline_run_id)
+        return {
+            "run": run.model_dump(mode="json"),
+            "summary": build_pipeline_summary(run, alerts).model_dump(mode="json"),
+            "alerts": [item.model_dump(mode="json") for item in alerts],
+        }
+    if args.command == "alerts":
+        items = RiskRepository(args.db).list_pipeline_alerts(args.pipeline_run_id, args.limit)
+        return {"alerts": [item.model_dump(mode="json") for item in items]}
+    if args.command == "watch-loop":
+        outputs = run_watch_loop(
+            lambda: _run_operational_paper(args, mode=PipelineMode.WATCH_LOOP),
+            args.interval_seconds,
+            args.max_iterations,
+        )
+        return {"iterations": outputs, "warning": "Watch loop performs local paper operations only and never places orders."}
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -943,6 +1045,46 @@ def _load_signal_files(args: argparse.Namespace):
         if path:
             signals.extend(loader(path, as_of_date))
     return signals
+
+
+def _run_operational_paper(args: argparse.Namespace, mode: PipelineMode = PipelineMode.PAPER_BASKET) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    execution = OperationalPipeline(repository).run_paper_basket_pipeline(
+        args.as_of_date, args.account_equity, args.cash_available, args.horizon_days,
+        price_history_file=args.price_history_file, signal_files=_operational_signal_files(args),
+        ignore_db_signals=args.ignore_db_signals, strategy_policy=_resolve_strategy_policy(args, repository),
+        include_watch=args.include_watch, save_basket=args.save_basket,
+        save_replay_snapshot=not getattr(args, "no_replay_snapshot", False),
+        paper_trade=not args.no_paper_trade, mode=mode,
+    )
+    return _operational_output(execution)
+
+
+def _operational_output(execution) -> dict[str, object]:
+    return {
+        **execution.summary.model_dump(mode="json"),
+        "mode": execution.run.mode.value,
+        "scan_run_id": execution.run.scan_run_id,
+        "basket_id": execution.run.basket_id,
+        "replay_run_id": execution.run.replay_run_id,
+        "policy_replay_id": execution.run.policy_replay_id,
+        "evaluation_suite_id": execution.run.evaluation_suite_id,
+        "save_basket": execution.save_basket,
+        "paper_trade": execution.paper_trade,
+        "paper_result_persisted": execution.paper_result_persisted,
+        "basket_saved_to_basket_plans": execution.basket_saved_to_basket_plans,
+    }
+
+
+def _operational_signal_files(args: argparse.Namespace) -> dict[str, Path]:
+    return {
+        name: path for name, path in {
+            "news": getattr(args, "news_signal_file", None),
+            "dilution": getattr(args, "dilution_signal_file", None),
+            "toss": getattr(args, "toss_signal_file", None),
+            "flow": getattr(args, "flow_signal_file", None),
+        }.items() if path is not None
+    }
 
 
 def run_scan_to_basket(args: argparse.Namespace) -> dict[str, object]:
