@@ -679,6 +679,33 @@ def create_schema(connection: sqlite3.Connection) -> None:
             context_json TEXT,
             markdown TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS agent_contexts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            context_id TEXT NOT NULL UNIQUE,
+            context_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS agent_prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_id TEXT NOT NULL UNIQUE,
+            prompt_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS agent_briefs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            brief_id TEXT NOT NULL UNIQUE,
+            brief_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS local_llm_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            request_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS local_llm_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            response_id TEXT NOT NULL UNIQUE,
+            request_id TEXT NOT NULL,
+            response_json TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

@@ -33,6 +33,10 @@ from stock_risk_mcp.analysis_report import (
     build_pipeline_summary_report,
     build_policy_evaluation_report,
 )
+from stock_risk_mcp.agent_brief import build_agent_brief
+from stock_risk_mcp.agent_context import build_agent_context_from_pipeline, build_agent_context_from_report
+from stock_risk_mcp.agent_prompt import build_agent_prompt
+from stock_risk_mcp.agent_tools import read_only_tool_manifest
 from stock_risk_mcp.connector_pipeline import run_connectors, run_connectors_and_import
 from stock_risk_mcp.connector_registry import default_connector_registry
 from stock_risk_mcp.data_import import run_unified_import
@@ -42,6 +46,8 @@ from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
+from stock_risk_mcp.local_llm import LocalLLMBackend, LocalLLMRequest
+from stock_risk_mcp.local_llm_client import LocalLLMClient
 from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.operational_pipeline import OperationalPipeline
 from stock_risk_mcp.pipeline_report import build_pipeline_summary
@@ -165,6 +171,38 @@ def build_command_parser() -> argparse.ArgumentParser:
     report_show = subparsers.add_parser("report-show", help="Show a saved analysis report.")
     report_show.add_argument("--db", type=Path, required=True)
     report_show.add_argument("--report-id", required=True)
+
+    context_report = subparsers.add_parser("agent-context-from-report")
+    context_report.add_argument("--db", type=Path, required=True)
+    context_report.add_argument("--report-id", required=True)
+    context_report.add_argument("--save", action="store_true")
+    context_pipeline = subparsers.add_parser("agent-context-from-pipeline")
+    context_pipeline.add_argument("--db", type=Path, required=True)
+    context_pipeline.add_argument("--pipeline-run-id", required=True)
+    context_pipeline.add_argument("--save", action="store_true")
+    agent_prompt = subparsers.add_parser("agent-prompt")
+    agent_prompt.add_argument("--db", type=Path, required=True)
+    agent_prompt.add_argument("--context-id", required=True)
+    agent_prompt.add_argument("--language", choices=["en", "ko"], default="en")
+    agent_prompt.add_argument("--save", action="store_true")
+    agent_brief = subparsers.add_parser("agent-brief")
+    agent_brief.add_argument("--db", type=Path, required=True)
+    agent_brief.add_argument("--context-id", required=True)
+    agent_brief.add_argument("--save", action="store_true")
+    agent_run = subparsers.add_parser("agent-run-local")
+    agent_run.add_argument("--db", type=Path, required=True)
+    agent_run.add_argument("--prompt-id", required=True)
+    agent_run.add_argument("--backend", choices=["dry-run", "ollama-local", "openai-compat-local", "disabled"], default="dry-run")
+    agent_run.add_argument("--model")
+    agent_run.add_argument("--endpoint-url")
+    agent_run.add_argument("--temperature", type=float, default=0.2)
+    agent_run.add_argument("--max-tokens", type=int)
+    agent_run.add_argument("--save", action="store_true")
+    for name in ("agent-contexts", "agent-prompts", "agent-briefs", "local-llm-responses"):
+        item = subparsers.add_parser(name)
+        item.add_argument("--db", type=Path, required=True)
+        item.add_argument("--limit", type=int, default=50)
+    subparsers.add_parser("agent-tools")
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -523,6 +561,16 @@ def main(argv: list[str] | None = None) -> None:
         "report-policy-suite",
         "reports",
         "report-show",
+        "agent-context-from-report",
+        "agent-context-from-pipeline",
+        "agent-prompt",
+        "agent-brief",
+        "agent-run-local",
+        "agent-contexts",
+        "agent-prompts",
+        "agent-briefs",
+        "agent-tools",
+        "local-llm-responses",
         "backtest",
         "backtest-summary",
         "report",
@@ -636,6 +684,42 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"reports": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_analysis_reports(args.limit)]}
     if args.command == "report-show":
         return RiskRepository(args.db).get_analysis_report(args.report_id).model_dump(mode="json")
+    if args.command == "agent-context-from-report":
+        repository = RiskRepository(args.db)
+        context = build_agent_context_from_report(repository.get_analysis_report(args.report_id))
+        if args.save:
+            repository.save_agent_context(context)
+        return {**context.model_dump(mode="json"), "saved": args.save}
+    if args.command == "agent-context-from-pipeline":
+        repository = RiskRepository(args.db)
+        context = build_agent_context_from_pipeline(repository, args.pipeline_run_id)
+        if args.save:
+            repository.save_agent_context(context)
+        return {**context.model_dump(mode="json"), "saved": args.save}
+    if args.command == "agent-prompt":
+        repository = RiskRepository(args.db)
+        prompt = build_agent_prompt(repository.get_agent_context(args.context_id), args.language)
+        if args.save:
+            repository.save_agent_prompt(prompt)
+        return {**prompt.model_dump(mode="json"), "saved": args.save}
+    if args.command == "agent-brief":
+        repository = RiskRepository(args.db)
+        brief = build_agent_brief(repository.get_agent_context(args.context_id))
+        if args.save:
+            repository.save_agent_brief(brief)
+        return {**brief.model_dump(mode="json"), "saved": args.save}
+    if args.command == "agent-run-local":
+        return run_agent_local(args)
+    if args.command == "agent-contexts":
+        return {"agent_contexts": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_agent_contexts(args.limit)]}
+    if args.command == "agent-prompts":
+        return {"agent_prompts": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_agent_prompts(args.limit)]}
+    if args.command == "agent-briefs":
+        return {"agent_briefs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_agent_briefs(args.limit)]}
+    if args.command == "agent-tools":
+        return {"tools": read_only_tool_manifest()}
+    if args.command == "local-llm-responses":
+        return {"responses": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_local_llm_responses(args.limit)]}
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":
@@ -949,6 +1033,25 @@ def run_analysis_report(args: argparse.Namespace, builder, source_id: str) -> di
         "output_file_saved": saved,
         "output_file_error": output_error,
         "saved_to_analysis_reports": saved_to_db,
+    }
+
+
+def run_agent_local(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    prompt = repository.get_agent_prompt(args.prompt_id)
+    backend = LocalLLMBackend(args.backend.replace("-", "_").upper())
+    request = LocalLLMRequest(
+        backend=backend, model=args.model, endpoint_url=args.endpoint_url, prompt_id=prompt.prompt_id,
+        system_instructions=prompt.system_instructions, user_prompt=prompt.user_prompt,
+        context_json=prompt.context_json, temperature=args.temperature, max_tokens=args.max_tokens,
+    )
+    response = LocalLLMClient().run(request)
+    if args.save:
+        repository.save_local_llm_request(request)
+        repository.save_local_llm_response(response)
+    return {
+        **response.model_dump(mode="json"), "endpoint_url": request.endpoint_url,
+        "request_saved": args.save, "response_saved": args.save,
     }
 
 

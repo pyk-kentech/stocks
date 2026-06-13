@@ -11,6 +11,9 @@ from pydantic import BaseModel
 
 from stock_risk_mcp.compliance import ComplianceRecord
 from stock_risk_mcp.analysis_report import AnalysisReport, ReportSection, ReportType
+from stock_risk_mcp.agent_brief import AgentBrief
+from stock_risk_mcp.agent_context import AgentContext
+from stock_risk_mcp.agent_prompt import AgentPrompt
 from stock_risk_mcp.connector_run import ConnectorMode, ConnectorRun, ConnectorRunStatus, ConnectorType
 from stock_risk_mcp.candidate_universe import CandidateScanResult, ScanRun
 from stock_risk_mcp.basket import (
@@ -46,6 +49,8 @@ from stock_risk_mcp.models import (
     TossSignal,
     TradeProposal,
 )
+from stock_risk_mcp.local_llm import LocalLLMRequest
+from stock_risk_mcp.local_llm_response import LocalLLMResponse
 from stock_risk_mcp.paper_trading import (
     BasketBacktestResult,
     BasketPerformanceSummary,
@@ -1206,6 +1211,66 @@ class RiskRepository:
             rows = connection.execute("SELECT * FROM analysis_reports ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [_analysis_report_from_row(row) for row in rows]
 
+    def save_agent_context(self, item: AgentContext) -> int:
+        return self._save_json_record("agent_contexts", "context_id", item.context_id, "context_json", item.model_dump_json())
+
+    def get_agent_context(self, context_id: str) -> AgentContext:
+        return AgentContext.model_validate_json(self._get_json_record("agent_contexts", "context_id", context_id, "context_json"))
+
+    def list_agent_contexts(self, limit: int = 50) -> list[AgentContext]:
+        return [AgentContext.model_validate_json(value) for value in self._list_json_records("agent_contexts", "context_json", limit)]
+
+    def save_agent_prompt(self, item: AgentPrompt) -> int:
+        return self._save_json_record("agent_prompts", "prompt_id", item.prompt_id, "prompt_json", item.model_dump_json())
+
+    def get_agent_prompt(self, prompt_id: str) -> AgentPrompt:
+        return AgentPrompt.model_validate_json(self._get_json_record("agent_prompts", "prompt_id", prompt_id, "prompt_json"))
+
+    def list_agent_prompts(self, limit: int = 50) -> list[AgentPrompt]:
+        return [AgentPrompt.model_validate_json(value) for value in self._list_json_records("agent_prompts", "prompt_json", limit)]
+
+    def save_agent_brief(self, item: AgentBrief) -> int:
+        return self._save_json_record("agent_briefs", "brief_id", item.brief_id, "brief_json", item.model_dump_json())
+
+    def get_agent_brief(self, brief_id: str) -> AgentBrief:
+        return AgentBrief.model_validate_json(self._get_json_record("agent_briefs", "brief_id", brief_id, "brief_json"))
+
+    def list_agent_briefs(self, limit: int = 50) -> list[AgentBrief]:
+        return [AgentBrief.model_validate_json(value) for value in self._list_json_records("agent_briefs", "brief_json", limit)]
+
+    def save_local_llm_request(self, item: LocalLLMRequest) -> int:
+        return self._save_json_record("local_llm_requests", "request_id", item.request_id, "request_json", item.model_dump_json())
+
+    def save_local_llm_response(self, item: LocalLLMResponse) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO local_llm_responses (response_id, request_id, response_json) VALUES (?, ?, ?)",
+                (item.response_id, item.request_id, item.model_dump_json()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_local_llm_responses(self, limit: int = 50) -> list[LocalLLMResponse]:
+        return [LocalLLMResponse.model_validate_json(value) for value in self._list_json_records("local_llm_responses", "response_json", limit)]
+
+    def _save_json_record(self, table: str, id_column: str, id_value: str, json_column: str, payload: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"INSERT INTO {table} ({id_column}, {json_column}) VALUES (?, ?)", (id_value, payload)
+            )
+            return int(cursor.lastrowid)
+
+    def _get_json_record(self, table: str, id_column: str, id_value: str, json_column: str) -> str:
+        with self._connect() as connection:
+            row = connection.execute(f"SELECT {json_column} FROM {table} WHERE {id_column} = ?", (id_value,)).fetchone()
+        if row is None:
+            raise LookupError(f"{table} record not found: {id_value}")
+        return str(row[json_column])
+
+    def _list_json_records(self, table: str, json_column: str, limit: int) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(f"SELECT {json_column} FROM {table} ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [str(row[json_column]) for row in rows]
+
     def list_ticker_signals(
         self, ticker: str | None = None, as_of_date: date | None = None, limit: int = 200
     ) -> list[TickerSignal]:
@@ -1710,6 +1775,11 @@ class RiskRepository:
             "import_source_results",
             "connector_runs",
             "analysis_reports",
+            "agent_contexts",
+            "agent_prompts",
+            "agent_briefs",
+            "local_llm_requests",
+            "local_llm_responses",
         }
         if table_name not in allowed_tables:
             raise ValueError(f"Unsupported table name: {table_name}")

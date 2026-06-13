@@ -882,3 +882,28 @@ Latest verified result after the Analysis Report Layer:
 ```text
 214 passed
 ```
+## Local LLM Agent Bridge Layer
+
+Added a read-only bridge from stored AnalysisReport and PipelineRun evidence to
+deterministic agent context, prompts, briefs, and optional local LLM requests.
+
+Implemented:
+
+- read-only AgentContext generation for reports and pipeline runs
+- deterministic prompts and briefs without requiring an LLM
+- a read-only MCP lookup facade and tool manifest
+- default `DRY_RUN`, plus `OLLAMA_LOCAL`, `OPENAI_COMPAT_LOCAL`, and `DISABLED`
+- strict localhost-only endpoint validation for both local HTTP backends
+- blocked non-local requests before transport with auditable FAILED responses
+- explicit-only persistence of contexts, prompts, briefs, requests, and responses
+- CLI commands for generation, local execution, inspection, and tool discovery
+
+The bridge cannot execute trades, approve or activate policies, modify broker
+settings, or change hard-risk and safety rules. External cloud endpoints are
+blocked so investment reports and context remain local.
+
+Latest verified result after the Local LLM Agent Bridge Layer:
+
+```text
+229 passed
+```

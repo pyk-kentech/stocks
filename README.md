@@ -925,3 +925,27 @@ DB에는 nullable policy metadata 컬럼을 자동 추가합니다.
 - 시장가, 마진, 옵션 주문은 정책 필드로만 표현하며 MVP에서 실행하지 않음
 - LLM은 제안자이고 Risk Engine이 최종 게이트
 - `BLOCK` 결과는 초보자가 따라 사기 부적합한 제안으로 취급
+## Local LLM Agent Bridge
+
+The Local LLM Agent Bridge turns stored AnalysisReport and PipelineRun records
+into read-only AgentContext, deterministic prompts, and deterministic briefs.
+Its default backend is `DRY_RUN`, which generates the request without making an
+HTTP call. Persistence is opt-in through `--save`.
+
+The agent is explanation-only. Its tool manifest contains read-only lookup
+tools, and it cannot place orders, approve or activate policies, change broker
+settings, or modify hard-risk and safety rules.
+
+`OLLAMA_LOCAL` and `OPENAI_COMPAT_LOCAL` are local-server-only backends.
+Only `localhost`, `127.0.0.1`, and `::1` endpoint hosts are permitted. Any
+non-local endpoint is blocked before HTTP transport with
+`error="non-local endpoint blocked"`. This security policy prevents reports,
+trading context, and prompts from being sent to external cloud endpoints.
+
+```bash
+python -m stock_risk_mcp.cli agent-context-from-report --db data/stock_risk_mcp.sqlite3 --report-id REPORT_ID --save
+python -m stock_risk_mcp.cli agent-prompt --db data/stock_risk_mcp.sqlite3 --context-id CONTEXT_ID --save
+python -m stock_risk_mcp.cli agent-brief --db data/stock_risk_mcp.sqlite3 --context-id CONTEXT_ID
+python -m stock_risk_mcp.cli agent-run-local --db data/stock_risk_mcp.sqlite3 --prompt-id PROMPT_ID --backend dry-run
+python -m stock_risk_mcp.cli agent-tools
+```

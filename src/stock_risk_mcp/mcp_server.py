@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from stock_risk_mcp.models import TradeProposal
+from stock_risk_mcp.agent_tools import read_only_tool_manifest
 from stock_risk_mcp.service import RiskEvaluationService
 
 try:
@@ -34,6 +35,7 @@ def create_mcp_server() -> Any:
         return None
     mcp = FastMCP("stock-risk-mcp")
     mcp.tool()(evaluate_trade_proposal)
+    mcp.tool()(read_only_tool_manifest)
     return mcp
 
 
