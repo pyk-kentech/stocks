@@ -1203,3 +1203,25 @@ Latest verified result after Provider Pack #4:
 ```text
 336 passed
 ```
+
+## v2.8 Real-Time Market Data Foundation + Dynamic Watchlist
+
+Added the first read-only realtime monitoring layer:
+
+- typed market events and rolling intraday metrics
+- deterministic mock and network-free local replay providers
+- bounded symbol/event/HOT-watchlist limits
+- automatic CANDIDATE/HOT/COOLING/BLOCKED watchlist transitions
+- persisted realtime monitor runs and latest watchlist entries
+- `run-realtime-monitor`, `watchlist-list`, `realtime-runs`, and
+  `realtime-show` CLI commands
+- memory-only raw events and rolling history
+
+Relative volume uses the current 1-minute bucket divided by the average of up
+to 15 preceding positive-volume 1-minute buckets for the same symbol and
+region. The current bucket and future data are excluded. No valid history or
+non-positive current volume produces `None`.
+
+This stage is realtime monitoring only. It adds no OrderIntent, broker
+integration, or live order path. The long-term automatic buy/sell goal remains
+scheduled for the execution-gated roadmap after v2.8.

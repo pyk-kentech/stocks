@@ -84,6 +84,10 @@ from stock_risk_mcp.release_check import build_release_check
 from stock_risk_mcp.report_json import render_json
 from stock_risk_mcp.report_markdown import render_markdown
 from stock_risk_mcp.repository import RiskRepository
+from stock_risk_mcp.realtime_market_data import MarketRegion, WatchlistStatus
+from stock_risk_mcp.realtime_monitor import run_realtime_monitor
+from stock_risk_mcp.realtime_provider_mock import MockRealtimeMarketDataProvider
+from stock_risk_mcp.realtime_provider_replay import LocalReplayMarketDataProvider
 from stock_risk_mcp.replay_dataset import load_replay_dataset
 from stock_risk_mcp.replay_run import ReplayRunService
 from stock_risk_mcp.scan_pipeline import run_candidate_scan
@@ -242,6 +246,28 @@ def build_command_parser() -> argparse.ArgumentParser:
     provider_pack_show = subparsers.add_parser("provider-pack-show")
     provider_pack_show.add_argument("--db", type=Path, required=True)
     provider_pack_show.add_argument("--provider-pack-run-id", required=True)
+
+    realtime_monitor = subparsers.add_parser("run-realtime-monitor")
+    realtime_monitor.add_argument("--db", type=Path, required=True)
+    realtime_monitor.add_argument("--provider", choices=["mock", "local-replay"], required=True)
+    realtime_monitor.add_argument("--region", choices=["US", "KR"], required=True)
+    realtime_monitor.add_argument("--symbols", required=True)
+    realtime_monitor.add_argument("--replay-file", type=Path)
+    realtime_monitor.add_argument("--output-dir", type=Path)
+    realtime_monitor.add_argument("--max-events", type=int, default=10_000)
+    realtime_monitor.add_argument("--max-symbols", type=int, default=500)
+    realtime_monitor.add_argument("--max-hot-watchlist-size", type=int, default=20)
+    realtime_monitor.add_argument("--min-dollar-volume-5m", type=float, default=1_000_000)
+    watchlist_list = subparsers.add_parser("watchlist-list")
+    watchlist_list.add_argument("--db", type=Path, required=True)
+    watchlist_list.add_argument("--status", choices=[item.value for item in WatchlistStatus])
+    watchlist_list.add_argument("--limit", type=int, default=200)
+    realtime_runs = subparsers.add_parser("realtime-runs")
+    realtime_runs.add_argument("--db", type=Path, required=True)
+    realtime_runs.add_argument("--limit", type=int, default=50)
+    realtime_show = subparsers.add_parser("realtime-show")
+    realtime_show.add_argument("--db", type=Path, required=True)
+    realtime_show.add_argument("--realtime-monitor-run-id", required=True)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -789,6 +815,10 @@ def main(argv: list[str] | None = None) -> None:
         "run-flow-provider-pack",
         "provider-pack-runs",
         "provider-pack-show",
+        "run-realtime-monitor",
+        "watchlist-list",
+        "realtime-runs",
+        "realtime-show",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1013,6 +1043,36 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         ]}
     if args.command == "provider-pack-show":
         return RiskRepository(args.db).get_provider_pack_run(args.provider_pack_run_id).model_dump(mode="json")
+    if args.command == "run-realtime-monitor":
+        region = MarketRegion(args.region)
+        if args.provider == "local-replay":
+            if args.replay_file is None:
+                return {"status": "FAILED", "error": "--replay-file is required for local-replay"}
+            provider = LocalReplayMarketDataProvider(args.replay_file, region)
+        else:
+            provider = MockRealtimeMarketDataProvider(region)
+        result = run_realtime_monitor(
+            RiskRepository(args.db), provider, args.symbols.split(","), region,
+            output_dir=args.output_dir, max_events=args.max_events, max_symbols=args.max_symbols,
+            max_hot_watchlist_size=args.max_hot_watchlist_size,
+            min_dollar_volume_5m=args.min_dollar_volume_5m,
+        )
+        return result.model_dump(mode="json")
+    if args.command == "watchlist-list":
+        status = WatchlistStatus(args.status) if args.status else None
+        return {"watchlist_entries": [
+            item.model_dump(mode="json")
+            for item in RiskRepository(args.db).list_watchlist_entries(status, args.limit)
+        ]}
+    if args.command == "realtime-runs":
+        return {"realtime_monitor_runs": [
+            item.model_dump(mode="json")
+            for item in RiskRepository(args.db).list_realtime_monitor_runs(args.limit)
+        ]}
+    if args.command == "realtime-show":
+        return RiskRepository(args.db).get_realtime_monitor_run(
+            args.realtime_monitor_run_id
+        ).model_dump(mode="json")
     if args.command == "report-pipeline":
         return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
     if args.command == "report-scan":

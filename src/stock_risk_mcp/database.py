@@ -810,6 +810,34 @@ def create_schema(connection: sqlite3.Connection) -> None:
             errors_json TEXT,
             generated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS realtime_monitor_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            realtime_monitor_run_id TEXT NOT NULL UNIQUE,
+            as_of TEXT NOT NULL,
+            status TEXT NOT NULL,
+            provider_name TEXT NOT NULL,
+            universe_count INTEGER NOT NULL,
+            processed_event_count INTEGER NOT NULL,
+            candidate_count INTEGER NOT NULL,
+            hot_watchlist_count INTEGER NOT NULL,
+            warnings_json TEXT,
+            errors_json TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS watchlist_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            region TEXT NOT NULL,
+            status TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            promotion_reason TEXT NOT NULL,
+            score REAL NOT NULL,
+            metrics_json TEXT,
+            warnings_json TEXT,
+            UNIQUE(symbol, region)
+        );
         """
     )
     _add_missing_columns(

@@ -64,6 +64,13 @@ from stock_risk_mcp.paper_trading import (
 )
 from stock_risk_mcp.pipeline_run import PipelineAlert, PipelineRun
 from stock_risk_mcp.provider_packs import ProviderPackRun, ProviderPackRunStatus, ProviderPackType
+from stock_risk_mcp.realtime_market_data import (
+    MarketRegion,
+    RealtimeMonitorRun,
+    RealtimeMonitorRunStatus,
+    WatchlistEntry,
+    WatchlistStatus,
+)
 from stock_risk_mcp.policy_replay_result import (
     PolicyComparisonResult,
     PolicyReplayMode,
@@ -1594,6 +1601,89 @@ class RiskRepository:
                 rows = connection.execute("SELECT alert_json FROM pipeline_alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [PipelineAlert.model_validate_json(str(row["alert_json"])) for row in rows]
 
+    def save_realtime_monitor_run(self, run: RealtimeMonitorRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO realtime_monitor_runs (
+                    realtime_monitor_run_id, as_of, status, provider_name, universe_count,
+                    processed_event_count, candidate_count, hot_watchlist_count, warnings_json,
+                    errors_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run.realtime_monitor_run_id, run.as_of.isoformat(), run.status.value, run.provider_name,
+                    run.universe_count, run.processed_event_count, run.candidate_count,
+                    run.hot_watchlist_count, _json(run.warnings), _json(run.errors),
+                    run.created_at.isoformat(), run.completed_at.isoformat() if run.completed_at else None,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_realtime_monitor_run(self, realtime_monitor_run_id: str) -> RealtimeMonitorRun:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM realtime_monitor_runs WHERE realtime_monitor_run_id=?",
+                (realtime_monitor_run_id,),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Realtime monitor run not found: {realtime_monitor_run_id}")
+        return _realtime_monitor_run_from_row(row)
+
+    def list_realtime_monitor_runs(self, limit: int = 50) -> list[RealtimeMonitorRun]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM realtime_monitor_runs ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_realtime_monitor_run_from_row(row) for row in rows]
+
+    def upsert_watchlist_entry(self, entry: WatchlistEntry) -> int:
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO watchlist_entries (
+                    symbol, region, status, first_seen_at, last_seen_at, promotion_reason,
+                    score, metrics_json, warnings_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, region) DO UPDATE SET
+                    status=excluded.status, first_seen_at=excluded.first_seen_at,
+                    last_seen_at=excluded.last_seen_at, promotion_reason=excluded.promotion_reason,
+                    score=excluded.score, metrics_json=excluded.metrics_json,
+                    warnings_json=excluded.warnings_json""",
+                (
+                    entry.symbol, entry.region.value, entry.status.value, entry.first_seen_at.isoformat(),
+                    entry.last_seen_at.isoformat(), entry.promotion_reason, entry.score,
+                    entry.metrics_json, _json(entry.warnings),
+                ),
+            )
+            row = connection.execute(
+                "SELECT id FROM watchlist_entries WHERE symbol=? AND region=?",
+                (entry.symbol, entry.region.value),
+            ).fetchone()
+            return int(row["id"])
+
+    def get_watchlist_entry(self, symbol: str, region: MarketRegion) -> WatchlistEntry:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM watchlist_entries WHERE symbol=? AND region=?",
+                (symbol.strip().upper(), region.value),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Watchlist entry not found: {symbol} {region.value}")
+        return _watchlist_entry_from_row(row)
+
+    def list_watchlist_entries(
+        self, status: WatchlistStatus | None = None, limit: int = 200
+    ) -> list[WatchlistEntry]:
+        with self._connect() as connection:
+            if status is None:
+                rows = connection.execute(
+                    "SELECT * FROM watchlist_entries ORDER BY score DESC, symbol LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM watchlist_entries WHERE status=? ORDER BY score DESC, symbol LIMIT ?",
+                    (status.value, limit),
+                ).fetchall()
+        return [_watchlist_entry_from_row(row) for row in rows]
+
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -2591,4 +2681,35 @@ def _provider_pack_run_from_row(row: sqlite3.Row) -> ProviderPackRun:
         errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
         created_at=datetime.fromisoformat(str(row["created_at"])),
         completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
+
+
+def _realtime_monitor_run_from_row(row: sqlite3.Row) -> RealtimeMonitorRun:
+    return RealtimeMonitorRun(
+        realtime_monitor_run_id=str(row["realtime_monitor_run_id"]),
+        as_of=datetime.fromisoformat(str(row["as_of"])),
+        status=RealtimeMonitorRunStatus(str(row["status"])),
+        provider_name=str(row["provider_name"]),
+        universe_count=int(row["universe_count"]),
+        processed_event_count=int(row["processed_event_count"]),
+        candidate_count=int(row["candidate_count"]),
+        hot_watchlist_count=int(row["hot_watchlist_count"]),
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
+
+
+def _watchlist_entry_from_row(row: sqlite3.Row) -> WatchlistEntry:
+    return WatchlistEntry(
+        symbol=str(row["symbol"]),
+        region=MarketRegion(str(row["region"])),
+        status=WatchlistStatus(str(row["status"])),
+        first_seen_at=datetime.fromisoformat(str(row["first_seen_at"])),
+        last_seen_at=datetime.fromisoformat(str(row["last_seen_at"])),
+        promotion_reason=str(row["promotion_reason"]),
+        score=float(row["score"]),
+        metrics_json=str(row["metrics_json"] or "{}"),
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
     )

@@ -1420,3 +1420,38 @@ HIGH/CRITICAL signals by default, change common signal scoring, or add Risk
 Engine hard-risk rules. Positive Flow alone cannot promote EXCLUDE or blocked
 candidates. Flow is research and paper-trading support, not a buy instruction,
 automatic trading signal, or real-order feature.
+
+## v2.8 Realtime Monitoring And Dynamic Watchlist
+
+The realtime foundation performs read-only, bounded intraday monitoring with
+deterministic mock data or a local replay file. It stores monitor-run audit
+records and the latest watchlist state, while raw events and rolling histories
+remain memory-only.
+
+```bash
+python -m stock_risk_mcp.cli run-realtime-monitor --db data/realtime.sqlite3 --provider mock --region US --symbols AAPL,NVDA,TSLA --output-dir realtime_outputs
+python -m stock_risk_mcp.cli watchlist-list --db data/realtime.sqlite3 --status HOT
+python -m stock_risk_mcp.cli realtime-runs --db data/realtime.sqlite3
+python -m stock_risk_mcp.cli realtime-show --db data/realtime.sqlite3 --realtime-monitor-run-id <id>
+```
+
+Local replay uses `--provider local-replay --replay-file <csv-or-json>`.
+Neither provider performs network calls.
+
+`relative_volume` is calculated independently per symbol and region:
+
+```text
+current 1-minute bucket volume
+/
+average positive volume of up to 15 preceding valid 1-minute buckets
+```
+
+The current bucket, future data, non-positive volumes, daily averages, and
+external benchmarks are excluded. No valid history or a non-positive current
+volume produces `relative_volume=None`; that value cannot satisfy the
+relative-volume HOT rule.
+
+This v2.8 layer does not create orders or `OrderIntent`. The long-term goal is
+automatic buying and selling through later execution stages, but live trading
+remains off until separate execution gates, audit logging, and kill switches
+are implemented.
