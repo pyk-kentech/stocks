@@ -40,6 +40,8 @@ from stock_risk_mcp.agent_tools import read_only_tool_manifest
 from stock_risk_mcp.connector_pipeline import run_connectors, run_connectors_and_import
 from stock_risk_mcp.connector_registry import default_connector_registry
 from stock_risk_mcp.data_import import run_unified_import
+from stock_risk_mcp.dashboard import build_daily_dashboard, build_overview_dashboard, build_pipeline_dashboard, build_policy_dashboard
+from stock_risk_mcp.dashboard_models import DashboardBuildResult, DashboardBuildStatus, DashboardType
 from stock_risk_mcp.import_report import import_run_report
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
@@ -236,6 +238,34 @@ def build_command_parser() -> argparse.ArgumentParser:
     notifications.add_argument("--db", type=Path, required=True)
     notifications.add_argument("--source-id")
     notifications.add_argument("--limit", type=int, default=100)
+
+    dashboard_overview = subparsers.add_parser("dashboard-overview")
+    dashboard_overview.add_argument("--db", type=Path, required=True)
+    dashboard_overview.add_argument("--output-file", type=Path, required=True)
+    dashboard_overview.add_argument("--as-of-date", type=date.fromisoformat)
+    dashboard_overview.add_argument("--limit", type=int, default=20)
+    dashboard_overview.add_argument("--save", action="store_true")
+    dashboard_pipeline = subparsers.add_parser("dashboard-pipeline")
+    dashboard_pipeline.add_argument("--db", type=Path, required=True)
+    dashboard_pipeline.add_argument("--pipeline-run-id", required=True)
+    dashboard_pipeline.add_argument("--output-file", type=Path, required=True)
+    dashboard_pipeline.add_argument("--save", action="store_true")
+    dashboard_daily = subparsers.add_parser("dashboard-daily")
+    dashboard_daily.add_argument("--db", type=Path, required=True)
+    dashboard_daily.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    dashboard_daily.add_argument("--output-file", type=Path, required=True)
+    dashboard_daily.add_argument("--save", action="store_true")
+    dashboard_policy = subparsers.add_parser("dashboard-policy")
+    dashboard_policy.add_argument("--db", type=Path, required=True)
+    dashboard_policy.add_argument("--output-file", type=Path, required=True)
+    dashboard_policy.add_argument("--limit", type=int, default=20)
+    dashboard_policy.add_argument("--save", action="store_true")
+    dashboard_builds = subparsers.add_parser("dashboard-builds")
+    dashboard_builds.add_argument("--db", type=Path, required=True)
+    dashboard_builds.add_argument("--limit", type=int, default=50)
+    dashboard_show = subparsers.add_parser("dashboard-show")
+    dashboard_show.add_argument("--db", type=Path, required=True)
+    dashboard_show.add_argument("--dashboard-id", required=True)
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -458,6 +488,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     run_paper_pipeline.add_argument("--no-paper-trade", action="store_true")
     run_paper_pipeline.add_argument("--no-replay-snapshot", action="store_true")
     add_pipeline_notification_args(run_paper_pipeline)
+    add_pipeline_dashboard_args(run_paper_pipeline)
 
     run_policy_pipeline = subparsers.add_parser("run-policy-evaluation-pipeline", help="Run policy replay evaluation.")
     add_policy_replay_args(run_policy_pipeline, storage_options=False, include_run_id=False)
@@ -489,6 +520,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     watch.add_argument("--save-basket", action="store_true")
     watch.add_argument("--no-paper-trade", action="store_true")
     add_pipeline_notification_args(watch)
+    add_pipeline_dashboard_args(watch)
     return parser
 
 
@@ -569,6 +601,11 @@ def add_pipeline_notification_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--notification-min-severity", choices=["info", "warning", "high", "critical"], default="info")
 
 
+def add_pipeline_dashboard_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--build-dashboard", action="store_true")
+    parser.add_argument("--dashboard-output-file", type=Path)
+
+
 def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--basket-id", required=True)
@@ -629,6 +666,12 @@ def main(argv: list[str] | None = None) -> None:
         "notification-runs",
         "notification-show",
         "notifications",
+        "dashboard-overview",
+        "dashboard-pipeline",
+        "dashboard-daily",
+        "dashboard-policy",
+        "dashboard-builds",
+        "dashboard-show",
         "backtest",
         "backtest-summary",
         "report",
@@ -796,6 +839,18 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 for item in RiskRepository(args.db).list_notification_messages(args.source_id, args.limit)
             ]
         }
+    if args.command == "dashboard-overview":
+        return build_overview_dashboard(RiskRepository(args.db), args.output_file, args.as_of_date, args.limit, args.save).model_dump(mode="json")
+    if args.command == "dashboard-pipeline":
+        return build_pipeline_dashboard(RiskRepository(args.db), args.pipeline_run_id, args.output_file, args.save).model_dump(mode="json")
+    if args.command == "dashboard-daily":
+        return build_daily_dashboard(RiskRepository(args.db), args.as_of_date, args.output_file, args.save).model_dump(mode="json")
+    if args.command == "dashboard-policy":
+        return build_policy_dashboard(RiskRepository(args.db), args.output_file, args.limit, args.save).model_dump(mode="json")
+    if args.command == "dashboard-builds":
+        return {"dashboard_builds": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_dashboard_builds(args.limit)]}
+    if args.command == "dashboard-show":
+        return RiskRepository(args.db).get_dashboard_build(args.dashboard_id).model_dump(mode="json")
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":
@@ -1409,6 +1464,22 @@ def _run_operational_paper(args: argparse.Namespace, mode: PipelineMode = Pipeli
             note = f"notification_status=FAILED; notification_error={error}"
             repository.update_pipeline_run(run.model_copy(update={"notes": [*run.notes, note]}))
             output.update({"notification_run_id": None, "notification_status": "FAILED", "notification_error": str(error)})
+    if getattr(args, "build_dashboard", False):
+        dashboard_path = args.dashboard_output_file or Path("dashboard") / f"pipeline_{execution.run.pipeline_run_id}.html"
+        try:
+            dashboard = build_pipeline_dashboard(repository, execution.run.pipeline_run_id, dashboard_path, save=True)
+        except Exception as error:
+            dashboard = DashboardBuildResult(
+                dashboard_type=DashboardType.PIPELINE_RUN, source_id=execution.run.pipeline_run_id,
+                status=DashboardBuildStatus.FAILED, output_path=str(dashboard_path),
+                errors=[f"dashboard build failed: {error}"],
+            )
+            repository.save_dashboard_build(dashboard)
+        run = repository.get_pipeline_run(execution.run.pipeline_run_id)
+        note = f"dashboard_id={dashboard.dashboard_id}; dashboard_status={dashboard.status.value}"
+        repository.update_pipeline_run(run.model_copy(update={"notes": [*run.notes, note]}))
+        output["dashboard_id"] = dashboard.dashboard_id
+        output["dashboard_status"] = dashboard.status.value
     return output
 
 

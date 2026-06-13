@@ -84,6 +84,43 @@ def test_paper_pipeline_notification_failure_does_not_change_pipeline_status(tmp
     assert run.status.value == result["status"]
 
 
+def test_paper_pipeline_build_dashboard_records_result_without_changing_status(tmp_path, capsys) -> None:
+    db = tmp_path / "risk.sqlite3"
+    repository = RiskRepository(db)
+    for ticker in ("AAA", "BBB", "CCC"):
+        repository.save_price_bars(_bars(ticker))
+
+    result = _run(capsys, [
+        "run-paper-pipeline", "--db", str(db), "--as-of-date", "2026-01-20",
+        "--account-equity", "10000", "--cash-available", "5000", "--horizon-days", "10",
+        "--build-dashboard", "--dashboard-output-file", str(tmp_path / "pipeline.html"),
+    ])
+    run = repository.get_pipeline_run(result["pipeline_run_id"])
+
+    assert result["dashboard_id"]
+    assert any(result["dashboard_id"] in note for note in run.notes)
+    assert run.status.value == result["status"]
+
+
+def test_paper_pipeline_dashboard_failure_does_not_change_pipeline_status(tmp_path, capsys) -> None:
+    db = tmp_path / "risk.sqlite3"
+    bad_output = tmp_path / "existing-directory"
+    bad_output.mkdir()
+    repository = RiskRepository(db)
+    for ticker in ("AAA", "BBB", "CCC"):
+        repository.save_price_bars(_bars(ticker))
+
+    result = _run(capsys, [
+        "run-paper-pipeline", "--db", str(db), "--as-of-date", "2026-01-20",
+        "--account-equity", "10000", "--cash-available", "5000", "--horizon-days", "10",
+        "--build-dashboard", "--dashboard-output-file", str(bad_output),
+    ])
+    run = repository.get_pipeline_run(result["pipeline_run_id"])
+
+    assert result["dashboard_status"] == "FAILED"
+    assert run.status.value == result["status"]
+
+
 def _run(capsys, args):
     main(args)
     return json.loads(capsys.readouterr().out)

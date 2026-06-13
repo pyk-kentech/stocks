@@ -982,3 +982,24 @@ python -m stock_risk_mcp.cli notification-runs --db data/stock_risk_mcp.sqlite3
 Saved `dedupe_key` values prevent repeated delivery. Local LLM notifications
 contain at most a 500-character response preview; full responses remain in the
 original local database record.
+## Local Static Dashboard
+
+The Local Dashboard layer generates self-contained UTF-8 HTML files from stored
+paper-trading and research-monitoring records. It starts no web server, makes no
+external network request, and uses no CDN, external JavaScript, CSS, or images.
+Dashboards contain no order controls, investment advice, or performance
+guarantees.
+
+```bash
+python -m stock_risk_mcp.cli dashboard-overview --db data/stock_risk_mcp.sqlite3 --output-file dashboard/overview.html --limit 20 --save
+python -m stock_risk_mcp.cli dashboard-pipeline --db data/stock_risk_mcp.sqlite3 --pipeline-run-id PIPELINE_ID --output-file dashboard/pipeline.html --save
+python -m stock_risk_mcp.cli dashboard-daily --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --output-file dashboard/daily.html --save
+python -m stock_risk_mcp.cli dashboard-policy --db data/stock_risk_mcp.sqlite3 --output-file dashboard/policy.html --save
+python -m stock_risk_mcp.cli run-paper-pipeline ... --build-dashboard --dashboard-output-file dashboard/pipeline.html
+```
+
+Generated files can be opened directly in a browser with
+`start dashboard/overview.html`. An optional dependency-free smoke check is
+available with `python scripts/preview_dashboard.py dashboard/overview.html`
+and can attempt a local browser open with `--open`. Browser smoke is optional
+and is not part of the required pytest or CI path.

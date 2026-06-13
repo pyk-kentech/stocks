@@ -931,3 +931,26 @@ Latest verified result after the Alert Delivery / Notification Layer:
 ```text
 243 passed
 ```
+## Local Static Dashboard Layer
+
+Added self-contained static HTML dashboards over stored pipeline, alert,
+notification, report, brief, local LLM, import, connector, and policy evidence.
+
+Implemented:
+
+- persisted DashboardBuildResult audit records
+- overview, pipeline, daily, and policy dashboard builders
+- escaped HTML, inline CSS, severity ordering, tables, and structured details
+- no external scripts, stylesheets, images, CDNs, or network requests
+- dashboard CLI build and inspection commands
+- opt-in pipeline/watch dashboard generation that preserves pipeline status
+- dependency-free optional local preview/smoke script
+
+Dashboards are for paper-trading and research monitoring only and cannot
+execute orders, activate policies, or guarantee performance.
+
+Latest verified result after the Local Static Dashboard Layer:
+
+```text
+251 passed
+```

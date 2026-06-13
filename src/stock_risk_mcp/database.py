@@ -739,6 +739,19 @@ def create_schema(connection: sqlite3.Connection) -> None:
             delivery_status TEXT NOT NULL,
             error TEXT
         );
+        CREATE TABLE IF NOT EXISTS dashboard_builds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dashboard_id TEXT NOT NULL UNIQUE,
+            dashboard_type TEXT NOT NULL,
+            as_of_date TEXT,
+            source_id TEXT,
+            status TEXT NOT NULL,
+            output_path TEXT,
+            section_count INTEGER NOT NULL,
+            warnings_json TEXT,
+            errors_json TEXT,
+            generated_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

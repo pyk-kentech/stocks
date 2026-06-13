@@ -15,6 +15,7 @@ from stock_risk_mcp.agent_brief import AgentBrief
 from stock_risk_mcp.agent_context import AgentContext
 from stock_risk_mcp.agent_prompt import AgentPrompt
 from stock_risk_mcp.connector_run import ConnectorMode, ConnectorRun, ConnectorRunStatus, ConnectorType
+from stock_risk_mcp.dashboard_models import DashboardBuildResult, DashboardBuildStatus, DashboardType
 from stock_risk_mcp.candidate_universe import CandidateScanResult, ScanRun
 from stock_risk_mcp.basket import (
     BasketAllocation,
@@ -1329,6 +1330,34 @@ class RiskRepository:
             ).fetchone()
         return row is not None
 
+    def save_dashboard_build(self, result: DashboardBuildResult) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO dashboard_builds (
+                    dashboard_id, dashboard_type, as_of_date, source_id, status, output_path,
+                    section_count, warnings_json, errors_json, generated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    result.dashboard_id, result.dashboard_type.value,
+                    result.as_of_date.isoformat() if result.as_of_date else None, result.source_id,
+                    result.status.value, result.output_path, result.section_count, _json(result.warnings),
+                    _json(result.errors), result.generated_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_dashboard_build(self, dashboard_id: str) -> DashboardBuildResult:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM dashboard_builds WHERE dashboard_id=?", (dashboard_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Dashboard build not found: {dashboard_id}")
+        return _dashboard_build_from_row(row)
+
+    def list_dashboard_builds(self, limit: int = 50) -> list[DashboardBuildResult]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM dashboard_builds ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_dashboard_build_from_row(row) for row in rows]
+
     def _save_json_record(self, table: str, id_column: str, id_value: str, json_column: str, payload: str) -> int:
         with self._connect() as connection:
             cursor = connection.execute(
@@ -1859,6 +1888,7 @@ class RiskRepository:
             "local_llm_responses",
             "notification_runs",
             "notification_messages",
+            "dashboard_builds",
         }
         if table_name not in allowed_tables:
             raise ValueError(f"Unsupported table name: {table_name}")
@@ -2347,4 +2377,16 @@ def _notification_message_from_row(row: sqlite3.Row) -> NotificationMessage:
         created_at=datetime.fromisoformat(str(row["created_at"])),
         delivered_at=datetime.fromisoformat(str(row["delivered_at"])) if row["delivered_at"] else None,
         delivery_status=str(row["delivery_status"]), error=row["error"],
+    )
+
+
+def _dashboard_build_from_row(row: sqlite3.Row) -> DashboardBuildResult:
+    return DashboardBuildResult(
+        dashboard_id=str(row["dashboard_id"]), dashboard_type=DashboardType(str(row["dashboard_type"])),
+        as_of_date=date.fromisoformat(str(row["as_of_date"])) if row["as_of_date"] else None,
+        source_id=row["source_id"], status=DashboardBuildStatus(str(row["status"])),
+        output_path=row["output_path"], section_count=int(row["section_count"]),
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
+        generated_at=datetime.fromisoformat(str(row["generated_at"])),
     )
