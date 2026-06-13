@@ -1003,3 +1003,28 @@ Generated files can be opened directly in a browser with
 available with `python scripts/preview_dashboard.py dashboard/overview.html`
 and can attempt a local browser open with `--open`. Browser smoke is optional
 and is not part of the required pytest or CI path.
+## End-to-End Local Demo And Release Hardening
+
+The deterministic local demo validates the complete mock/local workflow:
+connectors, unified import, paper pipeline, analysis report, read-only agent
+context and prompt, local LLM `DRY_RUN`, local-file notification, static
+dashboard, and JSON summary.
+
+It uses no external provider API, web request, scraping, or real order
+execution. Demo results are system smoke/release validation results, not
+investment advice.
+
+```bash
+python -m stock_risk_mcp.cli run-local-demo --db data/demo.sqlite3 --as-of-date 2026-06-13 --output-dir demo_outputs --ticker AAPL --ticker TSLA --ticker NVDA
+python -m stock_risk_mcp.cli system-smoke --db data/smoke.sqlite3 --output-dir smoke_outputs
+python -m stock_risk_mcp.cli release-check
+```
+
+`run-local-demo` records every stage as completed, skipped, or failed and writes
+`demo_summary.json`, `notification.md`, `dashboard.html`, and `report.md`.
+Expected step failures are returned as JSON without losing the location of the
+failure. `release-check` prints recommended commands and a tag suggestion but
+does not run verification commands or create a git tag.
+
+Run `system-smoke` before attaching any future real provider adapter. A provider
+adapter remains outside the deterministic local-demo security boundary.

@@ -42,6 +42,8 @@ from stock_risk_mcp.connector_registry import default_connector_registry
 from stock_risk_mcp.data_import import run_unified_import
 from stock_risk_mcp.dashboard import build_daily_dashboard, build_overview_dashboard, build_pipeline_dashboard, build_policy_dashboard
 from stock_risk_mcp.dashboard_models import DashboardBuildResult, DashboardBuildStatus, DashboardType
+from stock_risk_mcp.demo_pipeline import run_local_demo
+from stock_risk_mcp.demo_report import DEMO_DISCLAIMER
 from stock_risk_mcp.import_report import import_run_report
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
@@ -71,6 +73,7 @@ from stock_risk_mcp.policy_promotion import activate_policy, approve_policy, cre
 from stock_risk_mcp.policy_replay import replay_policy_on_replay_run
 from stock_risk_mcp.policy_replay_batch import run_policy_replay_batch
 from stock_risk_mcp.reporting import ReportService
+from stock_risk_mcp.release_check import build_release_check
 from stock_risk_mcp.report_json import render_json
 from stock_risk_mcp.report_markdown import render_markdown
 from stock_risk_mcp.repository import RiskRepository
@@ -84,6 +87,7 @@ from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
 from stock_risk_mcp.strategy_optimizer import StrategyOptimizer
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
+from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
 from stock_risk_mcp.toss_signal_file import load_toss_signals
 from stock_risk_mcp.watch_loop import run_watch_loop
@@ -266,6 +270,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     dashboard_show = subparsers.add_parser("dashboard-show")
     dashboard_show.add_argument("--db", type=Path, required=True)
     dashboard_show.add_argument("--dashboard-id", required=True)
+
+    demo = subparsers.add_parser("run-local-demo")
+    demo.add_argument("--db", type=Path, required=True)
+    demo.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    demo.add_argument("--output-dir", type=Path, required=True)
+    demo.add_argument("--ticker", action="append")
+    demo.add_argument("--account-equity", type=float, default=10_000)
+    demo.add_argument("--cash-available", type=float, default=5_000)
+    demo.add_argument("--horizon-days", type=int, default=10)
+    demo.add_argument("--no-save-intermediate", action="store_true")
+    smoke = subparsers.add_parser("system-smoke")
+    smoke.add_argument("--db", type=Path, required=True)
+    smoke.add_argument("--output-dir", type=Path, required=True)
+    smoke.add_argument("--as-of-date", type=date.fromisoformat)
+    subparsers.add_parser("release-check")
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -672,6 +691,9 @@ def main(argv: list[str] | None = None) -> None:
         "dashboard-policy",
         "dashboard-builds",
         "dashboard-show",
+        "run-local-demo",
+        "system-smoke",
+        "release-check",
         "backtest",
         "backtest-summary",
         "report",
@@ -851,6 +873,17 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"dashboard_builds": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_dashboard_builds(args.limit)]}
     if args.command == "dashboard-show":
         return RiskRepository(args.db).get_dashboard_build(args.dashboard_id).model_dump(mode="json")
+    if args.command == "run-local-demo":
+        result = run_local_demo(
+            args.db, args.as_of_date, args.output_dir, tickers=args.ticker,
+            account_equity=args.account_equity, cash_available=args.cash_available,
+            horizon_days=args.horizon_days, save_intermediate=not args.no_save_intermediate,
+        )
+        return {**result.model_dump(mode="json"), **result.key_outputs, "disclaimer": DEMO_DISCLAIMER}
+    if args.command == "system-smoke":
+        return run_system_smoke(args.db, args.output_dir, args.as_of_date)
+    if args.command == "release-check":
+        return build_release_check()
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":

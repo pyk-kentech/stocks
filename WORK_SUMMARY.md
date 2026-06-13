@@ -954,3 +954,27 @@ Latest verified result after the Local Static Dashboard Layer:
 ```text
 251 passed
 ```
+## End-to-End Demo / Release Hardening Layer
+
+Added a deterministic local orchestration layer that validates the existing
+mock connector, import, operational pipeline, report, read-only agent, local
+LLM dry-run, notification, and dashboard layers together.
+
+Implemented:
+
+- typed demo runs and per-step completed/skipped/failed results
+- core-step failure isolation and non-core partial status aggregation
+- deterministic mock connector and imported price-history workflow
+- local LLM DRY_RUN with explicit no-network metrics
+- generated `demo_summary.json`, `notification.md`, `dashboard.html`, and `report.md`
+- lightweight system-smoke checks and non-mutating release checklist
+- `run-local-demo`, `system-smoke`, and `release-check` CLI commands
+
+The layer performs no external API calls, scraping, web requests, or real order
+execution. Its results are release validation evidence, not investment advice.
+
+Latest verified result after the End-to-End Demo / Release Hardening Layer:
+
+```text
+258 passed
+```
