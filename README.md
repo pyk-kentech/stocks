@@ -1,3 +1,53 @@
+# Project Direction
+
+`stock-risk-mcp`의 장기 목표는 자동매매 가능한 risk-capped trading
+research and execution platform입니다.
+
+현재 구현 단계에서는 실제 주문 기능이 없습니다. 최종 목표는
+자동매수/자동매도가 가능한 시스템이지만, live execution은 별도
+단계에서 강한 risk gate와 kill switch를 갖춘 뒤 구현합니다.
+
+개발 단계는 다음처럼 분리합니다.
+
+1. **Research / Paper Trading**
+   - 현재까지 구현된 scan, Provider Pack, paper trading, replay, report,
+     dashboard 계층
+2. **Realtime Monitoring**
+   - 전체 universe 얕은 감시, Hot Watchlist 자동 갱신, intraday
+     candidate signal 생성
+   - 실제 주문 없음
+3. **Execution Intent Layer**
+   - strategy는 주문을 직접 실행하지 않고 `BUY`, `SELL`, `STOP`,
+     `TAKE_PROFIT`, `REDUCE` 등의 `OrderIntent`만 생성
+   - 모든 intent는 deterministic risk gate를 통과해야 함
+4. **Live Execution Layer**
+   - broker API 연동은 별도 단계에서 구현
+   - live trading은 기본 OFF이며 명시적 활성화와 paper/sandbox 검증 필요
+
+구현 순서:
+
+```text
+v2.8.0 Real-Time Market Data Foundation + Dynamic Watchlist Engine
+v2.9.0 Order Intent / Execution Gate Foundation
+v3.0.0 Broker Sandbox Execution Adapter
+v3.1.0 Live Trading Guardrails
+```
+
+`v2.8.0` 범위는 realtime monitoring과 dynamic watchlist까지이며 실제
+주문이나 broker/account endpoint는 포함하지 않습니다.
+
+장기 execution 계층에도 다음 안전 계약은 유지됩니다.
+
+- hard-risk rule은 strategy, agent, optimizer가 변경할 수 없음
+- margin과 options는 기본 금지
+- market order는 기본 금지
+- stop-loss 비활성화 금지
+- max daily loss, max single position, min cash 강제
+- kill switch 필수
+- 모든 OrderIntent와 execution result를 DB 감사 로그에 저장
+- live trading 기본 OFF
+- paper, sandbox, live mode를 명확히 분리
+
 # Policy Report
 
 백테스트 결과가 쌓이면 `report` 명령으로 리스크 정책이 실제 이후 수익률과 어떤 관계가 있었는지 분석할 수 있습니다.

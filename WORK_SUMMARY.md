@@ -10,7 +10,55 @@ Project path:
 D:\KENTECH\stock\stock-risk-mcp
 ```
 
-The project started as a local MVP for evaluating stock trade proposals. It does not execute real orders and does not call external APIs. The core idea is that an LLM or external client may propose a trade, but a deterministic risk engine acts as the final gate.
+The project started as a local MVP for evaluating stock trade proposals. The
+current implementation does not execute real orders. Its long-term goal is an
+automated-buying and automated-selling, risk-capped trading research and
+execution platform. Live execution is deliberately deferred until a separate
+stage adds strong risk gates, a kill switch, explicit enablement, and complete
+audit logging. A deterministic risk engine remains the final gate.
+
+## Long-Term Execution Roadmap
+
+The project is divided into four stages:
+
+1. **Research / Paper Trading**
+   - implemented scan, Provider Pack, paper trading, replay, report, and
+     dashboard layers
+2. **Realtime Monitoring**
+   - shallow whole-universe monitoring, automatic Hot Watchlist updates, and
+     intraday candidate signals
+   - no real orders in this stage
+3. **Execution Intent Layer**
+   - strategies create auditable `OrderIntent` records instead of directly
+     placing orders
+   - every BUY, SELL, STOP, TAKE_PROFIT, or REDUCE intent must pass the risk
+     gate
+4. **Live Execution Layer**
+   - broker integration remains default-off and requires explicit activation
+   - paper and sandbox validation must precede live use
+
+Planned implementation order:
+
+```text
+v2.8.0 Real-Time Market Data Foundation + Dynamic Watchlist Engine
+v2.9.0 Order Intent / Execution Gate Foundation
+v3.0.0 Broker Sandbox Execution Adapter
+v3.1.0 Live Trading Guardrails
+```
+
+The `v2.8.0` scope remains realtime monitoring and dynamic watchlists only. It
+does not add order, broker account, balance, or position endpoints.
+
+Execution safety contracts are permanent:
+
+- strategy, agent, and optimizer cannot modify hard-risk rules
+- margin, options, and market orders are disabled by default
+- stop-loss protection cannot be disabled
+- maximum daily loss, maximum single position, and minimum cash are enforced
+- a kill switch is mandatory
+- every OrderIntent and execution result is stored as a DB audit record
+- live trading is default-off
+- paper, sandbox, and live modes remain explicitly separated
 
 ## Initial MVP
 
