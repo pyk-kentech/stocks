@@ -618,6 +618,34 @@ def create_schema(connection: sqlite3.Connection) -> None:
             error_message TEXT,
             metadata_json TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS import_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            import_run_id TEXT NOT NULL UNIQUE,
+            as_of_date TEXT,
+            status TEXT NOT NULL,
+            total_row_count INTEGER NOT NULL,
+            total_saved_count INTEGER NOT NULL,
+            total_skipped_duplicate_count INTEGER NOT NULL,
+            total_error_count INTEGER NOT NULL,
+            notes_json TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS import_source_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            import_run_id TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            row_count INTEGER NOT NULL,
+            saved_count INTEGER NOT NULL,
+            skipped_duplicate_count INTEGER NOT NULL,
+            error_count INTEGER NOT NULL,
+            warnings_json TEXT,
+            errors_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """
     )
     _add_missing_columns(

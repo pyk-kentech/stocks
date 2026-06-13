@@ -723,6 +723,29 @@ python -m stock_risk_mcp.cli watch-loop --db data/stock_risk_mcp.sqlite3 --as-of
 
 The watch loop performs local paper operations only and never places orders.
 
+## Unified Data Import Pipeline
+
+The Unified Data Import Pipeline validates and imports specified local CSV/JSON
+files into the existing price, compliance, and normalized signal tables. It
+does not call external APIs, request realtime data, or place orders. Each run
+stores source-level row, saved, duplicate-skip, and error counts. A malformed
+source is recorded without discarding successful sources from the same run.
+
+```bash
+python -m stock_risk_mcp.cli import-data --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --price-history-file data/prices.csv --nasdaq-noncompliant-file data/noncompliant.csv --news-signal-file data/news.csv --dilution-signal-file data/dilution.csv --toss-signal-file data/toss.csv --flow-signal-file data/flow.csv
+python -m stock_risk_mcp.cli import-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli import-show --db data/stock_risk_mcp.sqlite3 --import-run-id <import_run_id>
+```
+
+`import-data` is append-only operational ingest. Existing price rows and
+duplicates within one file use `(ticker, date)` and are skipped without
+updating stored values. The standalone `ingest-prices` command keeps its
+existing UPSERT behavior for deliberate manual correction or refresh.
+Compliance uses `(ticker, notice_date, source_name, issue, deficiency)`;
+signals use the existing normalized signal dedupe key. Signal and compliance
+records after `as_of_date` are skipped and recorded as warnings. Imported data
+is immediately available to the local scan and paper pipelines.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

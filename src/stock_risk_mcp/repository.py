@@ -21,6 +21,7 @@ from stock_risk_mcp.basket import (
 )
 from stock_risk_mcp.database import connect_db, create_schema
 from stock_risk_mcp.indicators import IndicatorSignal, IndicatorValue
+from stock_risk_mcp.import_run import ImportRun, ImportRunStatus, ImportSourceResult, ImportSourceType
 from stock_risk_mcp.basket_performance import summarize_basket_performance
 from stock_risk_mcp.models import (
     BacktestOutcome,
@@ -270,6 +271,11 @@ class RiskRepository:
                 ids.append(int(row["id"]))
         return ids
 
+    def list_price_bar_keys(self) -> set[tuple[str, str]]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT ticker, date FROM price_history").fetchall()
+        return {(str(row["ticker"]), str(row["date"])) for row in rows}
+
     def get_price_history(self, ticker: str, start_date: date, end_date: date) -> list[PriceBar]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -476,6 +482,16 @@ class RiskRepository:
                 (ticker.strip().upper(),),
             ).fetchall()
         return [_compliance_record_from_row(row) for row in rows]
+
+    def list_compliance_dedupe_keys(self) -> set[tuple[str, str | None, str, str | None, str | None]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT ticker, notice_date, source_name, issue, deficiency FROM compliance_records"
+            ).fetchall()
+        return {
+            (str(row["ticker"]), row["notice_date"], str(row["source_name"]), row["issue"], row["deficiency"])
+            for row in rows
+        }
 
     def save_indicator_values(self, values: list[IndicatorValue]) -> list[int]:
         ids: list[int] = []
@@ -1089,6 +1105,49 @@ class RiskRepository:
                 existing.add(key)
         return ids
 
+    def save_import_run(self, run: ImportRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO import_runs (
+                    import_run_id, as_of_date, status, total_row_count, total_saved_count,
+                    total_skipped_duplicate_count, total_error_count, notes_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run.import_run_id, run.as_of_date.isoformat() if run.as_of_date else None, run.status.value,
+                    run.total_row_count, run.total_saved_count, run.total_skipped_duplicate_count,
+                    run.total_error_count, _json(run.notes), run.created_at.isoformat(),
+                    run.completed_at.isoformat() if run.completed_at else None,
+                ),
+            )
+            for result in run.source_results:
+                connection.execute(
+                    """INSERT INTO import_source_results (
+                        import_run_id, source_type, file_path, row_count, saved_count,
+                        skipped_duplicate_count, error_count, warnings_json, errors_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        run.import_run_id, result.source_type.value, result.file_path, result.row_count,
+                        result.saved_count, result.skipped_duplicate_count, result.error_count,
+                        _json(result.warnings), _json(result.errors),
+                    ),
+                )
+            return int(cursor.lastrowid)
+
+    def get_import_run(self, import_run_id: str) -> ImportRun:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM import_runs WHERE import_run_id = ?", (import_run_id,)).fetchone()
+            if row is None:
+                raise LookupError(f"Import run not found: {import_run_id}")
+            results = connection.execute(
+                "SELECT * FROM import_source_results WHERE import_run_id = ? ORDER BY id", (import_run_id,)
+            ).fetchall()
+        return _import_run_from_rows(row, results)
+
+    def list_import_runs(self, limit: int = 50) -> list[ImportRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT import_run_id FROM import_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self.get_import_run(str(row["import_run_id"])) for row in rows]
+
     def list_ticker_signals(
         self, ticker: str | None = None, as_of_date: date | None = None, limit: int = 200
     ) -> list[TickerSignal]:
@@ -1582,6 +1641,8 @@ class RiskRepository:
             "pipeline_alerts",
             "data_sources",
             "ingestion_runs",
+            "import_runs",
+            "import_source_results",
         }
         if table_name not in allowed_tables:
             raise ValueError(f"Unsupported table name: {table_name}")
@@ -1595,6 +1656,30 @@ class RiskRepository:
 
 def _model_json(model: BaseModel) -> str:
     return _json(model.model_dump(mode="json"))
+
+
+def _import_run_from_rows(row: sqlite3.Row, results: list[sqlite3.Row]) -> ImportRun:
+    return ImportRun(
+        import_run_id=str(row["import_run_id"]),
+        as_of_date=date.fromisoformat(str(row["as_of_date"])) if row["as_of_date"] else None,
+        status=ImportRunStatus(str(row["status"])),
+        source_results=[
+            ImportSourceResult(
+                source_type=ImportSourceType(str(item["source_type"])),
+                file_path=str(item["file_path"]),
+                row_count=int(item["row_count"]),
+                saved_count=int(item["saved_count"]),
+                skipped_duplicate_count=int(item["skipped_duplicate_count"]),
+                error_count=int(item["error_count"]),
+                warnings=json.loads(item["warnings_json"]) if item["warnings_json"] else [],
+                errors=json.loads(item["errors_json"]) if item["errors_json"] else [],
+            )
+            for item in results
+        ],
+        notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
 
 
 def _json(payload: Any) -> str:

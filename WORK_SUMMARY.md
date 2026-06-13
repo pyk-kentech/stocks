@@ -810,3 +810,21 @@ Detected skill directories:
 The contents of those skills are intentionally not included here.
 
 The current session may still show only skills loaded at session start. A new Codex session may be needed for the copied skills to appear in `/skills`.
+
+## Unified Data Import Pipeline
+
+Added a fault-isolated local CSV/JSON import pipeline for price history,
+Nasdaq compliance records, and news/dilution/Toss/flow signals.
+
+Implemented:
+
+- persisted `ImportRun` and per-source `ImportSourceResult` reports
+- `COMPLETED`, `PARTIAL`, and `FAILED` aggregate status
+- append-only price import with DB and same-file `(ticker, date)` duplicate skips
+- compliance and normalized signal dedupe
+- optional `as_of_date` cutoff for compliance and signals
+- row-level validation errors without aborting other valid rows or sources
+- local-file-only `import-data`, `import-runs`, and `import-show` commands
+
+`import-data` never updates existing price rows. The existing standalone
+`ingest-prices` UPSERT remains available for deliberate manual correction.

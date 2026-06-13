@@ -27,6 +27,8 @@ from stock_risk_mcp.candidate_universe import (
     load_manual_universe,
 )
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
+from stock_risk_mcp.data_import import run_unified_import
+from stock_risk_mcp.import_report import import_run_report
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
@@ -107,6 +109,19 @@ def build_command_parser() -> argparse.ArgumentParser:
     ingest_prices = subparsers.add_parser("ingest-prices", help="Ingest CSV/JSON price history into SQLite.")
     ingest_prices.add_argument("--file", type=Path, required=True, help="CSV/JSON price history file")
     ingest_prices.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
+
+    import_data = subparsers.add_parser("import-data", help="Run append-only local unified data import.")
+    import_data.add_argument("--db", type=Path, required=True)
+    import_data.add_argument("--as-of-date", type=date.fromisoformat)
+    import_data.add_argument("--price-history-file", type=Path)
+    import_data.add_argument("--nasdaq-noncompliant-file", type=Path)
+    add_signal_file_args(import_data)
+    import_runs = subparsers.add_parser("import-runs", help="List unified import runs.")
+    import_runs.add_argument("--db", type=Path, required=True)
+    import_runs.add_argument("--limit", type=int, default=50)
+    import_show = subparsers.add_parser("import-show", help="Show a unified import run.")
+    import_show.add_argument("--db", type=Path, required=True)
+    import_show.add_argument("--import-run-id", required=True)
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -451,6 +466,9 @@ def main(argv: list[str] | None = None) -> None:
         "ingest-nasdaq-noncompliant",
         "check-compliance",
         "ingest-prices",
+        "import-data",
+        "import-runs",
+        "import-show",
         "backtest",
         "backtest-summary",
         "report",
@@ -522,6 +540,12 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return run_check_compliance(args)
     if args.command == "ingest-prices":
         return run_ingest_prices(args)
+    if args.command == "import-data":
+        return run_import_data(args)
+    if args.command == "import-runs":
+        return {"import_runs": [import_run_report(item) for item in RiskRepository(args.db).list_import_runs(args.limit)]}
+    if args.command == "import-show":
+        return import_run_report(RiskRepository(args.db).get_import_run(args.import_run_id))
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":
@@ -791,6 +815,20 @@ def run_ingest_prices(args: argparse.Namespace) -> dict[str, object]:
         "inserted_or_updated": len(ids),
         "price_bar_ids": ids,
     }
+
+
+def run_import_data(args: argparse.Namespace) -> dict[str, object]:
+    run = run_unified_import(
+        RiskRepository(args.db),
+        price_history_file=args.price_history_file,
+        nasdaq_noncompliant_file=args.nasdaq_noncompliant_file,
+        news_signal_file=args.news_signal_file,
+        dilution_signal_file=args.dilution_signal_file,
+        toss_signal_file=args.toss_signal_file,
+        flow_signal_file=args.flow_signal_file,
+        as_of_date=args.as_of_date,
+    )
+    return import_run_report(run)
 
 
 def run_backtest(args: argparse.Namespace) -> dict[str, object]:
