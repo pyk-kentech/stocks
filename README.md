@@ -776,6 +776,33 @@ failed ImportRun and returns traceable JSON. Future real providers can
 implement the same `BaseConnector.fetch` contract while preserving normalized
 file output and run recording.
 
+## Analysis Report Layer
+
+The Analysis Report Layer converts stored pipeline, candidate scan, basket,
+paper result, policy evaluation, and alert evidence into deterministic
+structured JSON and Markdown. It does not call an LLM or external API, request
+realtime data, execute orders, guarantee investment performance, or encourage
+a purchase. Reports are paper-trading and research summaries only.
+
+```bash
+python -m stock_risk_mcp.cli report-pipeline --db data/stock_risk_mcp.sqlite3 --pipeline-run-id <pipeline_run_id> --format markdown --language ko --save
+python -m stock_risk_mcp.cli report-scan --db data/stock_risk_mcp.sqlite3 --scan-run-id <scan_run_id> --format json --save
+python -m stock_risk_mcp.cli report-basket --db data/stock_risk_mcp.sqlite3 --basket-id <basket_id> --format markdown
+python -m stock_risk_mcp.cli report-policy-suite --db data/stock_risk_mcp.sqlite3 --suite-id <suite_id> --format markdown
+python -m stock_risk_mcp.cli reports --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli report-show --db data/stock_risk_mcp.sqlite3 --report-id <report_id>
+```
+
+Use `--output-file` to write the selected JSON or Markdown rendering. A file
+write failure becomes a report warning and does not prevent report generation
+or an independent `--save` to `analysis_reports`. Replay-only basket reports
+explicitly warn when their basket may not exist in official `basket_plans`.
+Stored paper results are reported when available; memory-only outcomes are
+never reconstructed or estimated.
+
+The deterministic `context_json` is suitable input for a future LLM/MCP agent,
+but that future agent remains separate from this report builder.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

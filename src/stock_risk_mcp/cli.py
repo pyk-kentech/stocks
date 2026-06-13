@@ -27,6 +27,12 @@ from stock_risk_mcp.candidate_universe import (
     load_manual_universe,
 )
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
+from stock_risk_mcp.analysis_report import (
+    build_basket_plan_report,
+    build_candidate_scan_report,
+    build_pipeline_summary_report,
+    build_policy_evaluation_report,
+)
 from stock_risk_mcp.connector_pipeline import run_connectors, run_connectors_and_import
 from stock_risk_mcp.connector_registry import default_connector_registry
 from stock_risk_mcp.data_import import run_unified_import
@@ -48,6 +54,8 @@ from stock_risk_mcp.policy_promotion import activate_policy, approve_policy, cre
 from stock_risk_mcp.policy_replay import replay_policy_on_replay_run
 from stock_risk_mcp.policy_replay_batch import run_policy_replay_batch
 from stock_risk_mcp.reporting import ReportService
+from stock_risk_mcp.report_json import render_json
+from stock_risk_mcp.report_markdown import render_markdown
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.replay_dataset import load_replay_dataset
 from stock_risk_mcp.replay_run import ReplayRunService
@@ -139,6 +147,24 @@ def build_command_parser() -> argparse.ArgumentParser:
     connector_show = subparsers.add_parser("connector-show", help="Show a connector run.")
     connector_show.add_argument("--db", type=Path, required=True)
     connector_show.add_argument("--connector-run-id", required=True)
+
+    for name, id_option in (
+        ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
+        ("report-basket", "--basket-id"), ("report-policy-suite", "--suite-id"),
+    ):
+        report_command = subparsers.add_parser(name)
+        report_command.add_argument("--db", type=Path, required=True)
+        report_command.add_argument(id_option, required=True)
+        report_command.add_argument("--format", choices=["json", "markdown"], default="json")
+        report_command.add_argument("--language", choices=["en", "ko"], default="en")
+        report_command.add_argument("--save", action="store_true")
+        report_command.add_argument("--output-file", type=Path)
+    reports = subparsers.add_parser("reports", help="List saved analysis reports.")
+    reports.add_argument("--db", type=Path, required=True)
+    reports.add_argument("--limit", type=int, default=50)
+    report_show = subparsers.add_parser("report-show", help="Show a saved analysis report.")
+    report_show.add_argument("--db", type=Path, required=True)
+    report_show.add_argument("--report-id", required=True)
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -491,6 +517,12 @@ def main(argv: list[str] | None = None) -> None:
         "run-connectors-and-import",
         "connector-runs",
         "connector-show",
+        "report-pipeline",
+        "report-scan",
+        "report-basket",
+        "report-policy-suite",
+        "reports",
+        "report-show",
         "backtest",
         "backtest-summary",
         "report",
@@ -592,6 +624,18 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"connector_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_connector_runs(args.limit)]}
     if args.command == "connector-show":
         return RiskRepository(args.db).get_connector_run(args.connector_run_id).model_dump(mode="json")
+    if args.command == "report-pipeline":
+        return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
+    if args.command == "report-scan":
+        return run_analysis_report(args, build_candidate_scan_report, args.scan_run_id)
+    if args.command == "report-basket":
+        return run_analysis_report(args, build_basket_plan_report, args.basket_id)
+    if args.command == "report-policy-suite":
+        return run_analysis_report(args, build_policy_evaluation_report, args.suite_id)
+    if args.command == "reports":
+        return {"reports": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_analysis_reports(args.limit)]}
+    if args.command == "report-show":
+        return RiskRepository(args.db).get_analysis_report(args.report_id).model_dump(mode="json")
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":
@@ -875,6 +919,37 @@ def run_import_data(args: argparse.Namespace) -> dict[str, object]:
         as_of_date=args.as_of_date,
     )
     return import_run_report(run)
+
+
+def run_analysis_report(args: argparse.Namespace, builder, source_id: str) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    report = builder(repository, source_id, args.language)
+    requested = args.output_file is not None
+    saved = False
+    output_error = None
+    if requested:
+        try:
+            args.output_file.parent.mkdir(parents=True, exist_ok=True)
+            content = report.markdown if args.format == "markdown" else json.dumps(render_json(report), ensure_ascii=False, indent=2)
+            args.output_file.write_text(content or "", encoding="utf-8")
+            saved = True
+        except Exception as error:
+            output_error = str(error)
+            report = report.model_copy(update={"warnings": [*report.warnings, f"failed to write output file: {error}"]})
+            report = report.model_copy(update={"markdown": render_markdown(report, args.language)})
+    saved_to_db = False
+    if args.save:
+        repository.save_analysis_report(report)
+        saved_to_db = True
+    return {
+        "report": render_json(report),
+        "content": report.markdown if args.format == "markdown" else render_json(report),
+        "format": args.format,
+        "output_file_requested": requested,
+        "output_file_saved": saved,
+        "output_file_error": output_error,
+        "saved_to_analysis_reports": saved_to_db,
+    }
 
 
 def run_backtest(args: argparse.Namespace) -> dict[str, object]:

@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from stock_risk_mcp.compliance import ComplianceRecord
+from stock_risk_mcp.analysis_report import AnalysisReport, ReportSection, ReportType
 from stock_risk_mcp.connector_run import ConnectorMode, ConnectorRun, ConnectorRunStatus, ConnectorType
 from stock_risk_mcp.candidate_universe import CandidateScanResult, ScanRun
 from stock_risk_mcp.basket import (
@@ -1177,6 +1178,34 @@ class RiskRepository:
             rows = connection.execute("SELECT * FROM connector_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [_connector_run_from_row(row) for row in rows]
 
+    def save_analysis_report(self, report: AnalysisReport) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO analysis_reports (
+                    report_id, report_type, source_id, generated_at, title, summary,
+                    sections_json, key_metrics_json, warnings_json, disclaimer, context_json, markdown
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    report.report_id, report.report_type.value, report.source_id, report.generated_at.isoformat(),
+                    report.title, report.summary, _json([item.model_dump(mode="json") for item in report.sections]),
+                    _json(report.key_metrics), _json(report.warnings), report.disclaimer,
+                    _json(report.context_json), report.markdown,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_analysis_report(self, report_id: str) -> AnalysisReport:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM analysis_reports WHERE report_id = ?", (report_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Analysis report not found: {report_id}")
+        return _analysis_report_from_row(row)
+
+    def list_analysis_reports(self, limit: int = 50) -> list[AnalysisReport]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM analysis_reports ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_analysis_report_from_row(row) for row in rows]
+
     def list_ticker_signals(
         self, ticker: str | None = None, as_of_date: date | None = None, limit: int = 200
     ) -> list[TickerSignal]:
@@ -1328,6 +1357,13 @@ class RiskRepository:
     def get_replay_basket_snapshot(self, run_id: str) -> ReplayBasketSnapshot | None:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM replay_basket_snapshots WHERE run_id = ?", (run_id,)).fetchone()
+        return _replay_basket_snapshot_from_row(row) if row else None
+
+    def get_replay_basket_snapshot_by_basket_id(self, basket_id: str) -> ReplayBasketSnapshot | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM replay_basket_snapshots WHERE basket_id = ? ORDER BY id DESC LIMIT 1", (basket_id,)
+            ).fetchone()
         return _replay_basket_snapshot_from_row(row) if row else None
 
     def save_replay_outcome_snapshot(self, snapshot: ReplayOutcomeSnapshot) -> int:
@@ -1673,6 +1709,7 @@ class RiskRepository:
             "import_runs",
             "import_source_results",
             "connector_runs",
+            "analysis_reports",
         }
         if table_name not in allowed_tables:
             raise ValueError(f"Unsupported table name: {table_name}")
@@ -1723,6 +1760,19 @@ def _connector_run_from_row(row: sqlite3.Row) -> ConnectorRun:
         metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
         created_at=datetime.fromisoformat(str(row["created_at"])),
         completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
+
+
+def _analysis_report_from_row(row: sqlite3.Row) -> AnalysisReport:
+    return AnalysisReport(
+        report_id=str(row["report_id"]), report_type=ReportType(str(row["report_type"])),
+        source_id=str(row["source_id"]), generated_at=datetime.fromisoformat(str(row["generated_at"])),
+        title=str(row["title"]), summary=str(row["summary"]),
+        sections=[ReportSection.model_validate(item) for item in json.loads(str(row["sections_json"]))],
+        key_metrics=json.loads(row["key_metrics_json"]) if row["key_metrics_json"] else {},
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        disclaimer=str(row["disclaimer"] or ""), context_json=json.loads(row["context_json"]) if row["context_json"] else {},
+        markdown=row["markdown"],
     )
 
 

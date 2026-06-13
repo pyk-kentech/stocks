@@ -663,6 +663,22 @@ def create_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             completed_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS analysis_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id TEXT NOT NULL UNIQUE,
+            report_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            sections_json TEXT NOT NULL,
+            key_metrics_json TEXT,
+            warnings_json TEXT,
+            disclaimer TEXT,
+            context_json TEXT,
+            markdown TEXT
+        );
         """
     )
     _add_missing_columns(

@@ -855,3 +855,30 @@ Latest verified result after the connector layer:
 ```text
 204 passed
 ```
+
+## Analysis Report Layer
+
+Added deterministic English/Korean JSON and Markdown reporting over stored
+pipeline, scan, basket/replay, paper result, policy suite, and alert evidence.
+
+Implemented:
+
+- persisted `AnalysisReport` records and report inspection
+- source-run IDs, generated timestamps, key metrics, warnings, disclaimer, and structured context
+- severity-sorted pipeline alerts and linked source summaries
+- candidate decision counts, top INCLUDE candidates, warnings, and signal enrichment context
+- official and replay-only basket summaries with explicit replay warnings
+- stored paper-result inclusion without reconstructing memory-only outcomes
+- policy deltas, recommendations, notes, and approval/activation warning
+- independent output-file warning and optional DB-save behavior
+- `report-pipeline`, `report-scan`, `report-basket`, `report-policy-suite`,
+  `reports`, and `report-show` CLI commands
+
+The layer makes no LLM or external API calls and does not provide investment
+advice or guarantee performance.
+
+Latest verified result after the Analysis Report Layer:
+
+```text
+214 passed
+```
