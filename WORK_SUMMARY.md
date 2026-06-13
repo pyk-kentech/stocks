@@ -907,3 +907,27 @@ Latest verified result after the Local LLM Agent Bridge Layer:
 ```text
 229 passed
 ```
+## Alert Delivery / Notification Layer
+
+Added a local-only notification outbox over PipelineAlert, AnalysisReport,
+AgentBrief, and LocalLLMResponse records.
+
+Implemented:
+
+- severity filtering and CRITICAL/HIGH-first ordering
+- stored dedupe-key suppression and batch duplicate suppression
+- console, Markdown/JSONL local-file, mock, and disabled channels
+- fault-isolated COMPLETED/PARTIAL/FAILED/DISABLED/NO_ALERTS delivery runs
+- notification run and message persistence with inspection CLI commands
+- short LocalLLMResponse previews with blocked endpoint failures marked HIGH
+- daily research digests with opt-in failed LocalLLMResponse inclusion
+- opt-in `run-paper-pipeline` and `watch-loop` delivery that preserves pipeline status
+
+The layer performs no external network delivery, executes no orders, and
+produces paper-trading/research alerts rather than investment advice.
+
+Latest verified result after the Alert Delivery / Notification Layer:
+
+```text
+243 passed
+```

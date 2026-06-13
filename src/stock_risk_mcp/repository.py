@@ -51,6 +51,8 @@ from stock_risk_mcp.models import (
 )
 from stock_risk_mcp.local_llm import LocalLLMRequest
 from stock_risk_mcp.local_llm_response import LocalLLMResponse
+from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
+from stock_risk_mcp.notifications import NotificationChannelType, NotificationMessage, NotificationSeverity
 from stock_risk_mcp.paper_trading import (
     BasketBacktestResult,
     BasketPerformanceSummary,
@@ -1252,6 +1254,81 @@ class RiskRepository:
     def list_local_llm_responses(self, limit: int = 50) -> list[LocalLLMResponse]:
         return [LocalLLMResponse.model_validate_json(value) for value in self._list_json_records("local_llm_responses", "response_json", limit)]
 
+    def get_local_llm_response(self, response_id: str) -> LocalLLMResponse:
+        return LocalLLMResponse.model_validate_json(
+            self._get_json_record("local_llm_responses", "response_id", response_id, "response_json")
+        )
+
+    def list_local_llm_responses_by_date(self, as_of_date: date) -> list[LocalLLMResponse]:
+        return [item for item in self.list_local_llm_responses(1000) if item.created_at.date() == as_of_date]
+
+    def save_notification_run(self, run: NotificationRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO notification_runs (
+                    notification_run_id, source_type, source_id, channel_type, status,
+                    message_count, delivered_count, skipped_duplicate_count, failed_count,
+                    output_path, warnings_json, errors_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run.notification_run_id, run.source_type, run.source_id, run.channel_type.value, run.status.value,
+                    run.message_count, run.delivered_count, run.skipped_duplicate_count, run.failed_count,
+                    run.output_path, _json(run.warnings), _json(run.errors), run.created_at.isoformat(),
+                    run.completed_at.isoformat() if run.completed_at else None,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_notification_run(self, notification_run_id: str) -> NotificationRun:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM notification_runs WHERE notification_run_id=?", (notification_run_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Notification run not found: {notification_run_id}")
+        return _notification_run_from_row(row)
+
+    def list_notification_runs(self, limit: int = 50) -> list[NotificationRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM notification_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_notification_run_from_row(row) for row in rows]
+
+    def save_notification_messages(self, messages: list[NotificationMessage]) -> list[int]:
+        ids: list[int] = []
+        with self._connect() as connection:
+            for item in messages:
+                cursor = connection.execute(
+                    """INSERT INTO notification_messages (
+                        notification_id, source_type, source_id, channel_type, severity, title,
+                        message, metadata_json, dedupe_key, created_at, delivered_at, delivery_status, error
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        item.notification_id, item.source_type, item.source_id, item.channel_type.value,
+                        item.severity.value, item.title, item.message, _json(item.metadata), item.dedupe_key,
+                        item.created_at.isoformat(), item.delivered_at.isoformat() if item.delivered_at else None,
+                        item.delivery_status, item.error,
+                    ),
+                )
+                ids.append(int(cursor.lastrowid))
+        return ids
+
+    def list_notification_messages(self, source_id: str | None = None, limit: int = 100) -> list[NotificationMessage]:
+        with self._connect() as connection:
+            if source_id:
+                rows = connection.execute(
+                    "SELECT * FROM notification_messages WHERE source_id=? ORDER BY id LIMIT ?", (source_id, limit)
+                ).fetchall()
+            else:
+                rows = connection.execute("SELECT * FROM notification_messages ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_notification_message_from_row(row) for row in rows]
+
+    def has_notification_dedupe_key(self, dedupe_key: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM notification_messages WHERE dedupe_key=? LIMIT 1", (dedupe_key,)
+            ).fetchone()
+        return row is not None
+
     def _save_json_record(self, table: str, id_column: str, id_value: str, json_column: str, payload: str) -> int:
         with self._connect() as connection:
             cursor = connection.execute(
@@ -1780,6 +1857,8 @@ class RiskRepository:
             "agent_briefs",
             "local_llm_requests",
             "local_llm_responses",
+            "notification_runs",
+            "notification_messages",
         }
         if table_name not in allowed_tables:
             raise ValueError(f"Unsupported table name: {table_name}")
@@ -2242,4 +2321,30 @@ def _policy_comparison_result_from_row(row: sqlite3.Row) -> PolicyComparisonResu
         recommendation=StrategyRecommendation(str(row["recommendation"])),
         notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
         created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _notification_run_from_row(row: sqlite3.Row) -> NotificationRun:
+    return NotificationRun(
+        notification_run_id=str(row["notification_run_id"]), source_type=str(row["source_type"]),
+        source_id=str(row["source_id"]), channel_type=NotificationChannelType(str(row["channel_type"])),
+        status=NotificationRunStatus(str(row["status"])), message_count=int(row["message_count"]),
+        delivered_count=int(row["delivered_count"]), skipped_duplicate_count=int(row["skipped_duplicate_count"]),
+        failed_count=int(row["failed_count"]), output_path=row["output_path"],
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
+
+
+def _notification_message_from_row(row: sqlite3.Row) -> NotificationMessage:
+    return NotificationMessage(
+        notification_id=str(row["notification_id"]), source_type=str(row["source_type"]),
+        source_id=str(row["source_id"]), channel_type=NotificationChannelType(str(row["channel_type"])),
+        severity=NotificationSeverity(str(row["severity"])), title=str(row["title"]), message=str(row["message"]),
+        metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {}, dedupe_key=str(row["dedupe_key"]),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        delivered_at=datetime.fromisoformat(str(row["delivered_at"])) if row["delivered_at"] else None,
+        delivery_status=str(row["delivery_status"]), error=row["error"],
     )

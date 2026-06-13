@@ -48,6 +48,15 @@ from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.local_llm import LocalLLMBackend, LocalLLMRequest
 from stock_risk_mcp.local_llm_client import LocalLLMClient
+from stock_risk_mcp.notification_digest import build_daily_digest
+from stock_risk_mcp.notification_outbox import deliver_notifications
+from stock_risk_mcp.notification_templates import (
+    build_notifications_from_agent_brief,
+    build_notifications_from_local_llm_response,
+    build_notifications_from_pipeline,
+    build_notifications_from_report,
+)
+from stock_risk_mcp.notifications import NotificationChannelType, NotificationSeverity
 from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.operational_pipeline import OperationalPipeline
 from stock_risk_mcp.pipeline_report import build_pipeline_summary
@@ -203,6 +212,30 @@ def build_command_parser() -> argparse.ArgumentParser:
         item.add_argument("--db", type=Path, required=True)
         item.add_argument("--limit", type=int, default=50)
     subparsers.add_parser("agent-tools")
+
+    for name, id_option in (
+        ("notify-pipeline", "--pipeline-run-id"), ("notify-report", "--report-id"),
+        ("notify-brief", "--brief-id"), ("notify-local-response", "--response-id"),
+    ):
+        notification = subparsers.add_parser(name)
+        notification.add_argument("--db", type=Path, required=True)
+        notification.add_argument(id_option, required=True)
+        add_notification_args(notification)
+    digest = subparsers.add_parser("notify-digest")
+    digest.add_argument("--db", type=Path, required=True)
+    digest.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    digest.add_argument("--include-local-llm-responses", action="store_true")
+    add_notification_args(digest)
+    notification_runs = subparsers.add_parser("notification-runs")
+    notification_runs.add_argument("--db", type=Path, required=True)
+    notification_runs.add_argument("--limit", type=int, default=50)
+    notification_show = subparsers.add_parser("notification-show")
+    notification_show.add_argument("--db", type=Path, required=True)
+    notification_show.add_argument("--notification-run-id", required=True)
+    notifications = subparsers.add_parser("notifications")
+    notifications.add_argument("--db", type=Path, required=True)
+    notifications.add_argument("--source-id")
+    notifications.add_argument("--limit", type=int, default=100)
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -424,6 +457,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     run_paper_pipeline.add_argument("--save-basket", action="store_true")
     run_paper_pipeline.add_argument("--no-paper-trade", action="store_true")
     run_paper_pipeline.add_argument("--no-replay-snapshot", action="store_true")
+    add_pipeline_notification_args(run_paper_pipeline)
 
     run_policy_pipeline = subparsers.add_parser("run-policy-evaluation-pipeline", help="Run policy replay evaluation.")
     add_policy_replay_args(run_policy_pipeline, storage_options=False, include_run_id=False)
@@ -454,6 +488,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     watch.add_argument("--include-watch", action="store_true")
     watch.add_argument("--save-basket", action="store_true")
     watch.add_argument("--no-paper-trade", action="store_true")
+    add_pipeline_notification_args(watch)
     return parser
 
 
@@ -519,6 +554,21 @@ def add_operational_scan_args(parser: argparse.ArgumentParser) -> None:
     add_strategy_policy_args(parser)
 
 
+def add_notification_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--channel", choices=["console", "local-file", "mock", "disabled"], default="console")
+    parser.add_argument("--output-file", type=Path)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--min-severity", choices=["info", "warning", "high", "critical"], default="info")
+    parser.add_argument("--save", action="store_true")
+
+
+def add_pipeline_notification_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--notify", action="store_true")
+    parser.add_argument("--notification-channel", choices=["console", "local-file", "mock", "disabled"], default="console")
+    parser.add_argument("--notification-output-file", type=Path)
+    parser.add_argument("--notification-min-severity", choices=["info", "warning", "high", "critical"], default="info")
+
+
 def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--basket-id", required=True)
@@ -571,6 +621,14 @@ def main(argv: list[str] | None = None) -> None:
         "agent-briefs",
         "agent-tools",
         "local-llm-responses",
+        "notify-pipeline",
+        "notify-report",
+        "notify-brief",
+        "notify-local-response",
+        "notify-digest",
+        "notification-runs",
+        "notification-show",
+        "notifications",
         "backtest",
         "backtest-summary",
         "report",
@@ -720,6 +778,24 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"tools": read_only_tool_manifest()}
     if args.command == "local-llm-responses":
         return {"responses": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_local_llm_responses(args.limit)]}
+    if args.command in {"notify-pipeline", "notify-report", "notify-brief", "notify-local-response", "notify-digest"}:
+        return run_notification_command(args)
+    if args.command == "notification-runs":
+        return {"notification_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_notification_runs(args.limit)]}
+    if args.command == "notification-show":
+        repository = RiskRepository(args.db)
+        run = repository.get_notification_run(args.notification_run_id)
+        return {
+            "run": run.model_dump(mode="json"),
+            "notifications": [item.model_dump(mode="json") for item in repository.list_notification_messages(run.source_id)],
+        }
+    if args.command == "notifications":
+        return {
+            "notifications": [
+                item.model_dump(mode="json")
+                for item in RiskRepository(args.db).list_notification_messages(args.source_id, args.limit)
+            ]
+        }
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":
@@ -1319,7 +1395,21 @@ def _run_operational_paper(args: argparse.Namespace, mode: PipelineMode = Pipeli
         save_replay_snapshot=not getattr(args, "no_replay_snapshot", False),
         paper_trade=not args.no_paper_trade, mode=mode,
     )
-    return _operational_output(execution)
+    output = _operational_output(execution)
+    if getattr(args, "notify", False):
+        try:
+            notification = _deliver_pipeline_notification(
+                repository, execution.run.pipeline_run_id, args.notification_channel,
+                args.notification_output_file, args.notification_min_severity,
+            )
+            output["notification_run_id"] = notification.notification_run_id
+            output["notification_status"] = notification.status.value
+        except Exception as error:
+            run = repository.get_pipeline_run(execution.run.pipeline_run_id)
+            note = f"notification_status=FAILED; notification_error={error}"
+            repository.update_pipeline_run(run.model_copy(update={"notes": [*run.notes, note]}))
+            output.update({"notification_run_id": None, "notification_status": "FAILED", "notification_error": str(error)})
+    return output
 
 
 def _operational_output(execution) -> dict[str, object]:
@@ -1336,6 +1426,48 @@ def _operational_output(execution) -> dict[str, object]:
         "paper_result_persisted": execution.paper_result_persisted,
         "basket_saved_to_basket_plans": execution.basket_saved_to_basket_plans,
     }
+
+
+def run_notification_command(args: argparse.Namespace) -> dict[str, object]:
+    repository = RiskRepository(args.db)
+    minimum = _notification_severity(args.min_severity)
+    if args.command == "notify-pipeline":
+        messages = build_notifications_from_pipeline(repository, args.pipeline_run_id, minimum)
+    elif args.command == "notify-report":
+        messages = build_notifications_from_report(repository, args.report_id, minimum)
+    elif args.command == "notify-brief":
+        messages = build_notifications_from_agent_brief(repository, args.brief_id, minimum)
+    elif args.command == "notify-local-response":
+        messages = build_notifications_from_local_llm_response(repository, args.response_id, minimum)
+    else:
+        messages = [build_daily_digest(
+            repository, args.as_of_date, minimum,
+            include_local_llm_responses=args.include_local_llm_responses,
+        )]
+    run = deliver_notifications(
+        repository, messages, _notification_channel(args.channel),
+        output_path=args.output_file, output_dir=args.output_dir, save=args.save,
+    )
+    return run.model_dump(mode="json")
+
+
+def _deliver_pipeline_notification(repository, pipeline_run_id, channel, output_file, min_severity):
+    messages = build_notifications_from_pipeline(repository, pipeline_run_id, _notification_severity(min_severity))
+    notification = deliver_notifications(
+        repository, messages, _notification_channel(channel), output_path=output_file, save=True,
+    )
+    run = repository.get_pipeline_run(pipeline_run_id)
+    note = f"notification_run_id={notification.notification_run_id}; notification_status={notification.status.value}"
+    repository.update_pipeline_run(run.model_copy(update={"notes": [*run.notes, note]}))
+    return notification
+
+
+def _notification_channel(value: str) -> NotificationChannelType:
+    return NotificationChannelType(value.replace("-", "_").upper())
+
+
+def _notification_severity(value: str) -> NotificationSeverity:
+    return NotificationSeverity(value.upper())
 
 
 def _operational_signal_files(args: argparse.Namespace) -> dict[str, Path]:

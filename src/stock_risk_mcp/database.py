@@ -706,6 +706,39 @@ def create_schema(connection: sqlite3.Connection) -> None:
             request_id TEXT NOT NULL,
             response_json TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS notification_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notification_run_id TEXT NOT NULL UNIQUE,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            channel_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            message_count INTEGER NOT NULL,
+            delivered_count INTEGER NOT NULL,
+            skipped_duplicate_count INTEGER NOT NULL,
+            failed_count INTEGER NOT NULL,
+            output_path TEXT,
+            warnings_json TEXT,
+            errors_json TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS notification_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notification_id TEXT NOT NULL UNIQUE,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            channel_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            metadata_json TEXT,
+            dedupe_key TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            delivered_at TEXT,
+            delivery_status TEXT NOT NULL,
+            error TEXT
+        );
         """
     )
     _add_missing_columns(

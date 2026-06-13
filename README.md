@@ -949,3 +949,36 @@ python -m stock_risk_mcp.cli agent-brief --db data/stock_risk_mcp.sqlite3 --cont
 python -m stock_risk_mcp.cli agent-run-local --db data/stock_risk_mcp.sqlite3 --prompt-id PROMPT_ID --backend dry-run
 python -m stock_risk_mcp.cli agent-tools
 ```
+## Alert Delivery / Notification Layer
+
+The notification layer converts saved PipelineAlert, AnalysisReport,
+AgentBrief, and LocalLLMResponse evidence into local paper-trading and research
+alerts. It does not send external network requests, execute orders, or provide
+investment advice.
+
+Implemented delivery targets are `CONSOLE`, `LOCAL_FILE`, `MOCK`, and
+`DISABLED`. Telegram, Discord, Slack, email, and webhook delivery remain
+disabled placeholders for future interfaces. Local-file output writes Markdown
+by default and JSONL when the output filename ends in `.jsonl`.
+
+```bash
+python -m stock_risk_mcp.cli notify-pipeline --db data/stock_risk_mcp.sqlite3 --pipeline-run-id PIPELINE_ID --channel local-file --output-file notifications/pipeline.md --min-severity warning --save
+python -m stock_risk_mcp.cli notify-report --db data/stock_risk_mcp.sqlite3 --report-id REPORT_ID --channel console --save
+python -m stock_risk_mcp.cli notify-brief --db data/stock_risk_mcp.sqlite3 --brief-id BRIEF_ID --channel local-file --output-file notifications/brief.md --save
+python -m stock_risk_mcp.cli notify-local-response --db data/stock_risk_mcp.sqlite3 --response-id RESPONSE_ID --channel mock --save
+python -m stock_risk_mcp.cli notify-digest --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --channel local-file --output-file notifications/daily.md --include-local-llm-responses --save
+```
+
+`run-paper-pipeline` and `watch-loop` support opt-in notification delivery with
+`--notify`, `--notification-channel`, `--notification-output-file`, and
+`--notification-min-severity`. Notification failures are recorded separately
+and do not change the pipeline status.
+
+```bash
+python -m stock_risk_mcp.cli watch-loop --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --account-equity 10000 --cash-available 5000 --interval-seconds 60 --max-iterations 3 --notify --notification-channel local-file --notification-output-file notifications/watch.md
+python -m stock_risk_mcp.cli notification-runs --db data/stock_risk_mcp.sqlite3
+```
+
+Saved `dedupe_key` values prevent repeated delivery. Local LLM notifications
+contain at most a 500-character response preview; full responses remain in the
+original local database record.
