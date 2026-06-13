@@ -22,6 +22,14 @@ REQUIRED_COLUMNS = {
     ProviderDataKind.NEWS: {"ticker", "observed_at", "headline", "source_name"},
     ProviderDataKind.DILUTION: {"ticker", "observed_at", "event_type", "dilution_risk", "source_name"},
     ProviderDataKind.DILUTION_SIGNAL: {"ticker", "observed_at", "event_type", "dilution_risk", "source_name"},
+    ProviderDataKind.FOREIGN_INSTITUTION_FLOW: {"ticker", "observed_at", "source_name"},
+}
+
+FLOW_VALUE_COLUMNS = {
+    "foreign_net_buy_amount",
+    "institution_net_buy_amount",
+    "foreign_net_buy_shares",
+    "institution_net_buy_shares",
 }
 
 
@@ -43,6 +51,8 @@ class ProviderPackProviderConfig(StrictModel):
         missing = sorted(REQUIRED_COLUMNS.get(self.data_kind, set()) - set(self.columns))
         if missing:
             raise ValueError(f"missing required columns for {self.data_kind.value}: {', '.join(missing)}")
+        if self.data_kind == ProviderDataKind.FOREIGN_INSTITUTION_FLOW and not FLOW_VALUE_COLUMNS.intersection(self.columns):
+            raise ValueError("at least one foreign or institution flow value column is required")
         return self
 
     def as_http_config(self) -> HTTPProviderConfig:
@@ -67,13 +77,14 @@ class ProviderPackConfig(StrictModel):
     fx: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
     news: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
     dilution: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
+    flow: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
 
 
 def load_provider_pack_config(path: str | Path) -> ProviderPackConfig:
     file_path = Path(path)
     payload = _read_payload(file_path)
     config = ProviderPackConfig.model_validate(payload)
-    for group in (config.price, config.fx, config.news, config.dilution):
+    for group in (config.price, config.fx, config.news, config.dilution, config.flow):
         for provider in group.providers:
             if provider.local_file and not Path(provider.local_file).is_absolute():
                 provider.local_file = str((file_path.parent / provider.local_file).resolve())
@@ -89,7 +100,7 @@ def validate_provider_pack_config_file(
         return {"status": "BLOCKED", "providers": [], "errors": [str(error)]}
     results = []
     errors = []
-    for provider in [*config.price.providers, *config.fx.providers, *config.news.providers, *config.dilution.providers]:
+    for provider in [*config.price.providers, *config.fx.providers, *config.news.providers, *config.dilution.providers, *config.flow.providers]:
         provider_errors = []
         provider_warnings = []
         if provider.url:

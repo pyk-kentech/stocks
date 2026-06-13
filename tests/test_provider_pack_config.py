@@ -82,6 +82,22 @@ def test_dilution_provider_config_requires_dilution_risk(tmp_path) -> None:
     assert any("dilution_risk" in error for error in result["errors"])
 
 
+def test_flow_provider_config_requires_a_flow_value_mapping(tmp_path) -> None:
+    payload = {"flow": {"providers": [{
+        "provider_name": "flow", "local_file": "flow.csv",
+        "data_kind": "FOREIGN_INSTITUTION_FLOW", "output_format": "CSV",
+        "allowed_hosts": [], "enabled": True, "normalizer": "generic-flow-csv",
+        "columns": {"ticker": "Symbol", "observed_at": "ObservedAt", "source_name": "Source"},
+    }]}}
+    config_file = tmp_path / "pack.json"
+    config_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_provider_pack_config_file(config_file)
+
+    assert result["status"] == "BLOCKED"
+    assert any("flow value" in error.lower() for error in result["errors"])
+
+
 def _payload():
     return {
         "price": {"providers": [{

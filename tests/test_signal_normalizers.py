@@ -7,6 +7,7 @@ from stock_risk_mcp.signal_normalizers import (
     GenericNewsCSVNormalizer,
     _news_provider_score,
     _dilution_provider_mapping,
+    _flow_provider_mapping,
 )
 
 
@@ -97,6 +98,15 @@ def test_dilution_provider_mapping_is_non_positive_and_preserves_unknown(tmp_pat
     assert [_dilution_provider_mapping(item)[1] for item in (
         "NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"
     )] == [0, -1, -3, -7, -10, -7]
+
+
+def test_flow_provider_mapping_is_deterministic() -> None:
+    assert _flow_provider_mapping(10, 20) == ("POSITIVE", "LOW", 2)
+    assert _flow_provider_mapping(10, 0) == ("POSITIVE", "LOW", 1)
+    assert _flow_provider_mapping(-10, -20) == ("NEGATIVE", "MEDIUM", -3)
+    assert _flow_provider_mapping(-10, 0) == ("NEGATIVE", "LOW", -1)
+    assert _flow_provider_mapping(10, -20) == ("NEUTRAL", "LOW", 0)
+    assert _flow_provider_mapping(0, 0) == ("NEUTRAL", "LOW", 0)
 
 
 def _csv(tmp_path, name, content):

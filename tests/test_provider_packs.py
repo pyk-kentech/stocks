@@ -28,3 +28,7 @@ def test_provider_pack_type_includes_news() -> None:
 
 def test_provider_pack_type_includes_dilution() -> None:
     assert ProviderPackType.DILUTION.value == "DILUTION"
+
+
+def test_provider_pack_type_includes_flow() -> None:
+    assert ProviderPackType.FLOW.value == "FLOW"

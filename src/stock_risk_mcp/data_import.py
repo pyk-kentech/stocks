@@ -255,10 +255,20 @@ def _signal_from_record(source_type: ImportSourceType, record: dict[str, Any], c
         SignalType.NEWS: "news_signal_file", SignalType.DILUTION: "dilution_signal_file",
         SignalType.TOSS_PORTFOLIO: "toss_signal_file", SignalType.FOREIGN_INSTITUTION_FLOW: "flow_signal_file",
     }
-    explicit_provider_signal = (
+    explicit_news_or_dilution = (
         source_type in {ImportSourceType.NEWS_SIGNAL, ImportSourceType.DILUTION_SIGNAL}
         and record.get("score_delta") not in (None, "")
     )
+    rich_flow_fields = {
+        "foreign_net_buy_amount", "institution_net_buy_amount",
+        "foreign_net_buy_shares", "institution_net_buy_shares",
+    }
+    explicit_rich_flow = (
+        source_type == ImportSourceType.FLOW_SIGNAL
+        and record.get("provider_record_mode") == "RICH_FLOW_PROVIDER"
+        and bool(rich_flow_fields.intersection(record))
+    )
+    explicit_provider_signal = explicit_news_or_dilution or explicit_rich_flow
     if explicit_provider_signal:
         direction = SignalDirection(str(record.get("sentiment") or "NEUTRAL").upper())
         severity = SignalSeverity(str(record.get("severity") or "LOW").upper())

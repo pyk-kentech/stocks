@@ -17,6 +17,7 @@ KIND_TO_CONNECTOR = {
     ProviderDataKind.NEWS_SIGNAL: ConnectorType.NEWS,
     ProviderDataKind.DILUTION: ConnectorType.DILUTION,
     ProviderDataKind.DILUTION_SIGNAL: ConnectorType.DILUTION,
+    ProviderDataKind.FOREIGN_INSTITUTION_FLOW: ConnectorType.FLOW,
     ProviderDataKind.TOSS_SIGNAL: ConnectorType.TOSS_PORTFOLIO,
     ProviderDataKind.FLOW_SIGNAL: ConnectorType.FLOW,
     ProviderDataKind.COMPLIANCE: ConnectorType.COMPLIANCE,

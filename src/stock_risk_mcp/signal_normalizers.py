@@ -94,10 +94,38 @@ class GenericFlowCSVNormalizer(_SignalNormalizer):
     normalizer_type = NormalizerType.FLOW_SIGNAL
     fields = (
         "ticker", "observed_at", "foreign_net_buy", "institution_net_buy",
-        "foreign_ownership_change", "flow_window_days",
+        "foreign_ownership_change", "flow_window_days", "source_name", "title",
+        "summary", "url", "foreign_net_buy_amount", "institution_net_buy_amount",
+        "retail_net_buy_amount", "foreign_net_buy_shares", "institution_net_buy_shares",
+        "retail_net_buy_shares", "currency", "market",
     )
 
     def adjust(self, item, result, index, raw_record=None, columns=None):
+        rich_fields = {
+            "foreign_net_buy_amount", "institution_net_buy_amount",
+            "foreign_net_buy_shares", "institution_net_buy_shares",
+        }
+        if "source_name" in (columns or {}) and rich_fields.intersection(columns or {}):
+            amount_basis = bool({"foreign_net_buy_amount", "institution_net_buy_amount"}.intersection(columns or {}))
+            basis = "AMOUNT" if amount_basis else "SHARES"
+            foreign_key = "foreign_net_buy_amount" if amount_basis else "foreign_net_buy_shares"
+            institution_key = "institution_net_buy_amount" if amount_basis else "institution_net_buy_shares"
+            foreign = _optional_float(item.get(foreign_key)) or 0.0
+            institution = _optional_float(item.get(institution_key)) or 0.0
+            sentiment, severity, score_delta = _flow_provider_mapping(foreign, institution)
+            for key in (
+                "foreign_net_buy_amount", "institution_net_buy_amount", "retail_net_buy_amount",
+                "foreign_net_buy_shares", "institution_net_buy_shares", "retail_net_buy_shares",
+            ):
+                item[key] = _optional_float(item.get(key))
+            item["sentiment"] = sentiment
+            item["severity"] = severity
+            item["score_delta"] = score_delta
+            item["flow_value_basis"] = basis
+            item["provider_record_mode"] = "RICH_FLOW_PROVIDER"
+            item["title"] = text(item.get("title")) or f"Foreign and institution flow: {sentiment.title()}"
+            item["raw_payload_json"] = dict(raw_record or {})
+            return
         for key in ("foreign_net_buy", "institution_net_buy", "foreign_ownership_change"):
             item[key] = float(item[key] or 0)
         item["flow_window_days"] = int(item["flow_window_days"] or 0)
@@ -120,3 +148,19 @@ def _dilution_provider_mapping(risk: str) -> tuple[str, int]:
         "CRITICAL": ("CRITICAL", -10),
         "UNKNOWN": ("HIGH", -7),
     }.get(upper(risk, "UNKNOWN"), ("HIGH", -7))
+
+
+def _flow_provider_mapping(foreign: float, institution: float) -> tuple[str, str, int]:
+    if foreign > 0 and institution > 0:
+        return "POSITIVE", "LOW", 2
+    if foreign < 0 and institution < 0:
+        return "NEGATIVE", "MEDIUM", -3
+    if (foreign > 0 and institution == 0) or (institution > 0 and foreign == 0):
+        return "POSITIVE", "LOW", 1
+    if (foreign < 0 and institution == 0) or (institution < 0 and foreign == 0):
+        return "NEGATIVE", "LOW", -1
+    return "NEUTRAL", "LOW", 0
+
+
+def _optional_float(value):
+    return float(value) if value not in (None, "") else None

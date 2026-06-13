@@ -1130,3 +1130,28 @@ Latest verified result after Provider Pack #3:
 ```text
 324 passed
 ```
+
+## Provider Pack #4: Flow Public Data Adapter
+
+Added a Flow-only extension to the shared Provider Pack orchestration.
+
+Implemented:
+
+- `flow.providers` in the single provider-pack config
+- safe HTTP and network-free local-file acquisition
+- provider-config-scope amount precedence with shares-only fallback
+- deterministic sign-based LOW/MEDIUM Flow Provider Pack scores
+- explicit `RICH_FLOW_PROVIDER` metadata rather than score-based record identification
+- raw provider payload preservation
+- `run-flow-provider-pack` CLI and stored FLOW ProviderPackRun records
+- unchanged legacy/common signal scoring and Risk Engine hard-risk rules
+
+Flow is a ranking and watching aid, not hard-risk or a buy instruction. It
+does not create HIGH/CRITICAL signals by default, and positive Flow alone
+cannot promote EXCLUDE or blocked candidates.
+
+Latest verified result after Provider Pack #4:
+
+```text
+336 passed
+```

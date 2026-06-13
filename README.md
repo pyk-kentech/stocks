@@ -1308,3 +1308,65 @@ signals EXCLUDE. They are **not** automatically converted into
 `CompanyRisk.dilution_risk`. Existing `block_dilution_high` and
 `block_unknown_dilution` hard-risk rules remain unchanged, but the direct
 Provider Pack signal-to-CompanyRisk bridge is future work.
+
+## Provider Pack #4: Flow Public Data Adapter
+
+The Flow Provider Pack imports public or local foreign and institution flow as
+a conservative ranking and watching aid:
+
+```text
+safe HTTP or local_file -> raw flow -> provider normalizer -> Unified Import -> FOREIGN_INSTITUTION_FLOW signal enrichment
+```
+
+`flow.providers` uses the shared `provider_pack_config` as the single source
+for connector, normalizer, and column mappings. There is no separate
+`normalizer_config_file`. Required mappings are `ticker`, `observed_at`,
+`source_name`, and at least one foreign/institution amount or shares field.
+
+```json
+{
+  "flow": {
+    "providers": [
+      {
+        "provider_name": "sample_flow_provider",
+        "local_file": "data/flow.csv",
+        "data_kind": "FOREIGN_INSTITUTION_FLOW",
+        "output_format": "CSV",
+        "allowed_hosts": [],
+        "enabled": true,
+        "normalizer": "generic-flow-csv",
+        "columns": {
+          "ticker": "Symbol",
+          "observed_at": "ObservedAt",
+          "source_name": "Source",
+          "foreign_net_buy_amount": "ForeignNetBuyAmount",
+          "institution_net_buy_amount": "InstitutionNetBuyAmount"
+        }
+      }
+    ]
+  }
+}
+```
+
+If either amount mapping exists, the provider uses amount values for every
+row. Shares are used only when no amount mapping exists. Missing selected
+values are zero; rows never fall back from amount to shares.
+
+The deterministic pack-specific score mapping is:
+
+- both buy: `POSITIVE / LOW / +2`
+- one buys and the other is zero or missing: `POSITIVE / LOW / +1`
+- both sell: `NEGATIVE / MEDIUM / -3`
+- one sells and the other is zero or missing: `NEGATIVE / LOW / -1`
+- opposite signs or both zero/missing: `NEUTRAL / LOW / 0`
+
+```bash
+python -m stock_risk_mcp.cli run-flow-provider-pack --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-pack-config configs/provider_pack.json --output-dir data/provider_outputs
+```
+
+HTTP providers require explicit `--enable-network` and exact `allowed_hosts`;
+`local_file` providers use no network. Flow Provider Pack does not create
+HIGH/CRITICAL signals by default, change common signal scoring, or add Risk
+Engine hard-risk rules. Positive Flow alone cannot promote EXCLUDE or blocked
+candidates. Flow is research and paper-trading support, not a buy instruction,
+automatic trading signal, or real-order feature.
