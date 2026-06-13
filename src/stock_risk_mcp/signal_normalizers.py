@@ -67,11 +67,25 @@ class GenericNewsCSVNormalizer(_SignalNormalizer):
 class GenericDilutionCSVNormalizer(_SignalNormalizer):
     name = "generic-dilution-csv"
     normalizer_type = NormalizerType.DILUTION_SIGNAL
-    fields = ("ticker", "observed_at", "event_type", "severity", "details")
+    fields = (
+        "ticker", "observed_at", "event_type", "dilution_risk", "severity",
+        "source_name", "details", "filing_date", "filing_type", "title", "summary",
+        "url", "shares_before", "shares_after", "offering_amount_usd", "accession_number",
+    )
     required = ("ticker", "observed_at", "event_type")
 
     def adjust(self, item, result, index, raw_record=None, columns=None):
         item["event_type"] = upper(item["event_type"])
+        if "dilution_risk" in (columns or {}) and "source_name" in (columns or {}):
+            risk = upper(item.get("dilution_risk"), "UNKNOWN")
+            severity, score_delta = _dilution_provider_mapping(risk)
+            item["dilution_risk"] = risk
+            item["severity"] = severity
+            item["score_delta"] = score_delta
+            item["sentiment"] = "NEUTRAL" if risk == "NONE" else "NEGATIVE"
+            item["title"] = text(item.get("title")) or f"Dilution risk: {item['event_type'].replace('_', ' ').title()}"
+            item["raw_payload_json"] = dict(raw_record or {})
+            return
         item["severity"] = upper(item.get("severity"), "HIGH")
 
 
@@ -95,3 +109,14 @@ def _news_provider_score(sentiment: str, severity: str) -> int:
     if sentiment == "NEGATIVE":
         return {"LOW": -1, "MEDIUM": -3, "HIGH": -5, "CRITICAL": -10}[severity]
     return 0
+
+
+def _dilution_provider_mapping(risk: str) -> tuple[str, int]:
+    return {
+        "NONE": ("LOW", 0),
+        "LOW": ("LOW", -1),
+        "MEDIUM": ("MEDIUM", -3),
+        "HIGH": ("HIGH", -7),
+        "CRITICAL": ("CRITICAL", -10),
+        "UNKNOWN": ("HIGH", -7),
+    }.get(upper(risk, "UNKNOWN"), ("HIGH", -7))

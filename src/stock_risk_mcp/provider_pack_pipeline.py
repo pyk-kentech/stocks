@@ -51,7 +51,7 @@ def run_provider_pack(
             "input_file": path,
             "output_name": (
                 f"{provider.provider_name}-normalized.json"
-                if provider.data_kind.value in {"NEWS", "NEWS_SIGNAL"}
+                if provider.data_kind.value in {"NEWS", "NEWS_SIGNAL", "DILUTION", "DILUTION_SIGNAL"}
                 else f"{provider.provider_name}-normalized.csv"
             ),
             "columns": provider.columns,
@@ -105,6 +105,8 @@ def _selected_providers(config: ProviderPackConfig, pack_type: ProviderPackType)
         return config.fx.providers
     if pack_type == ProviderPackType.NEWS:
         return config.news.providers
+    if pack_type == ProviderPackType.DILUTION:
+        return config.dilution.providers
     if pack_type == ProviderPackType.PRICE_AND_FX:
         return [*config.price.providers, *config.fx.providers]
     return []
@@ -132,6 +134,7 @@ def _pack_status(pack_type, providers, connector_results, normalize_run, import_
     price_success = _import_succeeded(import_run, ImportSourceType.PRICE_HISTORY)
     fx_success = _import_succeeded(import_run, ImportSourceType.FX_RATE)
     news_success = _import_succeeded(import_run, ImportSourceType.NEWS_SIGNAL)
+    dilution_success = _import_succeeded(import_run, ImportSourceType.DILUTION_SIGNAL)
     failed_step = (
         not providers
         or any(item != ConnectorRunStatus.COMPLETED for item in connector_statuses)
@@ -146,6 +149,7 @@ def _pack_status(pack_type, providers, connector_results, normalize_run, import_
         ProviderPackType.PRICE: price_success,
         ProviderPackType.FX: fx_success,
         ProviderPackType.NEWS: news_success,
+        ProviderPackType.DILUTION: dilution_success,
     }.get(pack_type, False)
     if not success:
         return ProviderPackRunStatus.FAILED

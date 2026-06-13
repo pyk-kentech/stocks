@@ -14,6 +14,7 @@ class ProviderPackType(StrEnum):
     FX = "FX"
     PRICE_AND_FX = "PRICE_AND_FX"
     NEWS = "NEWS"
+    DILUTION = "DILUTION"
     UNKNOWN = "UNKNOWN"
 
 

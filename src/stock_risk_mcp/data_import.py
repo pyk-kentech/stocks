@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, time
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -254,18 +255,21 @@ def _signal_from_record(source_type: ImportSourceType, record: dict[str, Any], c
         SignalType.NEWS: "news_signal_file", SignalType.DILUTION: "dilution_signal_file",
         SignalType.TOSS_PORTFOLIO: "toss_signal_file", SignalType.FOREIGN_INSTITUTION_FLOW: "flow_signal_file",
     }
-    explicit_news = source_type == ImportSourceType.NEWS_SIGNAL and record.get("score_delta") not in (None, "")
-    if explicit_news:
+    explicit_provider_signal = (
+        source_type in {ImportSourceType.NEWS_SIGNAL, ImportSourceType.DILUTION_SIGNAL}
+        and record.get("score_delta") not in (None, "")
+    )
+    if explicit_provider_signal:
         direction = SignalDirection(str(record.get("sentiment") or "NEUTRAL").upper())
         severity = SignalSeverity(str(record.get("severity") or "LOW").upper())
     metadata = dict(record)
-    if explicit_news and isinstance(metadata.get("raw_payload_json"), str):
+    if explicit_provider_signal and isinstance(metadata.get("raw_payload_json"), str):
         metadata["raw_payload_json"] = json.loads(metadata["raw_payload_json"])
     return TickerSignal(
         ticker=str(record["ticker"]), signal_type=signal_type, as_of_date=cutoff, observed_at=observed_at,
         direction=direction, severity=severity,
-        score_delta=int(record["score_delta"]) if explicit_news else calculate_signal_score(direction, severity, signal_type),
-        source_name=_optional(record, "source_name") if explicit_news else source_names[signal_type],
+        score_delta=int(record["score_delta"]) if explicit_provider_signal else calculate_signal_score(direction, severity, signal_type),
+        source_name=_optional(record, "source_name") if explicit_provider_signal else source_names[signal_type],
         title=_optional(record, "title") or event.replace("_", " ").title(),
         summary=_optional(record, "summary") or _optional(record, "details"), raw_event_type=event, metadata=metadata,
         reasons=[f"{signal_type.value} signal: {event}"],

@@ -6,6 +6,7 @@ from stock_risk_mcp.signal_normalizers import (
     GenericFlowCSVNormalizer,
     GenericNewsCSVNormalizer,
     _news_provider_score,
+    _dilution_provider_mapping,
 )
 
 
@@ -71,6 +72,31 @@ def test_dilution_and_flow_normalizers_create_internal_schemas(tmp_path) -> None
 
     assert dilution_result.normalized_count == 1
     assert flow_result.normalized_count == 1
+
+
+def test_dilution_provider_mapping_is_non_positive_and_preserves_unknown(tmp_path) -> None:
+    raw = _csv(
+        tmp_path, "provider-dilution.csv",
+        "Symbol,ObservedAt,Event,Risk,Source\n"
+        "AAA,2026-06-12,OFFERING,HIGH,filings\n"
+        "BBB,2026-06-12,UNKNOWN,UNKNOWN,filings\n",
+    )
+
+    result = GenericDilutionCSVNormalizer().normalize(
+        raw, tmp_path / "out", date(2026, 6, 13), output_name="dilution.json",
+        columns={
+            "ticker": "Symbol", "observed_at": "ObservedAt", "event_type": "Event",
+            "dilution_risk": "Risk", "source_name": "Source",
+        },
+    )
+    rows = json.loads(open(result.output_path, encoding="utf-8").read())
+
+    assert (rows[0]["severity"], rows[0]["score_delta"]) == ("HIGH", -7)
+    assert (rows[1]["severity"], rows[1]["score_delta"]) == ("HIGH", -7)
+    assert rows[1]["raw_payload_json"]["Risk"] == "UNKNOWN"
+    assert [_dilution_provider_mapping(item)[1] for item in (
+        "NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"
+    )] == [0, -1, -3, -7, -10, -7]
 
 
 def _csv(tmp_path, name, content):

@@ -227,7 +227,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     connector_show = subparsers.add_parser("connector-show", help="Show a connector run.")
     connector_show.add_argument("--db", type=Path, required=True)
     connector_show.add_argument("--connector-run-id", required=True)
-    for name in ("run-price-provider-pack", "run-fx-provider-pack", "run-price-fx-provider-pack", "run-news-provider-pack"):
+    for name in ("run-price-provider-pack", "run-fx-provider-pack", "run-price-fx-provider-pack", "run-news-provider-pack", "run-dilution-provider-pack"):
         provider_pack = subparsers.add_parser(name)
         provider_pack.add_argument("--db", type=Path, required=True)
         provider_pack.add_argument("--as-of-date", type=date.fromisoformat, required=True)
@@ -785,6 +785,7 @@ def main(argv: list[str] | None = None) -> None:
         "run-fx-provider-pack",
         "run-price-fx-provider-pack",
         "run-news-provider-pack",
+        "run-dilution-provider-pack",
         "provider-pack-runs",
         "provider-pack-show",
         "report-pipeline",
@@ -990,12 +991,13 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"connector_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_connector_runs(args.limit)]}
     if args.command == "connector-show":
         return RiskRepository(args.db).get_connector_run(args.connector_run_id).model_dump(mode="json")
-    if args.command in {"run-price-provider-pack", "run-fx-provider-pack", "run-price-fx-provider-pack", "run-news-provider-pack"}:
+    if args.command in {"run-price-provider-pack", "run-fx-provider-pack", "run-price-fx-provider-pack", "run-news-provider-pack", "run-dilution-provider-pack"}:
         pack_types = {
             "run-price-provider-pack": ProviderPackType.PRICE,
             "run-fx-provider-pack": ProviderPackType.FX,
             "run-price-fx-provider-pack": ProviderPackType.PRICE_AND_FX,
             "run-news-provider-pack": ProviderPackType.NEWS,
+            "run-dilution-provider-pack": ProviderPackType.DILUTION,
         }
         run = run_provider_pack(
             RiskRepository(args.db), load_provider_pack_config(args.provider_pack_config),

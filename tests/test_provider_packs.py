@@ -24,3 +24,7 @@ def test_provider_pack_run_repository_round_trip(tmp_path) -> None:
 
 def test_provider_pack_type_includes_news() -> None:
     assert ProviderPackType.NEWS.value == "NEWS"
+
+
+def test_provider_pack_type_includes_dilution() -> None:
+    assert ProviderPackType.DILUTION.value == "DILUTION"

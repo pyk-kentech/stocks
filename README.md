@@ -1248,3 +1248,63 @@ Imported records are stored as NEWS signals and participate in the existing
 scan and pipeline enrichment contract: critical negative signals exclude,
 high negative signals downgrade INCLUDE to WATCH, and positive signals do not
 promote an existing EXCLUDE candidate.
+
+## Provider Pack #3: Dilution / Filings Public Data Adapter
+
+The Dilution Provider Pack extends the same safe provider-pack pipeline:
+
+```text
+safe HTTP or local_file -> raw dilution/filings -> provider normalizer -> Unified Import -> DILUTION signal enrichment
+```
+
+`provider_pack_config` remains the single connector and normalizer config
+source. There is no separate normalizer config file. Required dilution
+mappings are `ticker`, `observed_at`, `event_type`, `dilution_risk`, and
+`source_name`.
+
+```json
+{
+  "dilution": {
+    "providers": [
+      {
+        "provider_name": "sample_dilution_provider",
+        "local_file": "data/dilution.csv",
+        "data_kind": "DILUTION",
+        "output_format": "CSV",
+        "allowed_hosts": [],
+        "enabled": true,
+        "normalizer": "generic-dilution-csv",
+        "columns": {
+          "ticker": "Symbol",
+          "observed_at": "ObservedAt",
+          "event_type": "EventType",
+          "dilution_risk": "DilutionRisk",
+          "source_name": "Source"
+        }
+      }
+    ]
+  }
+}
+```
+
+Provider Pack dilution scores are never positive: `NONE=0`, `LOW=-1`,
+`MEDIUM=-3`, `HIGH=-7`, `CRITICAL=-10`, and conservative `UNKNOWN=-7`.
+`UNKNOWN` is stored as HIGH severity while its original value remains in
+`raw_payload_json`. This pack-specific mapping does not change common signal
+scoring.
+
+```bash
+python -m stock_risk_mcp.cli run-dilution-provider-pack --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-pack-config configs/provider_pack.json --output-dir data/provider_outputs
+```
+
+HTTP providers still require explicit `--enable-network` and exact
+`allowed_hosts`; `local_file` providers use no network. The adapter adds no
+credentials, cookies, sessions, private scraping, Toss scraping, orders, or
+automatic trading.
+
+Imported dilution records currently affect the Signal Enrichment path only:
+HIGH/UNKNOWN negative signals downgrade INCLUDE to WATCH and CRITICAL negative
+signals EXCLUDE. They are **not** automatically converted into
+`CompanyRisk.dilution_risk`. Existing `block_dilution_high` and
+`block_unknown_dilution` hard-risk rules remain unchanged, but the direct
+Provider Pack signal-to-CompanyRisk bridge is future work.

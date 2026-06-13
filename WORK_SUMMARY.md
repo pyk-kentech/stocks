@@ -1103,3 +1103,30 @@ Latest verified result after Provider Pack #2:
 ```text
 314 passed
 ```
+
+## Provider Pack #3: Dilution / Filings Public Data Adapter
+
+Added a dilution-only extension to the shared Provider Pack orchestration.
+
+Implemented:
+
+- `dilution.providers` in the single provider-pack config
+- required provider mappings for ticker, observation time, event, dilution risk, and source
+- safe HTTP and network-free local-file acquisition
+- raw provider payload preservation and conservative UNKNOWN handling
+- Dilution Provider Pack-only non-positive score mapping
+- existing HIGH-to-WATCH and CRITICAL-to-EXCLUDE signal enrichment behavior
+- `run-dilution-provider-pack` CLI and stored DILUTION ProviderPackRun records
+- unchanged common signal scoring and Risk Engine hard-risk rules
+
+Dilution Provider Pack signals currently feed Signal Enrichment only. They do
+not automatically populate `CompanyRisk.dilution_risk`. The existing
+`block_dilution_high` and `block_unknown_dilution` rules remain intact, while
+the direct Provider Pack signal-to-CompanyRisk hard-risk bridge is future
+work.
+
+Latest verified result after Provider Pack #3:
+
+```text
+324 passed
+```

@@ -63,6 +63,25 @@ def test_news_provider_config_reports_missing_headline(tmp_path) -> None:
     assert any("headline" in error for error in result["errors"])
 
 
+def test_dilution_provider_config_requires_dilution_risk(tmp_path) -> None:
+    payload = {"dilution": {"providers": [{
+        "provider_name": "dilution", "local_file": "dilution.csv", "data_kind": "DILUTION",
+        "output_format": "CSV", "allowed_hosts": [], "enabled": True,
+        "normalizer": "generic-dilution-csv",
+        "columns": {
+            "ticker": "Symbol", "observed_at": "ObservedAt",
+            "event_type": "Event", "source_name": "Source",
+        },
+    }]}}
+    config_file = tmp_path / "pack.json"
+    config_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_provider_pack_config_file(config_file)
+
+    assert result["status"] == "BLOCKED"
+    assert any("dilution_risk" in error for error in result["errors"])
+
+
 def _payload():
     return {
         "price": {"providers": [{
