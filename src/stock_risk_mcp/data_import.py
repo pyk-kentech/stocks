@@ -123,6 +123,30 @@ def import_signal_file(
     return result
 
 
+def import_fx_rate_file(repository: RiskRepository, path: str | Path, as_of_date: date | None = None) -> ImportSourceResult:
+    result, records = _start_source(path, ImportSourceType.FX_RATE, {"base_currency", "quote_currency", "date", "rate"})
+    if records is None:
+        return result
+    rates = []
+    for index, record in enumerate(records, 1):
+        try:
+            day = date.fromisoformat(str(record["date"]))
+            if as_of_date and day > as_of_date:
+                result.skipped_duplicate_count += 1
+                continue
+            rates.append({
+                "base_currency": str(record["base_currency"]).strip().upper(),
+                "quote_currency": str(record["quote_currency"]).strip().upper(),
+                "date": day, "rate": float(record["rate"]),
+                "source_name": _optional(record, "source_name"),
+            })
+        except Exception as error:
+            _row_error(result, index, error)
+    result.saved_count = len(repository.save_fx_rates(rates))
+    result.skipped_duplicate_count += len(rates) - result.saved_count
+    return result
+
+
 def run_unified_import(
     repository: RiskRepository,
     *,
@@ -132,18 +156,34 @@ def run_unified_import(
     dilution_signal_file: str | Path | None = None,
     toss_signal_file: str | Path | None = None,
     flow_signal_file: str | Path | None = None,
+    fx_rate_file: str | Path | None = None,
     as_of_date: date | None = None,
     empty_input_note: str | None = None,
 ) -> ImportRun:
-    sources: list[tuple[str | Path | None, Callable[[], ImportSourceResult]]] = [
-        (price_history_file, lambda: import_price_history_file(repository, price_history_file)),  # type: ignore[arg-type]
-        (nasdaq_noncompliant_file, lambda: import_compliance_file(repository, nasdaq_noncompliant_file, as_of_date)),  # type: ignore[arg-type]
-        (news_signal_file, lambda: import_signal_file(repository, news_signal_file, ImportSourceType.NEWS_SIGNAL, as_of_date)),  # type: ignore[arg-type]
-        (dilution_signal_file, lambda: import_signal_file(repository, dilution_signal_file, ImportSourceType.DILUTION_SIGNAL, as_of_date)),  # type: ignore[arg-type]
-        (toss_signal_file, lambda: import_signal_file(repository, toss_signal_file, ImportSourceType.TOSS_SIGNAL, as_of_date)),  # type: ignore[arg-type]
-        (flow_signal_file, lambda: import_signal_file(repository, flow_signal_file, ImportSourceType.FLOW_SIGNAL, as_of_date)),  # type: ignore[arg-type]
-    ]
-    results = [loader() for path, loader in sources if path is not None]
+    sources: list[Callable[[], ImportSourceResult]] = []
+    sources.extend(
+        lambda path=path: import_price_history_file(repository, path)
+        for path in _source_paths(price_history_file)
+    )
+    sources.extend(
+        lambda path=path: import_compliance_file(repository, path, as_of_date)
+        for path in _source_paths(nasdaq_noncompliant_file)
+    )
+    for files, source_type in (
+        (news_signal_file, ImportSourceType.NEWS_SIGNAL),
+        (dilution_signal_file, ImportSourceType.DILUTION_SIGNAL),
+        (toss_signal_file, ImportSourceType.TOSS_SIGNAL),
+        (flow_signal_file, ImportSourceType.FLOW_SIGNAL),
+    ):
+        for path in _source_paths(files):
+            sources.append(
+                lambda path=path, source_type=source_type: import_signal_file(repository, path, source_type, as_of_date)
+            )
+    sources.extend(
+        lambda path=path: import_fx_rate_file(repository, path, as_of_date)
+        for path in _source_paths(fx_rate_file)
+    )
+    results = [loader() for loader in sources]
     if not results:
         status = ImportRunStatus.FAILED
         notes = [empty_input_note or "No import files were specified."]
@@ -159,6 +199,12 @@ def run_unified_import(
     )
     repository.save_import_run(run)
     return run
+
+
+def _source_paths(value) -> list[str | Path]:
+    if value is None:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
 
 
 def _start_source(path: str | Path, source_type: ImportSourceType, required: set[str]):

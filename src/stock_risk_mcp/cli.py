@@ -60,6 +60,7 @@ from stock_risk_mcp.notification_templates import (
     build_notifications_from_pipeline,
     build_notifications_from_report,
 )
+from stock_risk_mcp.provider_normalization import load_normalizer_config, normalize_sources
 from stock_risk_mcp.notifications import NotificationChannelType, NotificationSeverity
 from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.operational_pipeline import OperationalPipeline
@@ -147,6 +148,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     import_data.add_argument("--as-of-date", type=date.fromisoformat)
     import_data.add_argument("--price-history-file", type=Path)
     import_data.add_argument("--nasdaq-noncompliant-file", type=Path)
+    import_data.add_argument("--fx-rate-file", type=Path)
     add_signal_file_args(import_data)
     import_runs = subparsers.add_parser("import-runs", help="List unified import runs.")
     import_runs.add_argument("--db", type=Path, required=True)
@@ -154,6 +156,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     import_show = subparsers.add_parser("import-show", help="Show a unified import run.")
     import_show.add_argument("--db", type=Path, required=True)
     import_show.add_argument("--import-run-id", required=True)
+
+    normalize_file = subparsers.add_parser("normalize-file")
+    normalize_file.add_argument("--db", type=Path, required=True)
+    normalize_file.add_argument("--normalizer", required=True)
+    normalize_file.add_argument("--input-file", type=Path, required=True)
+    normalize_file.add_argument("--output-dir", type=Path, required=True)
+    normalize_file.add_argument("--output-name")
+    normalize_file.add_argument("--as-of-date", type=date.fromisoformat)
+    normalize_file.add_argument("--save", action="store_true")
+    add_normalizer_column_args(normalize_file)
+    for name in ("normalize-run", "normalize-and-import"):
+        normalize = subparsers.add_parser(name)
+        normalize.add_argument("--db", type=Path, required=True)
+        normalize.add_argument("--config-file", type=Path, required=True)
+        normalize.add_argument("--output-dir", type=Path, required=True)
+        normalize.add_argument("--as-of-date", type=date.fromisoformat)
+        if name == "normalize-run":
+            normalize.add_argument("--save", action="store_true")
+    normalize_runs = subparsers.add_parser("normalize-runs")
+    normalize_runs.add_argument("--db", type=Path, required=True)
+    normalize_runs.add_argument("--limit", type=int, default=50)
+    normalize_show = subparsers.add_parser("normalize-show")
+    normalize_show.add_argument("--db", type=Path, required=True)
+    normalize_show.add_argument("--normalize-run-id", required=True)
 
     subparsers.add_parser("connectors", help="List registered connectors.")
     for name in ("run-connectors", "run-connectors-and-import"):
@@ -644,6 +670,16 @@ def add_http_provider_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--allowed-host", action="append", default=None)
 
 
+def add_normalizer_column_args(parser: argparse.ArgumentParser) -> None:
+    for name in (
+        "ticker", "date", "open", "high", "low", "close", "volume", "observed-at",
+        "title", "summary", "event-type", "sentiment", "materiality", "severity",
+        "details", "foreign-net-buy", "institution-net-buy", "foreign-ownership-change",
+        "flow-window-days", "base-currency", "quote-currency", "rate", "source-name",
+    ):
+        parser.add_argument(f"--{name}-column")
+
+
 def _connector_registry_and_names(args: argparse.Namespace):
     registry = default_connector_registry()
     names = list(args.connector)
@@ -685,6 +721,11 @@ def main(argv: list[str] | None = None) -> None:
         "import-data",
         "import-runs",
         "import-show",
+        "normalize-file",
+        "normalize-run",
+        "normalize-and-import",
+        "normalize-runs",
+        "normalize-show",
         "connectors",
         "run-connectors",
         "run-connectors-and-import",
@@ -802,6 +843,38 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"import_runs": [import_run_report(item) for item in RiskRepository(args.db).list_import_runs(args.limit)]}
     if args.command == "import-show":
         return import_run_report(RiskRepository(args.db).get_import_run(args.import_run_id))
+    if args.command == "normalize-file":
+        columns = {
+            key[:-7].replace("_", "-").replace("-", "_"): value
+            for key, value in vars(args).items() if key.endswith("_column") and value
+        }
+        source = {
+            "normalizer": args.normalizer, "input_file": str(args.input_file),
+            "output_name": args.output_name, "columns": columns,
+        }
+        run, _ = normalize_sources(
+            [source], args.output_dir, args.as_of_date,
+            repository=RiskRepository(args.db), save=args.save,
+        )
+        return run.model_dump(mode="json")
+    if args.command in {"normalize-run", "normalize-and-import"}:
+        repository = RiskRepository(args.db)
+        run, import_run = normalize_sources(
+            load_normalizer_config(args.config_file), args.output_dir, args.as_of_date,
+            repository=repository,
+            save=True if args.command == "normalize-and-import" else args.save,
+            import_outputs=args.command == "normalize-and-import",
+        )
+        output = run.model_dump(mode="json")
+        output["import_run_id"] = import_run.import_run_id if import_run else None
+        output["import_status"] = import_run.status.value if import_run else None
+        return output
+    if args.command == "normalize-runs":
+        return {"normalize_runs": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_normalize_runs(args.limit)
+        ]}
+    if args.command == "normalize-show":
+        return RiskRepository(args.db).get_normalize_run(args.normalize_run_id).model_dump(mode="json")
     if args.command == "connectors":
         return {"connectors": [
             {"name": item.name, "connector_type": item.connector_type.value, "mode": item.mode.value}
@@ -1215,6 +1288,7 @@ def run_import_data(args: argparse.Namespace) -> dict[str, object]:
         dilution_signal_file=args.dilution_signal_file,
         toss_signal_file=args.toss_signal_file,
         flow_signal_file=args.flow_signal_file,
+        fx_rate_file=args.fx_rate_file,
         as_of_date=args.as_of_date,
     )
     return import_run_report(run)

@@ -824,6 +824,61 @@ Run `system-smoke` before attaching or enabling a real public provider:
 python -m stock_risk_mcp.cli system-smoke --db data/smoke.sqlite3 --output-dir smoke_outputs
 ```
 
+### Provider Normalization Layer
+
+Provider files often use vendor-specific column names and shapes. The Provider
+Normalization Layer converts already-downloaded Public HTTP or local CSV/JSON
+files into the stable schemas accepted by Unified Import. Normalizers never
+write business data directly to SQLite and never make network requests. They
+create reproducible normalized files; `normalize-and-import` then passes only
+successful outputs to the existing import pipeline.
+
+Default generic normalizers:
+
+- `generic-price-csv`
+- `generic-news-csv`
+- `generic-dilution-csv`
+- `generic-flow-csv`
+- `generic-fx-csv`
+
+```bash
+python -m stock_risk_mcp.cli normalize-file --db data/stock_risk_mcp.sqlite3 --normalizer generic-price-csv --input-file raw/provider_prices.csv --output-dir normalized --as-of-date 2026-06-13 --ticker-column Symbol --date-column Date --open-column Open --high-column High --low-column Low --close-column Close --volume-column Volume --save
+python -m stock_risk_mcp.cli normalize-run --db data/stock_risk_mcp.sqlite3 --config-file configs/normalizers.json --output-dir normalized --as-of-date 2026-06-13 --save
+python -m stock_risk_mcp.cli normalize-and-import --db data/stock_risk_mcp.sqlite3 --config-file configs/normalizers.json --output-dir normalized --as-of-date 2026-06-13
+python -m stock_risk_mcp.cli normalize-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli normalize-show --db data/stock_risk_mcp.sqlite3 --normalize-run-id <normalize_run_id>
+```
+
+Example config:
+
+```json
+{
+  "sources": [
+    {
+      "normalizer": "generic-price-csv",
+      "input_file": "raw/prices.csv",
+      "output_name": "prices_normalized.csv",
+      "columns": {
+        "ticker": "Symbol",
+        "date": "Date",
+        "close": "Close",
+        "volume": "Volume"
+      }
+    }
+  ]
+}
+```
+
+Price rows after `as_of_date` are skipped. Missing price `open`, `high`, or
+`low` values use close and produce warnings; missing close or volume values are
+row errors. Per-source failures are isolated and recorded in `NormalizeRun`.
+Output names must be safe CSV/JSON file names and cannot escape `output_dir`.
+
+Normalized FX data can be imported into `fx_rates` for later use. FX is not
+connected to risk sizing, basket construction, paper trading, or operational
+pipeline decisions in this phase. Validate a provider with a generic
+normalizer and local fixtures before building a provider-specific adapter.
+
 ## Analysis Report Layer
 
 The Analysis Report Layer converts stored pipeline, candidate scan, basket,

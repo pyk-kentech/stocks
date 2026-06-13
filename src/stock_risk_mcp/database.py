@@ -664,6 +664,48 @@ def create_schema(connection: sqlite3.Connection) -> None:
             completed_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS normalize_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            normalize_run_id TEXT NOT NULL UNIQUE,
+            as_of_date TEXT,
+            status TEXT NOT NULL,
+            total_row_count INTEGER NOT NULL,
+            total_normalized_count INTEGER NOT NULL,
+            total_skipped_count INTEGER NOT NULL,
+            total_error_count INTEGER NOT NULL,
+            output_paths_json TEXT,
+            notes_json TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS normalize_source_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            normalize_run_id TEXT NOT NULL,
+            normalizer_name TEXT NOT NULL,
+            normalizer_type TEXT NOT NULL,
+            input_path TEXT NOT NULL,
+            output_path TEXT,
+            row_count INTEGER NOT NULL,
+            normalized_count INTEGER NOT NULL,
+            skipped_count INTEGER NOT NULL,
+            error_count INTEGER NOT NULL,
+            warnings_json TEXT,
+            errors_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS fx_rates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            base_currency TEXT NOT NULL,
+            quote_currency TEXT NOT NULL,
+            date TEXT NOT NULL,
+            rate REAL NOT NULL,
+            source_name TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(base_currency, quote_currency, date, source_name)
+        );
+
         CREATE TABLE IF NOT EXISTS analysis_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             report_id TEXT NOT NULL UNIQUE,

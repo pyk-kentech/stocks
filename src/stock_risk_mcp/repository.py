@@ -53,6 +53,7 @@ from stock_risk_mcp.models import (
 from stock_risk_mcp.local_llm import LocalLLMRequest
 from stock_risk_mcp.local_llm_response import LocalLLMResponse
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
+from stock_risk_mcp.normalize_run import NormalizeRun, NormalizeRunStatus, NormalizeSourceResult, NormalizerType
 from stock_risk_mcp.notifications import NotificationChannelType, NotificationMessage, NotificationSeverity
 from stock_risk_mcp.paper_trading import (
     BasketBacktestResult,
@@ -1158,6 +1159,87 @@ class RiskRepository:
             rows = connection.execute("SELECT import_run_id FROM import_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [self.get_import_run(str(row["import_run_id"])) for row in rows]
 
+    def save_normalize_run(self, run: NormalizeRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO normalize_runs (
+                    normalize_run_id, as_of_date, status, total_row_count, total_normalized_count,
+                    total_skipped_count, total_error_count, output_paths_json, notes_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run.normalize_run_id, run.as_of_date.isoformat() if run.as_of_date else None, run.status.value,
+                    run.total_row_count, run.total_normalized_count, run.total_skipped_count, run.total_error_count,
+                    _json(run.output_paths), _json(run.notes), run.created_at.isoformat(),
+                    run.completed_at.isoformat() if run.completed_at else None,
+                ),
+            )
+            for item in run.source_results:
+                connection.execute(
+                    """INSERT INTO normalize_source_results (
+                        normalize_run_id, normalizer_name, normalizer_type, input_path, output_path,
+                        row_count, normalized_count, skipped_count, error_count, warnings_json, errors_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        run.normalize_run_id, item.normalizer_name, item.normalizer_type.value,
+                        item.input_path, item.output_path, item.row_count, item.normalized_count,
+                        item.skipped_count, item.error_count, _json(item.warnings), _json(item.errors),
+                    ),
+                )
+            return int(cursor.lastrowid)
+
+    def get_normalize_run(self, normalize_run_id: str) -> NormalizeRun:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM normalize_runs WHERE normalize_run_id = ?", (normalize_run_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Normalize run not found: {normalize_run_id}")
+            results = connection.execute(
+                "SELECT * FROM normalize_source_results WHERE normalize_run_id = ? ORDER BY id", (normalize_run_id,)
+            ).fetchall()
+        return _normalize_run_from_rows(row, results)
+
+    def list_normalize_runs(self, limit: int = 50) -> list[NormalizeRun]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT normalize_run_id FROM normalize_runs ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self.get_normalize_run(str(row["normalize_run_id"])) for row in rows]
+
+    def save_fx_rates(self, rates: list[dict[str, Any]]) -> list[int]:
+        ids = []
+        with self._connect() as connection:
+            for item in rates:
+                cursor = connection.execute(
+                    """INSERT OR IGNORE INTO fx_rates (
+                        base_currency, quote_currency, date, rate, source_name
+                    ) VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        str(item["base_currency"]).upper(), str(item["quote_currency"]).upper(),
+                        item["date"].isoformat() if isinstance(item["date"], date) else str(item["date"]),
+                        float(item["rate"]), item.get("source_name"),
+                    ),
+                )
+                if cursor.rowcount:
+                    ids.append(int(cursor.lastrowid))
+        return ids
+
+    def list_fx_rates(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM fx_rates ORDER BY date DESC, id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_latest_fx_rate(self, base_currency: str, quote_currency: str) -> dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM fx_rates WHERE base_currency=? AND quote_currency=?
+                ORDER BY date DESC, id DESC LIMIT 1""",
+                (base_currency.upper(), quote_currency.upper()),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"FX rate not found: {base_currency}/{quote_currency}")
+        return dict(row)
+
     def save_connector_run(self, run: ConnectorRun) -> int:
         with self._connect() as connection:
             cursor = connection.execute(
@@ -1880,6 +1962,9 @@ class RiskRepository:
             "import_runs",
             "import_source_results",
             "connector_runs",
+            "normalize_runs",
+            "normalize_source_results",
+            "fx_rates",
             "analysis_reports",
             "agent_contexts",
             "agent_prompts",
@@ -1937,6 +2022,29 @@ def _connector_run_from_row(row: sqlite3.Row) -> ConnectorRun:
         warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
         errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
         metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
+
+
+def _normalize_run_from_rows(row: sqlite3.Row, results: list[sqlite3.Row]) -> NormalizeRun:
+    return NormalizeRun(
+        normalize_run_id=str(row["normalize_run_id"]),
+        as_of_date=date.fromisoformat(str(row["as_of_date"])) if row["as_of_date"] else None,
+        status=NormalizeRunStatus(str(row["status"])),
+        source_results=[
+            NormalizeSourceResult(
+                normalizer_name=str(item["normalizer_name"]),
+                normalizer_type=NormalizerType(str(item["normalizer_type"])),
+                input_path=str(item["input_path"]), output_path=item["output_path"],
+                row_count=int(item["row_count"]), normalized_count=int(item["normalized_count"]),
+                skipped_count=int(item["skipped_count"]), error_count=int(item["error_count"]),
+                warnings=json.loads(item["warnings_json"]) if item["warnings_json"] else [],
+                errors=json.loads(item["errors_json"]) if item["errors_json"] else [],
+            )
+            for item in results
+        ],
+        notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
         created_at=datetime.fromisoformat(str(row["created_at"])),
         completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
     )

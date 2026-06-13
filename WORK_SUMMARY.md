@@ -1005,3 +1005,28 @@ Latest verified result after the Public HTTP Data Connector / Network Safety Lay
 ```text
 268 passed
 ```
+
+## Provider Normalization Layer
+
+Added a file-only normalization layer between raw provider outputs and Unified
+Import.
+
+Implemented:
+
+- typed NormalizeRun and per-source results with SQLite persistence
+- generic price, news, dilution, flow, and FX normalizers
+- provider column mapping, as-of filtering, row-level warnings/errors, and safe output paths
+- source failure isolation with COMPLETED/PARTIAL/FAILED/NO_INPUT statuses
+- normalizer registry and JSON/YAML multi-source config loading
+- `normalize-file`, `normalize-run`, `normalize-and-import`, `normalize-runs`, and `normalize-show`
+- normalized FX import plus `fx_rates` save/list/latest repository helpers
+
+Normalizers create reproducible local files and never write business data
+directly or make network requests. FX data is stored for future use and is not
+connected to current sizing or pipeline decisions.
+
+Latest verified result after the Provider Normalization Layer:
+
+```text
+280 passed
+```
