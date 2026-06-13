@@ -49,6 +49,18 @@ def error_alert(pipeline_run_id: str, error: Exception | str) -> PipelineAlert:
     return _alert(pipeline_run_id, AlertType.PIPELINE_ERROR, AlertSeverity.CRITICAL, "Pipeline error", str(error))
 
 
+def fx_summary_alert(pipeline_run_id: str, account_currency: str, trading_currency: str, rate: float | None, warnings: list[str]) -> PipelineAlert:
+    severity = AlertSeverity.WARNING if warnings else AlertSeverity.INFO
+    message = (
+        f"{account_currency} account / {trading_currency} trading; FX rate={rate}."
+        + (f" Warnings: {'; '.join(warnings)}" if warnings else "")
+    )
+    return _alert(
+        pipeline_run_id, AlertType.FX_WARNING, severity,
+        "FX conversion warning" if warnings else "FX conversion summary", message,
+    )
+
+
 def _alert(run_id, alert_type, severity, title, message, ticker=None):
     return PipelineAlert(
         alert_id=uuid4().hex, pipeline_run_id=run_id, alert_type=alert_type, severity=severity,

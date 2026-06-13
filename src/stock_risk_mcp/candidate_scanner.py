@@ -4,12 +4,13 @@ from stock_risk_mcp.candidate_filters import evaluate_candidate
 from stock_risk_mcp.candidate_universe import CandidateDecision, CandidateScanPolicy, CandidateScanResult
 from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.models import SourceType
-from stock_risk_mcp.setup import TradeSizingPolicy
+from stock_risk_mcp.setup import TradePlan, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
 from stock_risk_mcp.trade_plan import create_trade_plan
+from stock_risk_mcp.fx_risk import apply_fx_to_trade_plan
 
 
-def scan_candidate(scan_run_id, ticker, as_of_date, price_provider, repository, scan_policy, strategy_policy=None, account_equity=10_000, cash_available=5_000):
+def scan_candidate(scan_run_id, ticker, as_of_date, price_provider, repository, scan_policy, strategy_policy=None, account_equity=10_000, cash_available=5_000, currency_context=None):
     history = price_provider.get_history_until(ticker, as_of_date)
     if not history:
         return CandidateScanResult(
@@ -21,6 +22,8 @@ def scan_candidate(scan_run_id, ticker, as_of_date, price_provider, repository, 
     indicator_set, _ = analyze_price_bars(ticker, history, "candidate_scanner", SourceType.SYSTEM)
     setup = SetupGrader().grade(indicator_set, strategy_policy)
     trade = create_trade_plan(setup, history, TradeSizingPolicy(account_equity=account_equity, cash_available=cash_available))
+    if currency_context:
+        trade = TradePlan.model_validate(apply_fx_to_trade_plan(trade, currency_context))
     values = {item.indicator_code: item.value for item in indicator_set.indicators}
     records = repository.get_compliance_records(ticker)
     result = evaluate_candidate(

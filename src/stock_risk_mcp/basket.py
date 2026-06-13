@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from uuid import uuid4
 
@@ -76,6 +76,14 @@ class BasketAllocation(StrictModel):
     target_price: float | None = None
     risk_reward_ratio: float | None = None
     allocation_reason: str
+    account_currency: str | None = None
+    trading_currency: str | None = None
+    fx_rate: float | None = None
+    allocated_loss_account: float | None = None
+    allocated_loss_trading: float | None = None
+    notional_account: float | None = None
+    notional_trading: float | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
 
 class BasketRiskSummary(StrictModel):
@@ -89,6 +97,15 @@ class BasketRiskSummary(StrictModel):
     blocked_reasons: list[str]
     warnings: list[str]
     risk_ok: bool
+    account_currency: str | None = None
+    trading_currency: str | None = None
+    fx_rate: float | None = None
+    fx_date: date | None = None
+    total_notional_account: float | None = None
+    total_notional_trading: float | None = None
+    total_max_loss_account: float | None = None
+    total_max_loss_trading: float | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
 
 class BasketPlan(StrictModel):
@@ -106,6 +123,15 @@ class BasketPlan(StrictModel):
     policy_id: str | None = None
     policy_version: str | None = None
     basket_scoring_mode: str = "FIXED_RULES"
+    account_currency: str | None = None
+    trading_currency: str | None = None
+    fx_rate: float | None = None
+    fx_date: date | None = None
+    total_notional_account: float | None = None
+    total_notional_trading: float | None = None
+    total_max_loss_account: float | None = None
+    total_max_loss_trading: float | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
 
 def candidate_from_trade_plan(plan: TradePlan, trade_plan_id: int | None = None) -> BasketCandidate:

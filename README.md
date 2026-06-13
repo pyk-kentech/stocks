@@ -874,10 +874,36 @@ Price rows after `as_of_date` are skipped. Missing price `open`, `high`, or
 row errors. Per-source failures are isolated and recorded in `NormalizeRun`.
 Output names must be safe CSV/JSON file names and cannot escape `output_dir`.
 
-Normalized FX data can be imported into `fx_rates` for later use. FX is not
-connected to risk sizing, basket construction, paper trading, or operational
-pipeline decisions in this phase. Validate a provider with a generic
-normalizer and local fixtures before building a provider-specific adapter.
+Normalized FX data can be imported into `fx_rates` and consumed by the
+FX-aware context described below. Validate a provider with a generic normalizer
+and local fixtures before building a provider-specific adapter.
+
+### FX-aware Portfolio / Risk Layer
+
+The FX-aware layer lets an account-currency balance, such as KRW, drive the
+existing USD paper-trading pipeline without changing max-loss-first sizing or
+hard-risk rules. It builds a `PortfolioCurrencyContext`, converts account
+equity and cash into trading currency, and passes those converted values to the
+existing pipeline. Generated TradePlan, basket, paper, pipeline, report,
+notification, and dashboard records retain both currency views.
+
+FX lookup uses only manually supplied rates or stored `fx_rates` rows. No
+external FX API or web request is made. Manual `--fx-rate` takes priority.
+Database lookup uses the latest rate on or before `as_of_date` and can invert
+the opposite pair. Rates older than `--max-fx-staleness-days` remain usable but
+produce a WARNING. Missing FX preserves legacy trading-currency behavior,
+leaves account-currency conversions null, and records a warning.
+
+```bash
+python -m stock_risk_mcp.cli fx-rates --db data/stock_risk_mcp.sqlite3 --base-currency USD --quote-currency KRW
+python -m stock_risk_mcp.cli fx-latest --db data/stock_risk_mcp.sqlite3 --base-currency USD --quote-currency KRW --as-of-date 2026-06-13
+python -m stock_risk_mcp.cli fx-convert --db data/stock_risk_mcp.sqlite3 --amount 100000 --from-currency KRW --to-currency USD --as-of-date 2026-06-13
+python -m stock_risk_mcp.cli run-paper-pipeline --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --account-equity 10000000 --cash-available 5000000 --account-currency KRW --trading-currency USD --horizon-days 10
+python -m stock_risk_mcp.cli run-paper-pipeline --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --account-equity 10000000 --cash-available 5000000 --account-currency KRW --trading-currency USD --fx-rate 1380 --fx-source-name manual --horizon-days 10
+```
+
+The default remains USD account / USD trading with rate 1.0. All outputs remain
+paper-trading and research records, not investment advice or real orders.
 
 ## Analysis Report Layer
 

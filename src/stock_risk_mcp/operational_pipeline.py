@@ -6,13 +6,14 @@ from uuid import uuid4
 
 from pydantic import Field
 
-from stock_risk_mcp.alerts import basket_alert, candidate_alerts, error_alert, paper_alert, policy_alert
+from stock_risk_mcp.alerts import basket_alert, candidate_alerts, error_alert, fx_summary_alert, paper_alert, policy_alert
 from stock_risk_mcp.asof_price_history import AsOfPriceHistoryProvider
 from stock_risk_mcp.basket import BasketPolicy
 from stock_risk_mcp.basket_backtest import run_basket_backtest
 from stock_risk_mcp.candidate_universe import CandidateScanPolicy, CandidateSource, load_db_universe, load_file_universe, load_manual_universe
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
+from stock_risk_mcp.fx_risk import apply_fx_to_basket, apply_fx_to_paper_result
 from stock_risk_mcp.models import StrictModel
 from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.pipeline_report import build_pipeline_summary
@@ -92,14 +93,27 @@ class OperationalPipeline:
         save_replay_snapshot: bool = True,
         paper_trade: bool = True,
         mode: PipelineMode = PipelineMode.PAPER_BASKET,
+        currency_context=None,
     ) -> OperationalPipelineExecution:
-        run = self._start_run(mode, as_of_date, strategy_policy)
+        run = self._start_run(mode, as_of_date, strategy_policy, currency_context)
         alerts: list[PipelineAlert] = []
         notes: list[str] = []
         basket = paper_result = None
         replay_run_id = None
         try:
-            scan = self._scan(as_of_date, tickers, price_history_file, signal_files, ignore_db_signals, strategy_policy, True)
+            if currency_context and (
+                currency_context.account_currency != currency_context.trading_currency or currency_context.warnings
+            ):
+                alerts.append(fx_summary_alert(
+                    run.pipeline_run_id, currency_context.account_currency, currency_context.trading_currency,
+                    currency_context.fx_rate, currency_context.warnings,
+                ))
+            scan = self._scan(
+                as_of_date, tickers, price_history_file, signal_files, ignore_db_signals, strategy_policy, True,
+                account_equity if currency_context else 10_000,
+                cash_available if currency_context else 5_000,
+                currency_context,
+            )
             alerts.extend(candidate_alerts(run.pipeline_run_id, scan.results))
             run = run.model_copy(update={
                 "scan_run_id": scan.run.scan_run_id,
@@ -126,9 +140,13 @@ class OperationalPipeline:
                 basket_policy = apply_strategy_policy_to_basket_policy(basket_policy, strategy_policy)
             basket, _ = create_basket_from_scan_run(
                 self.repository, scan.run.scan_run_id, account_equity, cash_available,
-                include_watch=include_watch, save_basket=save_basket, basket_policy=basket_policy,
+                include_watch=include_watch, save_basket=False, basket_policy=basket_policy,
                 strategy_policy=strategy_policy,
             )
+            if currency_context:
+                basket = apply_fx_to_basket(basket, currency_context)
+            if save_basket:
+                self.repository.save_basket_plan(basket)
             alerts.append(basket_alert(run.pipeline_run_id, basket.decision, len(basket.allocations)))
             if save_replay_snapshot:
                 replay = create_replay_snapshot_from_scan_run(
@@ -148,6 +166,8 @@ class OperationalPipeline:
                 )
                 prices = {item.ticker: provider.get_forward_history(item.ticker, as_of_date, horizon_days) for item in basket.allocations}
                 paper_result, trades = run_basket_backtest(basket, prices, as_of_date, horizon_days)
+                if currency_context:
+                    paper_result = apply_fx_to_paper_result(paper_result, currency_context)
                 outcome_alert = paper_alert(run.pipeline_run_id, paper_result)
                 if outcome_alert is not None:
                     alerts.append(outcome_alert)
@@ -229,7 +249,7 @@ class OperationalPipeline:
             run = self._finish_run(run, PipelineRunStatus.FAILED, alerts, error=str(exc), notes=[str(exc)])
             return OperationalPipelineExecution(run=run, summary=build_pipeline_summary(run, alerts), alerts=alerts)
 
-    def _scan(self, as_of_date, tickers, price_file, signal_files, ignore_db, strategy_policy, save_scan):
+    def _scan(self, as_of_date, tickers, price_file, signal_files, ignore_db, strategy_policy, save_scan, account_equity=10_000, cash_available=5_000, currency_context=None):
         if tickers is not None:
             universe, source = load_manual_universe(tickers), CandidateSource.MANUAL_LIST
         elif price_file:
@@ -244,16 +264,31 @@ class OperationalPipeline:
             self.repository,
             AsOfPriceHistoryProvider(repository=None if price_file else self.repository, price_history_file=price_file),
             universe, as_of_date, source, CandidateScanPolicy(), strategy_policy, save=save_scan,
-            signals=merged.signals, signal_counts=counts,
+            account_equity=account_equity, cash_available=cash_available,
+            signals=merged.signals, signal_counts=counts, currency_context=currency_context,
         )
 
-    def _start_run(self, mode, as_of_date, strategy_policy):
+    def _start_run(self, mode, as_of_date, strategy_policy, currency_context=None):
+        fx = {}
+        if currency_context:
+            fx = {
+                "account_currency": currency_context.account_currency,
+                "trading_currency": currency_context.trading_currency,
+                "fx_rate": currency_context.fx_rate, "fx_date": currency_context.fx_date,
+                "fx_source_name": currency_context.fx_source_name, "fx_stale": currency_context.fx_stale,
+                "account_equity_input": currency_context.account_equity_input,
+                "cash_available_input": currency_context.cash_available_input,
+                "account_equity_trading": currency_context.account_equity_trading,
+                "cash_available_trading": currency_context.cash_available_trading,
+                "fx_warnings_json": currency_context.warnings,
+            }
         run = PipelineRun(
             pipeline_run_id=uuid4().hex, mode=mode, as_of_date=as_of_date,
             policy_id=strategy_policy.policy_id if strategy_policy else None,
             policy_version=strategy_policy.version if strategy_policy else None,
             status=PipelineRunStatus.CREATED, candidate_count=0, included_count=0, watch_count=0,
             basket_allocation_count=0, alert_count=0, created_at=datetime.now(),
+            **fx,
         )
         self.repository.save_pipeline_run(run)
         run = run.model_copy(update={"status": PipelineRunStatus.RUNNING})

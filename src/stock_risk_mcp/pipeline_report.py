@@ -31,4 +31,9 @@ def build_pipeline_summary(
         alert_count=len(alerts),
         top_alerts=sorted(alerts, key=lambda item: severity_rank[item.severity], reverse=True)[:10],
         notes=run.notes,
+        account_currency=run.account_currency, trading_currency=run.trading_currency,
+        fx_rate=run.fx_rate, fx_date=run.fx_date, fx_source_name=run.fx_source_name,
+        fx_stale=run.fx_stale, account_equity_input=run.account_equity_input,
+        cash_available_input=run.cash_available_input, account_equity_trading=run.account_equity_trading,
+        cash_available_trading=run.cash_available_trading, fx_warnings_json=run.fx_warnings_json,
     )

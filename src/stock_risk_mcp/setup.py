@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from enum import StrEnum
 
 from pydantic import Field, field_validator
@@ -66,6 +67,19 @@ class TradePlan(StrictModel):
     policy_id: str | None = None
     policy_version: str | None = None
     setup_scoring_mode: str | None = None
+    account_currency: str | None = None
+    trading_currency: str | None = None
+    fx_rate: float | None = None
+    fx_date: date | None = None
+    fx_source_name: str | None = None
+    fx_stale: bool = False
+    max_loss_account: float | None = None
+    max_loss_trading: float | None = None
+    notional_account: float | None = None
+    notional_trading: float | None = None
+    estimated_loss_account: float | None = None
+    estimated_loss_trading: float | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
     @field_validator("ticker")
     @classmethod

@@ -39,6 +39,7 @@ def run_candidate_scan(
     cash_available: float = 5_000,
     signals: list[TickerSignal] | None = None,
     signal_counts: dict[str, int] | None = None,
+    currency_context=None,
 ) -> ScanPipelineResult:
     scan_run_id = uuid4().hex
     results = [
@@ -52,6 +53,7 @@ def run_candidate_scan(
             strategy_policy,
             account_equity,
             cash_available,
+            currency_context,
         )
         for ticker in tickers
     ]
@@ -99,6 +101,7 @@ def _scan_one(
     strategy_policy: StrategyPolicy | None,
     account_equity: float,
     cash_available: float,
+    currency_context=None,
 ) -> CandidateScanResult:
     try:
         return scan_candidate(
@@ -111,6 +114,7 @@ def _scan_one(
             strategy_policy,
             account_equity,
             cash_available,
+            currency_context,
         )
     except Exception as exc:
         return CandidateScanResult(

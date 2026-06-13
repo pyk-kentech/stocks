@@ -44,6 +44,7 @@ class AlertType(StrEnum):
     NEED_MORE_DATA = "NEED_MORE_DATA"
     SIGNAL_CRITICAL = "SIGNAL_CRITICAL"
     PIPELINE_ERROR = "PIPELINE_ERROR"
+    FX_WARNING = "FX_WARNING"
 
 
 class PipelineRun(StrictModel):
@@ -67,6 +68,17 @@ class PipelineRun(StrictModel):
     error: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
+    account_currency: str = "USD"
+    trading_currency: str = "USD"
+    fx_rate: float | None = 1.0
+    fx_date: date | None = None
+    fx_source_name: str | None = None
+    fx_stale: bool = False
+    account_equity_input: float | None = None
+    cash_available_input: float | None = None
+    account_equity_trading: float | None = None
+    cash_available_trading: float | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
 
 class PipelineAlert(StrictModel):
@@ -96,3 +108,14 @@ class PipelineSummary(StrictModel):
     alert_count: int
     top_alerts: list[PipelineAlert] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    account_currency: str = "USD"
+    trading_currency: str = "USD"
+    fx_rate: float | None = 1.0
+    fx_date: date | None = None
+    fx_source_name: str | None = None
+    fx_stale: bool = False
+    account_equity_input: float | None = None
+    cash_available_input: float | None = None
+    account_equity_trading: float | None = None
+    cash_available_trading: float | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)

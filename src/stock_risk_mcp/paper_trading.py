@@ -49,6 +49,14 @@ class PaperTrade(StrictModel):
     policy_id: str | None = None
     policy_version: str | None = None
     basket_scoring_mode: str | None = None
+    realized_pnl_account: float | None = None
+    realized_pnl_trading: float | None = None
+    return_account_pct: float | None = None
+    return_trading_pct: float | None = None
+    fx_rate: float | None = None
+    account_currency: str | None = None
+    trading_currency: str | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
 
 class BasketBacktestResult(StrictModel):
@@ -72,6 +80,14 @@ class BasketBacktestResult(StrictModel):
     policy_id: str | None = None
     policy_version: str | None = None
     basket_scoring_mode: str | None = None
+    realized_pnl_account: float | None = None
+    realized_pnl_trading: float | None = None
+    return_account_pct: float | None = None
+    return_trading_pct: float | None = None
+    fx_rate: float | None = None
+    account_currency: str | None = None
+    trading_currency: str | None = None
+    fx_warnings_json: list[str] = Field(default_factory=list)
 
 
 class BasketPerformanceSummary(StrictModel):
@@ -112,6 +128,8 @@ def create_paper_trade(
         policy_id=policy_id,
         policy_version=policy_version,
         basket_scoring_mode=basket_scoring_mode,
+        fx_rate=allocation.fx_rate, account_currency=allocation.account_currency,
+        trading_currency=allocation.trading_currency, fx_warnings_json=allocation.fx_warnings_json,
     )
 
 
@@ -125,6 +143,10 @@ def close_paper_trade(trade: PaperTrade, exit_date: date, exit_price: float, rea
             "exit_reason": reason,
             "realized_pnl": realized_pnl,
             "realized_return_pct": realized_return_pct,
+            "realized_pnl_trading": realized_pnl,
+            "realized_pnl_account": realized_pnl * trade.fx_rate if trade.fx_rate is not None else None,
+            "return_trading_pct": realized_return_pct,
+            "return_account_pct": realized_return_pct if trade.fx_rate is not None else None,
             "status": PaperTradeStatus.CLOSED,
         }
     )

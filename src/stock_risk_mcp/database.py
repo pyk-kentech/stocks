@@ -803,6 +803,7 @@ def create_schema(connection: sqlite3.Connection) -> None:
             "policy_id": "TEXT",
             "policy_version": "TEXT",
             "setup_scoring_mode": "TEXT",
+            "fx_json": "TEXT",
         },
     )
     _add_missing_columns(
@@ -813,13 +814,14 @@ def create_schema(connection: sqlite3.Connection) -> None:
     _add_missing_columns(
         connection,
         "paper_trades",
-        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT"},
+        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT", "fx_json": "TEXT"},
     )
     _add_missing_columns(
         connection,
         "basket_backtest_results",
-        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT"},
+        {"policy_id": "TEXT", "policy_version": "TEXT", "basket_scoring_mode": "TEXT", "fx_json": "TEXT"},
     )
+    _add_missing_columns(connection, "basket_allocations", {"fx_json": "TEXT"})
     _add_missing_columns(
         connection,
         "scan_runs",

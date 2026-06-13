@@ -16,8 +16,12 @@ def pipeline_context(repository, pipeline_run_id: str, language: str = "en") -> 
             "status": run.status.value, "candidate_count": run.candidate_count, "included_count": run.included_count,
             "watch_count": run.watch_count, "basket_allocation_count": run.basket_allocation_count,
             "alert_count": len(alerts),
+            "account_currency": run.account_currency, "trading_currency": run.trading_currency,
+            "fx_rate": run.fx_rate, "fx_date": run.fx_date.isoformat() if run.fx_date else None,
+            "fx_stale": run.fx_stale, "account_equity_input": run.account_equity_input,
+            "account_equity_trading": run.account_equity_trading,
         },
-        "warnings": [*run.notes, *([run.error] if run.error else [])],
+        "warnings": [*run.notes, *run.fx_warnings_json, *([run.error] if run.error else [])],
         "suggested_questions_for_llm": suggested_questions(language),
     }
     if run.scan_run_id:

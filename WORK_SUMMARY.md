@@ -1030,3 +1030,29 @@ Latest verified result after the Provider Normalization Layer:
 ```text
 280 passed
 ```
+
+## FX-aware Portfolio / Risk Layer
+
+Added a context/wrapper layer that interprets account-currency inputs while
+preserving the existing trading-currency sizing and hard-risk engines.
+
+Implemented:
+
+- same-currency, direct, inverse, manual, latest-as-of, stale, and missing FX handling
+- KRW account equity/cash conversion into USD trading values before paper pipeline execution
+- nullable FX metadata across TradePlan, basket, paper, PipelineRun, and PipelineSummary records
+- safe SQLite `fx_json` migrations for stored trade, allocation, and paper artifacts
+- FX summary in pipeline reports, notifications, and static dashboards
+- stale FX WARNING alerts without hard block or CRITICAL escalation
+- `fx-rates`, `fx-latest`, and `fx-convert` CLI commands
+- FX options on `run-paper-pipeline` and `watch-loop`
+
+No external FX API, web request, order execution, sizing-engine rewrite, or
+hard-risk rule change was introduced. Missing FX preserves legacy
+trading-currency behavior with warnings.
+
+Latest verified result after the FX-aware Portfolio / Risk Layer:
+
+```text
+292 passed
+```

@@ -34,6 +34,12 @@ def pipeline_sections(repository, pipeline_run_id: str) -> list[DashboardSection
     briefs = [item for item in repository.list_agent_briefs(1000) if item.source_id == pipeline_run_id or item.source_id in report_ids]
     sections = [
         _object_section("Pipeline summary", run),
+        _section("FX summary", [{
+            "account_currency": run.account_currency, "trading_currency": run.trading_currency,
+            "fx_rate": run.fx_rate, "fx_date": run.fx_date, "fx_stale": run.fx_stale,
+            "account_equity_input": run.account_equity_input,
+            "account_equity_trading": run.account_equity_trading,
+        }], severity=NotificationSeverity.WARNING if run.fx_stale or run.fx_warnings_json else NotificationSeverity.INFO),
         _section("Candidate count", [{"candidate_count": run.candidate_count, "included_count": run.included_count, "watch_count": run.watch_count}]),
     ]
     if run.basket_id:

@@ -49,6 +49,7 @@ from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
+from stock_risk_mcp.fx_service import FXService
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.local_llm import LocalLLMBackend, LocalLLMRequest
 from stock_risk_mcp.local_llm_client import LocalLLMClient
@@ -73,6 +74,7 @@ from stock_risk_mcp.policy_evaluation_suite import evaluate_policy_suite
 from stock_risk_mcp.policy_promotion import activate_policy, approve_policy, create_policy_promotion_proposal
 from stock_risk_mcp.policy_replay import replay_policy_on_replay_run
 from stock_risk_mcp.policy_replay_batch import run_policy_replay_batch
+from stock_risk_mcp.portfolio_currency import build_portfolio_currency_context
 from stock_risk_mcp.provider_config import load_provider_configs, validate_provider_config_file
 from stock_risk_mcp.reporting import ReportService
 from stock_risk_mcp.release_check import build_release_check
@@ -156,6 +158,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     import_show = subparsers.add_parser("import-show", help="Show a unified import run.")
     import_show.add_argument("--db", type=Path, required=True)
     import_show.add_argument("--import-run-id", required=True)
+    fx_rates = subparsers.add_parser("fx-rates")
+    fx_rates.add_argument("--db", type=Path, required=True)
+    fx_rates.add_argument("--base-currency")
+    fx_rates.add_argument("--quote-currency")
+    fx_latest = subparsers.add_parser("fx-latest")
+    fx_latest.add_argument("--db", type=Path, required=True)
+    fx_latest.add_argument("--base-currency", required=True)
+    fx_latest.add_argument("--quote-currency", required=True)
+    fx_latest.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+    fx_convert = subparsers.add_parser("fx-convert")
+    fx_convert.add_argument("--db", type=Path, required=True)
+    fx_convert.add_argument("--amount", type=float, required=True)
+    fx_convert.add_argument("--from-currency", required=True)
+    fx_convert.add_argument("--to-currency", required=True)
+    fx_convert.add_argument("--as-of-date", type=date.fromisoformat, required=True)
 
     normalize_file = subparsers.add_parser("normalize-file")
     normalize_file.add_argument("--db", type=Path, required=True)
@@ -547,6 +564,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     run_paper_pipeline.add_argument("--no-replay-snapshot", action="store_true")
     add_pipeline_notification_args(run_paper_pipeline)
     add_pipeline_dashboard_args(run_paper_pipeline)
+    add_fx_pipeline_args(run_paper_pipeline)
 
     run_policy_pipeline = subparsers.add_parser("run-policy-evaluation-pipeline", help="Run policy replay evaluation.")
     add_policy_replay_args(run_policy_pipeline, storage_options=False, include_run_id=False)
@@ -578,6 +596,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     watch.add_argument("--save-basket", action="store_true")
     watch.add_argument("--no-paper-trade", action="store_true")
     add_pipeline_notification_args(watch)
+    add_fx_pipeline_args(watch)
     add_pipeline_dashboard_args(watch)
     return parser
 
@@ -664,6 +683,14 @@ def add_pipeline_dashboard_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dashboard-output-file", type=Path)
 
 
+def add_fx_pipeline_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--account-currency", choices=["KRW", "USD"], default="USD")
+    parser.add_argument("--trading-currency", choices=["KRW", "USD"], default="USD")
+    parser.add_argument("--fx-rate", type=float)
+    parser.add_argument("--fx-source-name", default="manual")
+    parser.add_argument("--max-fx-staleness-days", type=int, default=7)
+
+
 def add_http_provider_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--provider-config-file", type=Path)
     parser.add_argument("--enable-network", action="store_true")
@@ -721,6 +748,9 @@ def main(argv: list[str] | None = None) -> None:
         "import-data",
         "import-runs",
         "import-show",
+        "fx-rates",
+        "fx-latest",
+        "fx-convert",
         "normalize-file",
         "normalize-run",
         "normalize-and-import",
@@ -843,6 +873,23 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"import_runs": [import_run_report(item) for item in RiskRepository(args.db).list_import_runs(args.limit)]}
     if args.command == "import-show":
         return import_run_report(RiskRepository(args.db).get_import_run(args.import_run_id))
+    if args.command == "fx-rates":
+        items = RiskRepository(args.db).list_fx_rates()
+        items = [
+            item for item in items
+            if (not args.base_currency or item["base_currency"] == args.base_currency.upper())
+            and (not args.quote_currency or item["quote_currency"] == args.quote_currency.upper())
+        ]
+        return {"fx_rates": items}
+    if args.command == "fx-latest":
+        return FXService(RiskRepository(args.db)).get_latest_fx_rate(
+            args.base_currency, args.quote_currency, args.as_of_date
+        ).model_dump(mode="json")
+    if args.command == "fx-convert":
+        amount, conversion = FXService(RiskRepository(args.db)).convert_amount(
+            args.amount, args.from_currency, args.to_currency, args.as_of_date
+        )
+        return {"amount": args.amount, "converted_amount": amount, **conversion.model_dump(mode="json")}
     if args.command == "normalize-file":
         columns = {
             key[:-7].replace("_", "-").replace("-", "_"): value
@@ -1600,13 +1647,19 @@ def _load_signal_files(args: argparse.Namespace):
 
 def _run_operational_paper(args: argparse.Namespace, mode: PipelineMode = PipelineMode.PAPER_BASKET) -> dict[str, object]:
     repository = RiskRepository(args.db)
+    context = build_portfolio_currency_context(
+        FXService(repository), args.account_currency, args.trading_currency, args.as_of_date,
+        account_equity=args.account_equity, cash_available=args.cash_available,
+        manual_rate=args.fx_rate, manual_source_name=args.fx_source_name,
+        max_staleness_days=args.max_fx_staleness_days,
+    )
     execution = OperationalPipeline(repository).run_paper_basket_pipeline(
-        args.as_of_date, args.account_equity, args.cash_available, args.horizon_days,
+        args.as_of_date, context.account_equity_trading, context.cash_available_trading, args.horizon_days,
         price_history_file=args.price_history_file, signal_files=_operational_signal_files(args),
         ignore_db_signals=args.ignore_db_signals, strategy_policy=_resolve_strategy_policy(args, repository),
         include_watch=args.include_watch, save_basket=args.save_basket,
         save_replay_snapshot=not getattr(args, "no_replay_snapshot", False),
-        paper_trade=not args.no_paper_trade, mode=mode,
+        paper_trade=not args.no_paper_trade, mode=mode, currency_context=context,
     )
     output = _operational_output(execution)
     if getattr(args, "notify", False):

@@ -568,9 +568,9 @@ class RiskRepository:
                     stop_price, target_price, risk_reward_ratio, max_loss_amount,
                     max_loss_currency, position_size, notional_value, decision,
                     reasons_json, warnings_json, beginner_summary, policy_id,
-                    policy_version, setup_scoring_mode
+                    policy_version, setup_scoring_mode, fx_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     plan.ticker,
@@ -592,6 +592,7 @@ class RiskRepository:
                     plan.policy_id,
                     plan.policy_version,
                     plan.setup_scoring_mode,
+                    _fx_json(plan),
                 ),
             )
             return int(cursor.lastrowid)
@@ -646,8 +647,9 @@ class RiskRepository:
                         basket_id, ticker, setup_grade, allocated_loss_amount,
                         allocated_notional_value, position_size, entry_price,
                         stop_price, target_price, risk_reward_ratio, allocation_reason
+                        , fx_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         plan.basket_id,
@@ -661,6 +663,7 @@ class RiskRepository:
                         allocation.target_price,
                         allocation.risk_reward_ratio,
                         allocation.allocation_reason,
+                        _fx_json(allocation),
                     ),
                 )
             for candidate in plan.blocked:
@@ -718,8 +721,9 @@ class RiskRepository:
                     allocated_loss_amount, notional_value, entry_date, exit_date,
                     exit_price, exit_reason, realized_pnl, realized_return_pct,
                     status, created_at, policy_id, policy_version, basket_scoring_mode
+                    , fx_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trade.trade_id,
@@ -744,6 +748,7 @@ class RiskRepository:
                     trade.policy_id,
                     trade.policy_version,
                     trade.basket_scoring_mode,
+                    _fx_json(trade),
                 ),
             )
             return int(cursor.lastrowid)
@@ -772,8 +777,9 @@ class RiskRepository:
                     realized_return_pct, max_drawdown, max_gain, win_count,
                     loss_count, flat_count, no_data_count, closed_trade_count,
                     outcome, created_at, policy_id, policy_version, basket_scoring_mode
+                    , fx_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.basket_id,
@@ -796,6 +802,7 @@ class RiskRepository:
                     result.policy_id,
                     result.policy_version,
                     result.basket_scoring_mode,
+                    _fx_json(result),
                 ),
             )
             return int(cursor.lastrowid)
@@ -1239,6 +1246,15 @@ class RiskRepository:
         if row is None:
             raise LookupError(f"FX rate not found: {base_currency}/{quote_currency}")
         return dict(row)
+
+    def get_latest_fx_rate_asof(self, base_currency: str, quote_currency: str, as_of_date: date) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM fx_rates WHERE base_currency=? AND quote_currency=? AND date<=?
+                ORDER BY date DESC, id DESC LIMIT 1""",
+                (base_currency.upper(), quote_currency.upper(), as_of_date.isoformat()),
+            ).fetchone()
+        return dict(row) if row else None
 
     def save_connector_run(self, run: ConnectorRun) -> int:
         with self._connect() as connection:
@@ -1989,6 +2005,23 @@ def _model_json(model: BaseModel) -> str:
     return _json(model.model_dump(mode="json"))
 
 
+def _fx_json(model: BaseModel) -> str:
+    return _json({
+        key: value for key, value in model.model_dump(mode="json").items()
+        if key in {
+            "account_currency", "trading_currency", "fx_rate", "fx_date", "fx_source_name", "fx_stale",
+            "max_loss_account", "max_loss_trading", "notional_account", "notional_trading",
+            "estimated_loss_account", "estimated_loss_trading", "allocated_loss_account",
+            "allocated_loss_trading", "realized_pnl_account", "realized_pnl_trading",
+            "return_account_pct", "return_trading_pct", "fx_warnings_json",
+        }
+    })
+
+
+def _fx_payload(row: sqlite3.Row) -> dict:
+    return json.loads(row["fx_json"]) if "fx_json" in row.keys() and row["fx_json"] else {}
+
+
 def _import_run_from_rows(row: sqlite3.Row, results: list[sqlite3.Row]) -> ImportRun:
     return ImportRun(
         import_run_id=str(row["import_run_id"]),
@@ -2210,6 +2243,7 @@ def _trade_plan_from_row(row: sqlite3.Row) -> TradePlan:
         policy_id=row["policy_id"],
         policy_version=row["policy_version"],
         setup_scoring_mode=row["setup_scoring_mode"],
+        **_fx_payload(row),
     )
 
 
@@ -2225,6 +2259,7 @@ def _basket_allocation_from_row(row: sqlite3.Row) -> BasketAllocation:
         target_price=float(row["target_price"]) if row["target_price"] is not None else None,
         risk_reward_ratio=float(row["risk_reward_ratio"]) if row["risk_reward_ratio"] is not None else None,
         allocation_reason=str(row["allocation_reason"] or ""),
+        **_fx_payload(row),
     )
 
 
@@ -2245,6 +2280,7 @@ def _basket_plan_from_row(
     allocations: list[BasketAllocation],
     blocked: list[BasketCandidate],
 ) -> BasketPlan:
+    risk_summary = BasketRiskSummary.model_validate_json(str(row["risk_summary_json"]))
     allocation_candidates = [
         BasketCandidate(
             ticker=item.ticker,
@@ -2272,13 +2308,20 @@ def _basket_plan_from_row(
         candidates=[*allocation_candidates, *blocked],
         allocations=allocations,
         blocked=blocked,
-        risk_summary=BasketRiskSummary.model_validate_json(str(row["risk_summary_json"])),
+        risk_summary=risk_summary,
         decision=TradeDecision(str(row["decision"])),
         beginner_summary=str(row["beginner_summary"] or ""),
         created_at=datetime.fromisoformat(str(row["created_at"])),
         policy_id=row["policy_id"],
         policy_version=row["policy_version"],
         basket_scoring_mode=str(row["basket_scoring_mode"] or "FIXED_RULES"),
+        account_currency=risk_summary.account_currency, trading_currency=risk_summary.trading_currency,
+        fx_rate=risk_summary.fx_rate, fx_date=risk_summary.fx_date,
+        total_notional_account=risk_summary.total_notional_account,
+        total_notional_trading=risk_summary.total_notional_trading,
+        total_max_loss_account=risk_summary.total_max_loss_account,
+        total_max_loss_trading=risk_summary.total_max_loss_trading,
+        fx_warnings_json=risk_summary.fx_warnings_json,
     )
 
 
@@ -2306,6 +2349,7 @@ def _paper_trade_from_row(row: sqlite3.Row) -> PaperTrade:
         policy_id=row["policy_id"],
         policy_version=row["policy_version"],
         basket_scoring_mode=row["basket_scoring_mode"],
+        **_fx_payload(row),
     )
 
 
@@ -2331,6 +2375,7 @@ def _basket_backtest_result_from_row(row: sqlite3.Row) -> BasketBacktestResult:
         policy_id=row["policy_id"],
         policy_version=row["policy_version"],
         basket_scoring_mode=row["basket_scoring_mode"],
+        **_fx_payload(row),
     )
 
 
