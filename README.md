@@ -1157,3 +1157,32 @@ does not run verification commands or create a git tag.
 
 Run `system-smoke` before attaching any future real provider adapter. A provider
 adapter remains outside the deterministic local-demo security boundary.
+
+## Provider Pack #1: Public Price And FX
+
+The Price and FX Provider Pack connects the existing Safe HTTP Connector or a
+local raw file to provider-specific normalization and append-only Unified
+Import. One provider-pack JSON or YAML file is the single source for both
+connector settings and the provider's `normalizer` and `columns`; there is no
+separate normalizer-config option.
+
+Network access remains off by default. Public HTTP providers run only with
+`--enable-network` and only for allowed hosts. The pack adds no login,
+credentials, cookies, sessions, scraping, broker API, or order execution.
+
+```bash
+python -m stock_risk_mcp.cli run-price-provider-pack --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-pack-config configs/provider_pack.json --output-dir data/provider_outputs --enable-network
+python -m stock_risk_mcp.cli run-fx-provider-pack --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-pack-config configs/provider_pack.json --output-dir data/provider_outputs --enable-network
+python -m stock_risk_mcp.cli run-price-fx-provider-pack --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-pack-config configs/provider_pack.json --output-dir data/provider_outputs --enable-network
+python -m stock_risk_mcp.cli provider-pack-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli provider-pack-show --db data/stock_risk_mcp.sqlite3 --provider-pack-run-id PROVIDER_PACK_RUN_ID
+```
+
+Recommended workflow: run the Provider Pack, run `run-paper-pipeline` with the
+desired account and trading currencies, build a local dashboard, and review
+local notifications.
+
+The combined pack treats price data as core. FX failure after successful price
+import produces `PARTIAL`; a missing successful price import produces `FAILED`.
+Provider pack records are operational audit evidence, not investment advice or
+a performance guarantee.

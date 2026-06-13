@@ -62,6 +62,9 @@ from stock_risk_mcp.notification_templates import (
     build_notifications_from_report,
 )
 from stock_risk_mcp.provider_normalization import load_normalizer_config, normalize_sources
+from stock_risk_mcp.provider_pack_config import load_provider_pack_config
+from stock_risk_mcp.provider_pack_pipeline import run_provider_pack
+from stock_risk_mcp.provider_packs import ProviderPackType
 from stock_risk_mcp.notifications import NotificationChannelType, NotificationSeverity
 from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.operational_pipeline import OperationalPipeline
@@ -224,6 +227,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     connector_show = subparsers.add_parser("connector-show", help="Show a connector run.")
     connector_show.add_argument("--db", type=Path, required=True)
     connector_show.add_argument("--connector-run-id", required=True)
+    for name in ("run-price-provider-pack", "run-fx-provider-pack", "run-price-fx-provider-pack"):
+        provider_pack = subparsers.add_parser(name)
+        provider_pack.add_argument("--db", type=Path, required=True)
+        provider_pack.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+        provider_pack.add_argument("--provider-pack-config", type=Path, required=True)
+        provider_pack.add_argument("--output-dir", type=Path, required=True)
+        provider_pack.add_argument("--ticker", action="append", default=[])
+        provider_pack.add_argument("--enable-network", action="store_true")
+        provider_pack.add_argument("--allowed-host", action="append", default=None)
+    provider_pack_runs = subparsers.add_parser("provider-pack-runs")
+    provider_pack_runs.add_argument("--db", type=Path, required=True)
+    provider_pack_runs.add_argument("--limit", type=int, default=50)
+    provider_pack_show = subparsers.add_parser("provider-pack-show")
+    provider_pack_show.add_argument("--db", type=Path, required=True)
+    provider_pack_show.add_argument("--provider-pack-run-id", required=True)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -763,6 +781,11 @@ def main(argv: list[str] | None = None) -> None:
         "run-http-connector",
         "connector-runs",
         "connector-show",
+        "run-price-provider-pack",
+        "run-fx-provider-pack",
+        "run-price-fx-provider-pack",
+        "provider-pack-runs",
+        "provider-pack-show",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -966,6 +989,24 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"connector_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_connector_runs(args.limit)]}
     if args.command == "connector-show":
         return RiskRepository(args.db).get_connector_run(args.connector_run_id).model_dump(mode="json")
+    if args.command in {"run-price-provider-pack", "run-fx-provider-pack", "run-price-fx-provider-pack"}:
+        pack_types = {
+            "run-price-provider-pack": ProviderPackType.PRICE,
+            "run-fx-provider-pack": ProviderPackType.FX,
+            "run-price-fx-provider-pack": ProviderPackType.PRICE_AND_FX,
+        }
+        run = run_provider_pack(
+            RiskRepository(args.db), load_provider_pack_config(args.provider_pack_config),
+            pack_types[args.command], args.output_dir, args.as_of_date,
+            enable_network=args.enable_network, allowed_hosts=args.allowed_host, tickers=args.ticker,
+        )
+        return run.model_dump(mode="json")
+    if args.command == "provider-pack-runs":
+        return {"provider_pack_runs": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_provider_pack_runs(args.limit)
+        ]}
+    if args.command == "provider-pack-show":
+        return RiskRepository(args.db).get_provider_pack_run(args.provider_pack_run_id).model_dump(mode="json")
     if args.command == "report-pipeline":
         return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
     if args.command == "report-scan":

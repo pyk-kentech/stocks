@@ -63,6 +63,7 @@ from stock_risk_mcp.paper_trading import (
     PaperTradeStatus,
 )
 from stock_risk_mcp.pipeline_run import PipelineAlert, PipelineRun
+from stock_risk_mcp.provider_packs import ProviderPackRun, ProviderPackRunStatus, ProviderPackType
 from stock_risk_mcp.policy_replay_result import (
     PolicyComparisonResult,
     PolicyReplayMode,
@@ -1271,6 +1272,37 @@ class RiskRepository:
                 ),
             )
             return int(cursor.lastrowid)
+
+    def save_provider_pack_run(self, run: ProviderPackRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO provider_pack_runs (
+                    provider_pack_run_id, provider_pack_type, as_of_date, status,
+                    connector_run_ids_json, normalize_run_id, import_run_id, output_paths_json,
+                    warnings_json, errors_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run.provider_pack_run_id, run.provider_pack_type.value, run.as_of_date.isoformat(),
+                    run.status.value, _json(run.connector_run_ids), run.normalize_run_id, run.import_run_id,
+                    _json(run.output_paths), _json(run.warnings), _json(run.errors), run.created_at.isoformat(),
+                    run.completed_at.isoformat() if run.completed_at else None,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_provider_pack_run(self, provider_pack_run_id: str) -> ProviderPackRun:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM provider_pack_runs WHERE provider_pack_run_id = ?", (provider_pack_run_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Provider pack run not found: {provider_pack_run_id}")
+        return _provider_pack_run_from_row(row)
+
+    def list_provider_pack_runs(self, limit: int = 50) -> list[ProviderPackRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM provider_pack_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_provider_pack_run_from_row(row) for row in rows]
 
     def get_connector_run(self, connector_run_id: str) -> ConnectorRun:
         with self._connect() as connection:
@@ -2542,4 +2574,21 @@ def _dashboard_build_from_row(row: sqlite3.Row) -> DashboardBuildResult:
         warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
         errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
         generated_at=datetime.fromisoformat(str(row["generated_at"])),
+    )
+
+
+def _provider_pack_run_from_row(row: sqlite3.Row) -> ProviderPackRun:
+    return ProviderPackRun(
+        provider_pack_run_id=str(row["provider_pack_run_id"]),
+        provider_pack_type=ProviderPackType(str(row["provider_pack_type"])),
+        as_of_date=date.fromisoformat(str(row["as_of_date"])),
+        status=ProviderPackRunStatus(str(row["status"])),
+        connector_run_ids=json.loads(row["connector_run_ids_json"]) if row["connector_run_ids_json"] else [],
+        normalize_run_id=row["normalize_run_id"],
+        import_run_id=row["import_run_id"],
+        output_paths=json.loads(row["output_paths_json"]) if row["output_paths_json"] else [],
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
     )

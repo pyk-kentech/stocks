@@ -1056,3 +1056,26 @@ Latest verified result after the FX-aware Portfolio / Risk Layer:
 ```text
 292 passed
 ```
+
+## Provider Pack #1: Price And FX Public Data Adapter
+
+Added a config-driven orchestration layer that reuses the Safe HTTP Connector,
+Provider Normalization, Unified Import, and FX-aware pipeline inputs.
+
+Implemented:
+
+- one provider-pack config as the source for connector, normalizer, and column mappings
+- public HTTP and local-file raw acquisition with existing network safety
+- price and FX raw-to-normalized-to-import execution
+- persisted ProviderPackRun audit records with connector/normalize/import IDs
+- price-core combined status rules and isolated FX partial failures
+- price, FX, combined, list, and show CLI commands
+
+Networking remains default-off and allowlisted. No authentication, scraping,
+broker API, external order execution, or new downloader was introduced.
+
+Latest verified result after Provider Pack #1:
+
+```text
+303 passed
+```

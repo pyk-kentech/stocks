@@ -706,6 +706,22 @@ def create_schema(connection: sqlite3.Connection) -> None:
             UNIQUE(base_currency, quote_currency, date, source_name)
         );
 
+        CREATE TABLE IF NOT EXISTS provider_pack_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider_pack_run_id TEXT NOT NULL UNIQUE,
+            provider_pack_type TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            status TEXT NOT NULL,
+            connector_run_ids_json TEXT,
+            normalize_run_id TEXT,
+            import_run_id TEXT,
+            output_paths_json TEXT,
+            warnings_json TEXT,
+            errors_json TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS analysis_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             report_id TEXT NOT NULL UNIQUE,
