@@ -5,6 +5,7 @@ from stock_risk_mcp.signal_normalizers import (
     GenericDilutionCSVNormalizer,
     GenericFlowCSVNormalizer,
     GenericNewsCSVNormalizer,
+    _news_provider_score,
 )
 
 
@@ -20,6 +21,36 @@ def test_news_normalizer_maps_columns_and_skips_future(tmp_path) -> None:
     assert rows[0]["ticker"] == "AAA"
     assert rows[0]["sentiment"] == "NEUTRAL"
     assert result.skipped_count == 1
+
+
+def test_news_normalizer_maps_headline_defaults_info_and_preserves_raw_payload(tmp_path) -> None:
+    raw = _csv(
+        tmp_path, "provider-news.csv",
+        "Symbol,PublishedAt,Headline,Source,Sentiment,Severity,Url\n"
+        "AAA,2026-06-12,Deal signed,wire,positive,INFO,https://example.com/a\n"
+        "BBB,2026-06-12,Investigation,wire,negative,CRITICAL,https://example.com/b\n",
+    )
+
+    result = GenericNewsCSVNormalizer().normalize(
+        raw, tmp_path / "out", date(2026, 6, 13), output_name="news.json",
+        columns={
+            "ticker": "Symbol", "observed_at": "PublishedAt", "headline": "Headline",
+            "source_name": "Source", "sentiment": "Sentiment", "severity": "Severity", "url": "Url",
+        },
+    )
+    rows = json.loads(open(result.output_path, encoding="utf-8").read())
+
+    assert rows[0]["title"] == "Deal signed"
+    assert rows[0]["severity"] == "LOW"
+    assert rows[0]["score_delta"] == 1
+    assert rows[0]["raw_payload_json"]["Severity"] == "INFO"
+    assert rows[1]["score_delta"] == -10
+
+
+def test_news_provider_score_policy_is_conservative_and_isolated() -> None:
+    assert [_news_provider_score("POSITIVE", item) for item in ("LOW", "MEDIUM", "HIGH", "CRITICAL")] == [1, 2, 3, 3]
+    assert [_news_provider_score("NEGATIVE", item) for item in ("LOW", "MEDIUM", "HIGH", "CRITICAL")] == [-1, -3, -5, -10]
+    assert _news_provider_score("NEUTRAL", "HIGH") == 0
 
 
 def test_dilution_and_flow_normalizers_create_internal_schemas(tmp_path) -> None:

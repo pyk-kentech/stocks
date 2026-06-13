@@ -26,6 +26,43 @@ def test_provider_pack_config_reports_missing_required_columns(tmp_path) -> None
     assert any("close" in error for error in result["errors"])
 
 
+def test_news_provider_config_requires_headline_not_title(tmp_path) -> None:
+    payload = _payload()
+    payload["news"] = {"providers": [{
+        "provider_name": "news", "local_file": "news.csv", "data_kind": "NEWS",
+        "output_format": "CSV", "allowed_hosts": [], "enabled": True,
+        "normalizer": "generic-news-csv",
+        "columns": {
+            "ticker": "Symbol", "observed_at": "PublishedAt",
+            "headline": "Headline", "source_name": "Source",
+        },
+    }]}
+    config_file = tmp_path / "pack.json"
+    config_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    config = load_provider_pack_config(config_file)
+
+    assert config.news.providers[0].columns["headline"] == "Headline"
+    assert "title" not in config.news.providers[0].columns
+
+
+def test_news_provider_config_reports_missing_headline(tmp_path) -> None:
+    payload = _payload()
+    payload["news"] = {"providers": [{
+        "provider_name": "news", "local_file": "news.csv", "data_kind": "NEWS",
+        "output_format": "CSV", "allowed_hosts": [], "enabled": True,
+        "normalizer": "generic-news-csv",
+        "columns": {"ticker": "Symbol", "observed_at": "PublishedAt", "source_name": "Source"},
+    }]}
+    config_file = tmp_path / "pack.json"
+    config_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_provider_pack_config_file(config_file)
+
+    assert result["status"] == "BLOCKED"
+    assert any("headline" in error for error in result["errors"])
+
+
 def _payload():
     return {
         "price": {"providers": [{

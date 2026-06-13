@@ -18,6 +18,7 @@ class NetworkMode(StrEnum):
 
 class ProviderDataKind(StrEnum):
     PRICE_HISTORY = "PRICE_HISTORY"
+    NEWS = "NEWS"
     NEWS_SIGNAL = "NEWS_SIGNAL"
     DILUTION_SIGNAL = "DILUTION_SIGNAL"
     TOSS_SIGNAL = "TOSS_SIGNAL"

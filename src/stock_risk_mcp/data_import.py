@@ -254,11 +254,20 @@ def _signal_from_record(source_type: ImportSourceType, record: dict[str, Any], c
         SignalType.NEWS: "news_signal_file", SignalType.DILUTION: "dilution_signal_file",
         SignalType.TOSS_PORTFOLIO: "toss_signal_file", SignalType.FOREIGN_INSTITUTION_FLOW: "flow_signal_file",
     }
+    explicit_news = source_type == ImportSourceType.NEWS_SIGNAL and record.get("score_delta") not in (None, "")
+    if explicit_news:
+        direction = SignalDirection(str(record.get("sentiment") or "NEUTRAL").upper())
+        severity = SignalSeverity(str(record.get("severity") or "LOW").upper())
+    metadata = dict(record)
+    if explicit_news and isinstance(metadata.get("raw_payload_json"), str):
+        metadata["raw_payload_json"] = json.loads(metadata["raw_payload_json"])
     return TickerSignal(
         ticker=str(record["ticker"]), signal_type=signal_type, as_of_date=cutoff, observed_at=observed_at,
-        direction=direction, severity=severity, score_delta=calculate_signal_score(direction, severity, signal_type),
-        source_name=source_names[signal_type], title=_optional(record, "title") or event.replace("_", " ").title(),
-        summary=_optional(record, "summary") or _optional(record, "details"), raw_event_type=event, metadata=dict(record),
+        direction=direction, severity=severity,
+        score_delta=int(record["score_delta"]) if explicit_news else calculate_signal_score(direction, severity, signal_type),
+        source_name=_optional(record, "source_name") if explicit_news else source_names[signal_type],
+        title=_optional(record, "title") or event.replace("_", " ").title(),
+        summary=_optional(record, "summary") or _optional(record, "details"), raw_event_type=event, metadata=metadata,
         reasons=[f"{signal_type.value} signal: {event}"],
     )
 

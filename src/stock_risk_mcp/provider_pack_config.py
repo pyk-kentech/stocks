@@ -18,6 +18,8 @@ from stock_risk_mcp.provider_config import (
 REQUIRED_COLUMNS = {
     ProviderDataKind.PRICE_HISTORY: {"ticker", "date", "close", "volume"},
     ProviderDataKind.FX_RATE: {"base_currency", "quote_currency", "date", "rate"},
+    ProviderDataKind.NEWS_SIGNAL: {"ticker", "observed_at", "headline", "source_name"},
+    ProviderDataKind.NEWS: {"ticker", "observed_at", "headline", "source_name"},
 }
 
 
@@ -61,13 +63,14 @@ class ProviderPackGroup(StrictModel):
 class ProviderPackConfig(StrictModel):
     price: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
     fx: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
+    news: ProviderPackGroup = Field(default_factory=ProviderPackGroup)
 
 
 def load_provider_pack_config(path: str | Path) -> ProviderPackConfig:
     file_path = Path(path)
     payload = _read_payload(file_path)
     config = ProviderPackConfig.model_validate(payload)
-    for group in (config.price, config.fx):
+    for group in (config.price, config.fx, config.news):
         for provider in group.providers:
             if provider.local_file and not Path(provider.local_file).is_absolute():
                 provider.local_file = str((file_path.parent / provider.local_file).resolve())
@@ -83,7 +86,7 @@ def validate_provider_pack_config_file(
         return {"status": "BLOCKED", "providers": [], "errors": [str(error)]}
     results = []
     errors = []
-    for provider in [*config.price.providers, *config.fx.providers]:
+    for provider in [*config.price.providers, *config.fx.providers, *config.news.providers]:
         provider_errors = []
         provider_warnings = []
         if provider.url:

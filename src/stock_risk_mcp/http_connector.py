@@ -13,6 +13,7 @@ from stock_risk_mcp.provider_config import ProviderDataKind
 
 KIND_TO_CONNECTOR = {
     ProviderDataKind.PRICE_HISTORY: ConnectorType.MARKET_DATA,
+    ProviderDataKind.NEWS: ConnectorType.NEWS,
     ProviderDataKind.NEWS_SIGNAL: ConnectorType.NEWS,
     ProviderDataKind.DILUTION_SIGNAL: ConnectorType.DILUTION,
     ProviderDataKind.TOSS_SIGNAL: ConnectorType.TOSS_PORTFOLIO,

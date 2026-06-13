@@ -20,3 +20,7 @@ def test_provider_pack_run_repository_round_trip(tmp_path) -> None:
 
     assert repository.get_provider_pack_run(run.provider_pack_run_id) == run
     assert repository.list_provider_pack_runs()[0] == run
+
+
+def test_provider_pack_type_includes_news() -> None:
+    assert ProviderPackType.NEWS.value == "NEWS"

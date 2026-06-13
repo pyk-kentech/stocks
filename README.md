@@ -1186,3 +1186,65 @@ The combined pack treats price data as core. FX failure after successful price
 import produces `PARTIAL`; a missing successful price import produces `FAILED`.
 Provider pack records are operational audit evidence, not investment advice or
 a performance guarantee.
+
+## Provider Pack #2: News Public Data Adapter
+
+The News Provider Pack reuses the same safe Provider Pack path for public or
+local news exports:
+
+```text
+safe HTTP or local_file -> raw news -> provider normalizer -> Unified Import -> NEWS signal enrichment
+```
+
+`provider_pack_config` remains the single source for connector and normalizer
+settings. There is no separate normalizer config file. External provider
+configuration uses `columns.headline`; normalization maps it to the existing
+internal signal field `title`.
+
+```json
+{
+  "news": {
+    "providers": [
+      {
+        "provider_name": "sample_news_provider",
+        "url": "https://example.com/news.csv",
+        "data_kind": "NEWS",
+        "output_format": "CSV",
+        "allowed_hosts": ["example.com"],
+        "enabled": true,
+        "normalizer": "generic-news-csv",
+        "columns": {
+          "ticker": "Symbol",
+          "observed_at": "PublishedAt",
+          "headline": "Headline",
+          "source_name": "Source",
+          "url": "Url",
+          "sentiment": "Sentiment",
+          "severity": "Severity",
+          "summary": "Summary"
+        }
+      }
+    ]
+  }
+}
+```
+
+Required news mappings are `ticker`, `observed_at`, `headline`, and
+`source_name`. `INFO` severity is stored internally as `LOW`, while the
+provider's original severity remains in `raw_payload_json`. The News Provider
+Pack applies a conservative pack-specific score from +3 to -10. It does not
+change common signal scoring.
+
+```bash
+python -m stock_risk_mcp.cli run-news-provider-pack --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --provider-pack-config configs/provider_pack.json --output-dir data/provider_outputs --enable-network
+```
+
+Public HTTP still requires explicit `--enable-network` and exact allowed-host
+validation. Redirect targets are revalidated. Credentials, cookies, sessions,
+authentication headers, private scraping, and Toss scraping are not supported.
+`local_file` news providers run without network access.
+
+Imported records are stored as NEWS signals and participate in the existing
+scan and pipeline enrichment contract: critical negative signals exclude,
+high negative signals downgrade INCLUDE to WATCH, and positive signals do not
+promote an existing EXCLUDE candidate.

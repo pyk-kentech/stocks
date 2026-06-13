@@ -30,28 +30,38 @@ class _SignalNormalizer:
                     item[field] = value
                 item["ticker"] = upper(item["ticker"])
                 item["observed_at"] = str(observed)
-                self.adjust(item, result, index)
+                self.adjust(item, result, index, record, columns)
                 normalized.append(item)
             except Exception as error:
                 row_error(result, index, error)
         return write_normalized_output(result, normalized, output_dir, kwargs.get("output_name"))
 
-    def adjust(self, item, result, index):
+    def adjust(self, item, result, index, raw_record=None, columns=None):
         pass
 
 
 class GenericNewsCSVNormalizer(_SignalNormalizer):
     name = "generic-news-csv"
     normalizer_type = NormalizerType.NEWS_SIGNAL
-    fields = ("ticker", "observed_at", "title", "summary", "event_type", "sentiment", "materiality")
+    fields = (
+        "ticker", "observed_at", "headline", "title", "source_name", "summary", "url",
+        "event_type", "sentiment", "severity", "materiality",
+    )
 
-    def adjust(self, item, result, index):
+    def adjust(self, item, result, index, raw_record=None, columns=None):
+        item["title"] = text(item.get("headline")) or text(item.get("title"))
+        item.pop("headline", None)
         if not text(item.get("title")) or not text(item.get("summary")):
             result.warnings.append(f"row {index}: title or summary is missing")
         sentiment = upper(item.get("sentiment"), "NEUTRAL")
         item["sentiment"] = sentiment if sentiment in {"POSITIVE", "NEGATIVE", "NEUTRAL"} else "NEUTRAL"
         item["event_type"] = upper(item.get("event_type"), "UNKNOWN")
         item["materiality"] = upper(item.get("materiality"), "UNKNOWN")
+        if "headline" in (columns or {}) and "source_name" in (columns or {}):
+            raw_severity = upper(item.get("severity"), "LOW")
+            item["severity"] = "LOW" if raw_severity == "INFO" else raw_severity if raw_severity in {"LOW", "MEDIUM", "HIGH", "CRITICAL"} else "LOW"
+            item["score_delta"] = _news_provider_score(item["sentiment"], item["severity"])
+            item["raw_payload_json"] = dict(raw_record or {})
 
 
 class GenericDilutionCSVNormalizer(_SignalNormalizer):
@@ -60,7 +70,7 @@ class GenericDilutionCSVNormalizer(_SignalNormalizer):
     fields = ("ticker", "observed_at", "event_type", "severity", "details")
     required = ("ticker", "observed_at", "event_type")
 
-    def adjust(self, item, result, index):
+    def adjust(self, item, result, index, raw_record=None, columns=None):
         item["event_type"] = upper(item["event_type"])
         item["severity"] = upper(item.get("severity"), "HIGH")
 
@@ -73,7 +83,15 @@ class GenericFlowCSVNormalizer(_SignalNormalizer):
         "foreign_ownership_change", "flow_window_days",
     )
 
-    def adjust(self, item, result, index):
+    def adjust(self, item, result, index, raw_record=None, columns=None):
         for key in ("foreign_net_buy", "institution_net_buy", "foreign_ownership_change"):
             item[key] = float(item[key] or 0)
         item["flow_window_days"] = int(item["flow_window_days"] or 0)
+
+
+def _news_provider_score(sentiment: str, severity: str) -> int:
+    if sentiment == "POSITIVE":
+        return {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 3}[severity]
+    if sentiment == "NEGATIVE":
+        return {"LOW": -1, "MEDIUM": -3, "HIGH": -5, "CRITICAL": -10}[severity]
+    return 0

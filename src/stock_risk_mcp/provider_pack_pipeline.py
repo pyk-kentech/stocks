@@ -49,7 +49,11 @@ def run_provider_pack(
         sources = [{
             "normalizer": provider.normalizer or "",
             "input_file": path,
-            "output_name": f"{provider.provider_name}-normalized.csv",
+            "output_name": (
+                f"{provider.provider_name}-normalized.json"
+                if provider.data_kind.value in {"NEWS", "NEWS_SIGNAL"}
+                else f"{provider.provider_name}-normalized.csv"
+            ),
             "columns": provider.columns,
         } for provider, path in provider_outputs]
         normalize_run, import_run = normalize_sources(
@@ -99,6 +103,8 @@ def _selected_providers(config: ProviderPackConfig, pack_type: ProviderPackType)
         return config.price.providers
     if pack_type == ProviderPackType.FX:
         return config.fx.providers
+    if pack_type == ProviderPackType.NEWS:
+        return config.news.providers
     if pack_type == ProviderPackType.PRICE_AND_FX:
         return [*config.price.providers, *config.fx.providers]
     return []
@@ -125,6 +131,7 @@ def _pack_status(pack_type, providers, connector_results, normalize_run, import_
         return ProviderPackRunStatus.DISABLED
     price_success = _import_succeeded(import_run, ImportSourceType.PRICE_HISTORY)
     fx_success = _import_succeeded(import_run, ImportSourceType.FX_RATE)
+    news_success = _import_succeeded(import_run, ImportSourceType.NEWS_SIGNAL)
     failed_step = (
         not providers
         or any(item != ConnectorRunStatus.COMPLETED for item in connector_statuses)
@@ -135,7 +142,11 @@ def _pack_status(pack_type, providers, connector_results, normalize_run, import_
         if not price_success:
             return ProviderPackRunStatus.FAILED
         return ProviderPackRunStatus.PARTIAL if not fx_success or failed_step else ProviderPackRunStatus.COMPLETED
-    success = price_success if pack_type == ProviderPackType.PRICE else fx_success
+    success = {
+        ProviderPackType.PRICE: price_success,
+        ProviderPackType.FX: fx_success,
+        ProviderPackType.NEWS: news_success,
+    }.get(pack_type, False)
     if not success:
         return ProviderPackRunStatus.FAILED
     return ProviderPackRunStatus.PARTIAL if failed_step else ProviderPackRunStatus.COMPLETED

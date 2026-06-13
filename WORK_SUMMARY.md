@@ -1079,3 +1079,27 @@ Latest verified result after Provider Pack #1:
 ```text
 303 passed
 ```
+
+## Provider Pack #2: News Public Data Adapter
+
+Added a news-only extension to the existing Provider Pack orchestration.
+
+Implemented:
+
+- `news.providers` in the shared provider-pack config
+- external `headline` to internal signal `title` mapping
+- INFO-to-LOW normalization with original provider payload preservation
+- conservative News Provider Pack-only score deltas
+- rich news metadata import while preserving legacy news import behavior
+- safe public HTTP and network-free local-file news providers
+- `run-news-provider-pack` CLI and stored NEWS ProviderPackRun records
+- unchanged common signal scoring and existing critical/high enrichment rules
+
+The adapter adds no credentials, login, cookies, sessions, private scraping,
+Toss scraping, order execution, or default-on networking.
+
+Latest verified result after Provider Pack #2:
+
+```text
+314 passed
+```
