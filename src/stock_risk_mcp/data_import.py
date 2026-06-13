@@ -133,6 +133,7 @@ def run_unified_import(
     toss_signal_file: str | Path | None = None,
     flow_signal_file: str | Path | None = None,
     as_of_date: date | None = None,
+    empty_input_note: str | None = None,
 ) -> ImportRun:
     sources: list[tuple[str | Path | None, Callable[[], ImportSourceResult]]] = [
         (price_history_file, lambda: import_price_history_file(repository, price_history_file)),  # type: ignore[arg-type]
@@ -145,7 +146,7 @@ def run_unified_import(
     results = [loader() for path, loader in sources if path is not None]
     if not results:
         status = ImportRunStatus.FAILED
-        notes = ["No import files were specified."]
+        notes = [empty_input_note or "No import files were specified."]
     elif all(item.error_count == 0 for item in results):
         status, notes = ImportRunStatus.COMPLETED, []
     elif any(item.saved_count or item.skipped_duplicate_count or item.error_count == 0 for item in results):

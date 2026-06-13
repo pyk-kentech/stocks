@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from stock_risk_mcp.compliance import ComplianceRecord
+from stock_risk_mcp.connector_run import ConnectorMode, ConnectorRun, ConnectorRunStatus, ConnectorType
 from stock_risk_mcp.candidate_universe import CandidateScanResult, ScanRun
 from stock_risk_mcp.basket import (
     BasketAllocation,
@@ -1148,6 +1149,34 @@ class RiskRepository:
             rows = connection.execute("SELECT import_run_id FROM import_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [self.get_import_run(str(row["import_run_id"])) for row in rows]
 
+    def save_connector_run(self, run: ConnectorRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO connector_runs (
+                    connector_run_id, as_of_date, connector_name, connector_type, mode, status,
+                    output_path, row_count, warnings_json, errors_json, metadata_json, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run.connector_run_id, run.as_of_date.isoformat(), run.connector_name, run.connector_type.value,
+                    run.mode.value, run.status.value, run.output_path, run.row_count, _json(run.warnings),
+                    _json(run.errors), _json(run.metadata), run.created_at.isoformat(),
+                    run.completed_at.isoformat() if run.completed_at else None,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_connector_run(self, connector_run_id: str) -> ConnectorRun:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM connector_runs WHERE connector_run_id = ?", (connector_run_id,)).fetchone()
+        if row is None:
+            raise LookupError(f"Connector run not found: {connector_run_id}")
+        return _connector_run_from_row(row)
+
+    def list_connector_runs(self, limit: int = 50) -> list[ConnectorRun]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT * FROM connector_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_connector_run_from_row(row) for row in rows]
+
     def list_ticker_signals(
         self, ticker: str | None = None, as_of_date: date | None = None, limit: int = 200
     ) -> list[TickerSignal]:
@@ -1643,6 +1672,7 @@ class RiskRepository:
             "ingestion_runs",
             "import_runs",
             "import_source_results",
+            "connector_runs",
         }
         if table_name not in allowed_tables:
             raise ValueError(f"Unsupported table name: {table_name}")
@@ -1677,6 +1707,20 @@ def _import_run_from_rows(row: sqlite3.Row, results: list[sqlite3.Row]) -> Impor
             for item in results
         ],
         notes=json.loads(row["notes_json"]) if row["notes_json"] else [],
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+        completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
+    )
+
+
+def _connector_run_from_row(row: sqlite3.Row) -> ConnectorRun:
+    return ConnectorRun(
+        connector_run_id=str(row["connector_run_id"]), as_of_date=date.fromisoformat(str(row["as_of_date"])),
+        connector_name=str(row["connector_name"]), connector_type=ConnectorType(str(row["connector_type"])),
+        mode=ConnectorMode(str(row["mode"])), status=ConnectorRunStatus(str(row["status"])),
+        output_path=row["output_path"], row_count=int(row["row_count"]),
+        warnings=json.loads(row["warnings_json"]) if row["warnings_json"] else [],
+        errors=json.loads(row["errors_json"]) if row["errors_json"] else [],
+        metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
         created_at=datetime.fromisoformat(str(row["created_at"])),
         completed_at=datetime.fromisoformat(str(row["completed_at"])) if row["completed_at"] else None,
     )

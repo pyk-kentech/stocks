@@ -746,6 +746,36 @@ signals use the existing normalized signal dedupe key. Signal and compliance
 records after `as_of_date` are skipped and recorded as warnings. Imported data
 is immediately available to the local scan and paper pipelines.
 
+## External Data Connector Interface
+
+The External Data Connector Interface is a network-free provider skeleton. It
+does not implement real external APIs, scraping, authentication, cookie
+bypass, realtime requests, or order execution. Connectors produce normalized
+local CSV/JSON files, and every connector attempt is stored in
+`connector_runs` before optional handoff to the Unified Data Import Pipeline.
+
+Default connectors are deterministic mocks:
+
+- `mock_market_data`
+- `mock_news_signal`
+- `mock_dilution_signal`
+- `mock_toss_signal`
+- `mock_flow_signal`
+
+```bash
+python -m stock_risk_mcp.cli connectors
+python -m stock_risk_mcp.cli run-connectors --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --output-dir data/connector_outputs --connector mock_market_data --connector mock_news_signal --ticker AAPL --ticker TSLA
+python -m stock_risk_mcp.cli connector-runs --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli connector-show --db data/stock_risk_mcp.sqlite3 --connector-run-id <connector_run_id>
+python -m stock_risk_mcp.cli run-connectors-and-import --db data/stock_risk_mcp.sqlite3 --as-of-date 2026-06-13 --output-dir data/connector_outputs --connector mock_market_data --connector mock_news_signal --ticker AAPL
+```
+
+Expected connector failures are recorded and do not stop later connectors. If
+no connector output is available, `run-connectors-and-import` still creates a
+failed ImportRun and returns traceable JSON. Future real providers can
+implement the same `BaseConnector.fetch` contract while preserving normalized
+file output and run recording.
+
 ## Adaptive Strategy Layer
 
 Adaptive Strategy Layer는 저장된 Basket Paper Trading 성과를 이용해 soft

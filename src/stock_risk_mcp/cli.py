@@ -27,6 +27,8 @@ from stock_risk_mcp.candidate_universe import (
     load_manual_universe,
 )
 from stock_risk_mcp.compliance import NASDAQ_NONCOMPLIANT_SOURCE_NAME
+from stock_risk_mcp.connector_pipeline import run_connectors, run_connectors_and_import
+from stock_risk_mcp.connector_registry import default_connector_registry
 from stock_risk_mcp.data_import import run_unified_import
 from stock_risk_mcp.import_report import import_run_report
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
@@ -122,6 +124,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     import_show = subparsers.add_parser("import-show", help="Show a unified import run.")
     import_show.add_argument("--db", type=Path, required=True)
     import_show.add_argument("--import-run-id", required=True)
+
+    subparsers.add_parser("connectors", help="List registered network-free connectors.")
+    for name in ("run-connectors", "run-connectors-and-import"):
+        connector_command = subparsers.add_parser(name)
+        connector_command.add_argument("--db", type=Path, required=True)
+        connector_command.add_argument("--as-of-date", type=date.fromisoformat, required=True)
+        connector_command.add_argument("--output-dir", type=Path, required=True)
+        connector_command.add_argument("--connector", action="append", required=True)
+        connector_command.add_argument("--ticker", action="append", default=[])
+    connector_runs = subparsers.add_parser("connector-runs", help="List connector runs.")
+    connector_runs.add_argument("--db", type=Path, required=True)
+    connector_runs.add_argument("--limit", type=int, default=50)
+    connector_show = subparsers.add_parser("connector-show", help="Show a connector run.")
+    connector_show.add_argument("--db", type=Path, required=True)
+    connector_show.add_argument("--connector-run-id", required=True)
 
     backtest = subparsers.add_parser("backtest", help="Run backtests for saved risk evaluations.")
     backtest.add_argument("--db", type=Path, default=Path("data/stock_risk_mcp.sqlite3"))
@@ -469,6 +486,11 @@ def main(argv: list[str] | None = None) -> None:
         "import-data",
         "import-runs",
         "import-show",
+        "connectors",
+        "run-connectors",
+        "run-connectors-and-import",
+        "connector-runs",
+        "connector-show",
         "backtest",
         "backtest-summary",
         "report",
@@ -546,6 +568,30 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"import_runs": [import_run_report(item) for item in RiskRepository(args.db).list_import_runs(args.limit)]}
     if args.command == "import-show":
         return import_run_report(RiskRepository(args.db).get_import_run(args.import_run_id))
+    if args.command == "connectors":
+        return {"connectors": [
+            {"name": item.name, "connector_type": item.connector_type.value, "mode": item.mode.value}
+            for item in default_connector_registry().list_connectors()
+        ]}
+    if args.command == "run-connectors":
+        results = run_connectors(
+            RiskRepository(args.db), default_connector_registry(), args.as_of_date,
+            args.output_dir, args.connector, args.ticker,
+        )
+        return {
+            "as_of_date": args.as_of_date.isoformat(),
+            "connector_runs": [item.connector_run.model_dump(mode="json") for item in results],
+            "output_file_count": sum(item.output is not None for item in results),
+        }
+    if args.command == "run-connectors-and-import":
+        return run_connectors_and_import(
+            RiskRepository(args.db), default_connector_registry(), args.as_of_date,
+            args.output_dir, args.connector, args.ticker,
+        )
+    if args.command == "connector-runs":
+        return {"connector_runs": [item.model_dump(mode="json") for item in RiskRepository(args.db).list_connector_runs(args.limit)]}
+    if args.command == "connector-show":
+        return RiskRepository(args.db).get_connector_run(args.connector_run_id).model_dump(mode="json")
     if args.command == "backtest":
         return run_backtest(args)
     if args.command == "backtest-summary":

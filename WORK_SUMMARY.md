@@ -757,10 +757,10 @@ The test suite grew over the work:
 - Signal Enrichment Layer tests passed
 - Operational Pipeline and Watch Loop tests passed
 
-Latest verified result:
+Latest verified result before the connector layer:
 
 ```text
-185 passed
+193 passed
 ```
 
 ## Skill Path Issue
@@ -828,3 +828,30 @@ Implemented:
 
 `import-data` never updates existing price rows. The existing standalone
 `ingest-prices` UPSERT remains available for deliberate manual correction.
+
+## External Data Connector Interface
+
+Added a network-free connector skeleton that prepares normalized local files
+for the Unified Data Import Pipeline.
+
+Implemented:
+
+- connector type, mode, status, output, run, and result models
+- persisted `connector_runs`
+- deterministic mock market/news/dilution/Toss/flow CSV connectors
+- local file registration with optional unchanged copy
+- explicit connector registry
+- sequential fault-isolated connector execution
+- connector output mapping into Unified Data Import
+- failed ImportRun creation when no connector output is available
+- `connectors`, `run-connectors`, `connector-runs`, `connector-show`, and
+  `run-connectors-and-import` CLI commands
+
+This layer does not call real external APIs, scrape websites, bypass
+authentication, request realtime data, or execute orders.
+
+Latest verified result after the connector layer:
+
+```text
+204 passed
+```

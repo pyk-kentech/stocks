@@ -646,6 +646,23 @@ def create_schema(connection: sqlite3.Connection) -> None:
             errors_json TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS connector_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            connector_run_id TEXT NOT NULL UNIQUE,
+            as_of_date TEXT NOT NULL,
+            connector_name TEXT NOT NULL,
+            connector_type TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            status TEXT NOT NULL,
+            output_path TEXT,
+            row_count INTEGER NOT NULL,
+            warnings_json TEXT,
+            errors_json TEXT,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT
+        );
         """
     )
     _add_missing_columns(
