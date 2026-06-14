@@ -1413,3 +1413,23 @@ live-execution design checkpoint with an explicit kill switch.
   SELL remains blocked unless a local live ledger proves holdings.
 - Required append-only live audits and strict secret/account/body redaction.
 - Kept fake-only tests and system smoke with `external_network_calls=false`.
+
+## v2.18 Account-Read Opt-in Safety Checkpoint
+
+- Added a documentation-only account-read safety checkpoint; no account
+  transport, account/balance/holding/fill/order-history call, PROD access,
+  credential loading, or live execution was added.
+- Kept the curated manifest account candidates `kt00001`, `kt00018`, and
+  `kt00007` classified `ACCOUNT_READ` and runtime-disabled.
+- Added fake-only regression guards proving account candidates are rejected
+  before HTTP and `ExecutionMode.LIVE` remains blocked.
+- Defined future explicit enablement, MOCK-first environment policy, exact
+  base URL, credential source, account/fingerprint confirmation,
+  acknowledgement, strict allowlist, and redaction gates.
+- Defined fail-closed global/session/broker/account kill switches before any
+  credential, token, network, or account endpoint work.
+- Separated future account-read from strategy, risk scoring, automatic sizing,
+  market-data READ_ONLY, sandbox orders, and live orders.
+- Limited future normalized storage to privacy-safe ledger and audit fields;
+  raw account identifiers and raw broker response bodies remain forbidden.
+- Kept fake-only tests and system smoke with `external_network_calls=false`.

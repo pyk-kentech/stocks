@@ -1782,3 +1782,30 @@ See
 for the complete checkpoint. The exact official PROD URL is not yet verified
 and must not be guessed. Tests and system smoke remain fake/local-only with
 `external_network_calls=false`.
+
+## v2.18 Account-Read Opt-in Safety Checkpoint
+
+v2.18 is a documentation and approval checkpoint only. Account, balance, cash,
+holdings, positions, fills, and order-history runtime calls remain blocked.
+No account-read transport, PROD account access, live trading, credential
+loading, or automatic real-network test is added.
+
+A future account-read adapter must be MOCK-first and multi-layer opt-in. It
+requires explicit enablement, exact environment/base URL validation, explicit
+credential source, account and fingerprint confirmation, the documented
+acknowledgement phrase, a strict v2.13 `ACCOUNT_READ` allowlist, privacy-safe
+output, and fail-closed kill-switch checks before credential, token, network,
+or account work.
+
+Account-read remains separate from market-data READ_ONLY, sandbox orders, live
+orders, strategy logic, risk scoring, and automatic sizing. Allowed future
+consumers are local ledger reconciliation, sell-safety validation, exposure
+dashboards, and explicit manual audit/report commands. Raw account numbers,
+raw broker response bodies, credentials, tokens, and authorization headers
+must never be stored or printed.
+
+The current manifest candidates are `kt00001`, `kt00018`, and `kt00007`; all
+remain runtime-disabled. See
+`docs/superpowers/specs/2026-06-15-account-read-opt-in-safety-checkpoint-design.md`.
+Tests and system smoke remain fake/local-only with
+`external_network_calls=false`.
