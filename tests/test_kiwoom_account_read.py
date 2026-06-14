@@ -93,8 +93,8 @@ def test_fake_run_persists_only_redacted_summary_and_reconcile_is_count_only(tmp
     repository, service, transport, calls = _service(tmp_path)
     run = service.run(_config(), ["kt00018"])
     shown = repository.get_kiwoom_account_read_report(run.run_id)
-    with pytest.raises(PermissionError, match="kill switch"):
-        service.reconcile_preview(run.run_id)
+    blocked = service.reconcile_preview(run.run_id)
+    assert blocked.reconciliation_status == "BLOCKED"
     preview = service.reconcile_preview(run.run_id, kill_switch_inactive=True)
     serialized = json.dumps({
         "run": shown.model_dump(mode="json"),

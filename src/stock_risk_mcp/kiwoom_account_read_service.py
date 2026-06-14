@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
+from pathlib import Path
 
 from stock_risk_mcp.kiwoom_account_read_gate import account_read_blocked_reasons, select_account_read_endpoints
 from stock_risk_mcp.kiwoom_account_read_models import (
@@ -96,16 +98,63 @@ class KiwoomAccountReadService:
         )
         return self._finish(run)
 
-    def reconcile_preview(self, run_id: str, kill_switch_inactive: bool = False) -> KiwoomAccountReadReconcilePreview:
+    def reconcile_preview(
+        self,
+        run_id: str,
+        kill_switch_inactive: bool = False,
+        local_ledger_file: Path | None = None,
+        include_redacted_symbol_details: bool = False,
+    ) -> KiwoomAccountReadReconcilePreview:
         if not kill_switch_inactive:
-            raise PermissionError("kill switch must be explicitly inactive")
+            return self._save_preview(KiwoomAccountReadReconcilePreview(
+                run_id=run_id, reconciliation_status="BLOCKED",
+                redacted_metadata_json={"redacted": True, "blocked_reason": "kill switch must be explicitly inactive"},
+            ))
         run = self.repository.get_kiwoom_account_read_report(run_id)
         remote = max((int(item.normalized_summary_json.get("symbol_count", 0)) for item in run.responses), default=0)
+        if not run.responses:
+            return self._save_preview(KiwoomAccountReadReconcilePreview(
+                run_id=run_id, account_fingerprint=run.account_fingerprint,
+                account_fingerprint_present=bool(run.account_fingerprint),
+                reconciliation_status="ACCOUNT_DATA_UNAVAILABLE",
+            ))
+        if local_ledger_file is None or not Path(local_ledger_file).exists():
+            return self._save_preview(KiwoomAccountReadReconcilePreview(
+                run_id=run_id, account_fingerprint=run.account_fingerprint,
+                account_fingerprint_present=bool(run.account_fingerprint),
+                remote_symbol_count=remote, reconciliation_status="LOCAL_LEDGER_UNAVAILABLE",
+            ))
+        try:
+            local_count = _local_ledger_symbol_count(Path(local_ledger_file))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return self._save_preview(KiwoomAccountReadReconcilePreview(
+                run_id=run_id, account_fingerprint=run.account_fingerprint,
+                account_fingerprint_present=bool(run.account_fingerprint),
+                reconciliation_status="LOCAL_LEDGER_UNAVAILABLE",
+                redacted_metadata_json={"redacted": True, "sanitized_error": "local ledger could not be read"},
+            ))
+        if include_redacted_symbol_details:
+            return self._save_preview(KiwoomAccountReadReconcilePreview(
+                run_id=run_id, account_fingerprint=run.account_fingerprint,
+                account_fingerprint_present=bool(run.account_fingerprint), local_ledger_present=True,
+                remote_symbol_count=remote, local_symbol_count=local_count,
+                reconciliation_status="ACCOUNT_DETAILS_UNAVAILABLE",
+            ))
+        missing_local = max(remote - local_count, 0)
+        missing_account = max(local_count - remote, 0)
         preview = KiwoomAccountReadReconcilePreview(
             run_id=run_id, account_fingerprint=run.account_fingerprint,
-            remote_symbol_count=remote, local_symbol_count=remote, mismatch_count=0,
+            account_fingerprint_present=bool(run.account_fingerprint), local_ledger_present=True,
+            reconciliation_status="COMPLETED" if remote == local_count else "COMPLETED_WITH_MISMATCHES",
+            remote_symbol_count=remote, local_symbol_count=local_count,
+            symbol_count_compared=min(remote, local_count),
+            missing_in_local_count=missing_local, missing_in_account_count=missing_account,
+            mismatch_count=missing_local + missing_account,
             redacted_metadata_json={"redacted": True, "network_called": False},
         )
+        return self._save_preview(preview)
+
+    def _save_preview(self, preview: KiwoomAccountReadReconcilePreview) -> KiwoomAccountReadReconcilePreview:
         self.repository.save_kiwoom_account_read_reconcile_preview(preview)
         return preview
 
@@ -137,3 +186,13 @@ def _normalize_summary(endpoint_id: str, body: dict) -> dict:
 
 def _fingerprint(value: str | None) -> str | None:
     return sha256(value.encode("utf-8")).hexdigest()[:16] if value else None
+
+
+def _local_ledger_symbol_count(path: Path) -> int:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    records = payload.get("symbols", []) if isinstance(payload, dict) else payload
+    return len({
+        str(item.get("symbol")).strip().upper()
+        for item in records
+        if isinstance(item, dict) and item.get("symbol")
+    })

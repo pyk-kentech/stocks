@@ -1847,3 +1847,42 @@ system smoke remains local-only with `external_network_calls=false`.
 
 Future work is v2.20 manual MOCK smoke hardening or local-ledger
 reconciliation. Live execution remains disabled.
+
+## v2.20 Account-Read Manual MOCK Smoke And Reconciliation Hardening
+
+v2.20 adds a separate manual account-read MOCK smoke workflow around the
+v2.19 adapter. Smoke plan is offline, the `minimal` set is exactly `kt00001`,
+and each smoke run is limited to at most two curated `ACCOUNT_READ` endpoints.
+Every v2.19 activation and kill-switch gate remains required.
+
+```powershell
+python -m stock_risk_mcp.cli kiwoom-account-read-smoke-plan
+python -m stock_risk_mcp.cli kiwoom-account-read-smoke-run --db data/stock_risk_mcp.sqlite3 --endpoint-set minimal --enable-real-network --enable-account-read --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request --confirm-account --account-fingerprint mock-confirmation --i-understand-this-can-read-account-data --kill-switch-inactive --dry-run
+python -m stock_risk_mcp.cli kiwoom-account-read-smoke-reports --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-account-read-smoke-show --db data/stock_risk_mcp.sqlite3 --smoke-run-id <smoke-run-id>
+```
+
+Smoke audit stores only endpoint classifications, status counts, status codes,
+sanitized errors, and redacted metadata. Dry-run performs no credential,
+token, or network work.
+
+Reconciliation accepts only an explicitly selected local ledger JSON file:
+
+```json
+{"symbols": [{"symbol": "005930"}, {"symbol": "000660"}]}
+```
+
+```powershell
+python -m stock_risk_mcp.cli kiwoom-account-read-reconcile-preview --db data/stock_risk_mcp.sqlite3 --run-id <run-id> --kill-switch-inactive --local-ledger-file data/local_ledger.json
+```
+
+The current account-read audit deliberately stores aggregate counts and not
+account-side symbol details. Reconciliation therefore compares aggregate
+symbol counts only. `--include-redacted-symbol-details` returns
+`ACCOUNT_DETAILS_UNAVAILABLE` rather than guessing. Missing or unreadable
+ledger data returns `LOCAL_LEDGER_UNAVAILABLE`.
+
+Reconciliation never submits orders, enables LIVE, calls strategy or sizing
+code, or makes network calls. PROD and LIVE remain blocked. Tests and system
+smoke remain fake/local-only with `external_network_calls=false`. Future work
+is v2.21 local-ledger sell-safety integration; live execution remains disabled.

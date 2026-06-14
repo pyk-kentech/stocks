@@ -72,6 +72,7 @@ from stock_risk_mcp.kiwoom_sandbox_order_service import KiwoomSandboxOrderServic
 from stock_risk_mcp.kiwoom_account_read_models import KiwoomAccountReadConfig
 from stock_risk_mcp.kiwoom_account_read_service import KiwoomAccountReadService
 from stock_risk_mcp.kiwoom_account_read_transport import RealKiwoomAccountReadTransport
+from stock_risk_mcp.kiwoom_account_read_smoke import KiwoomAccountReadSmokeService, build_account_read_smoke_plan
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -515,6 +516,21 @@ def build_command_parser() -> argparse.ArgumentParser:
         command.add_argument("--run-id", required=True)
         if name == "kiwoom-account-read-reconcile-preview":
             command.add_argument("--kill-switch-inactive", action="store_true")
+            command.add_argument("--local-ledger-file", type=Path)
+            command.add_argument("--include-redacted-symbol-details", action="store_true")
+    subparsers.add_parser("kiwoom-account-read-smoke-plan")
+    account_smoke_run = subparsers.add_parser("kiwoom-account-read-smoke-run")
+    account_smoke_run.add_argument("--db", type=Path, required=True)
+    account_smoke_run.add_argument("--endpoint-id", action="append", default=[])
+    account_smoke_run.add_argument("--endpoint-set", choices=["minimal"])
+    account_smoke_run.add_argument("--dry-run", action="store_true")
+    _add_account_read_runtime_args(account_smoke_run)
+    account_smoke_reports = subparsers.add_parser("kiwoom-account-read-smoke-reports")
+    account_smoke_reports.add_argument("--db", type=Path, required=True)
+    account_smoke_reports.add_argument("--limit", type=int, default=100)
+    account_smoke_show = subparsers.add_parser("kiwoom-account-read-smoke-show")
+    account_smoke_show.add_argument("--db", type=Path, required=True)
+    account_smoke_show.add_argument("--smoke-run-id", required=True)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -920,6 +936,27 @@ def _sandbox_credential_loader(source, credential_file):
     return load_kiwoom_credentials(source, credential_file, env)
 
 
+def _account_read_config_from_args(args) -> KiwoomAccountReadConfig:
+    return KiwoomAccountReadConfig(
+        enable_real_network=args.enable_real_network,
+        enable_account_read=args.enable_account_read,
+        environment=KiwoomRealNetworkEnvironment(args.environment),
+        base_url=args.base_url,
+        credential_source=KiwoomCredentialSource(args.credential_source),
+        credential_file=args.credential_file,
+        allow_auth_token_request=args.allow_auth_token_request,
+        account_confirmed=args.confirm_account,
+        account_fingerprint=args.account_fingerprint,
+        acknowledged_account_data_read=args.i_understand_this_can_read_account_data,
+        kill_switch_inactive=args.kill_switch_inactive,
+        timeout_seconds=args.timeout_seconds,
+    )
+
+
+def _account_read_credential_loader(source, credential_file):
+    return _sandbox_credential_loader(source, credential_file)
+
+
 def add_proposal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ticker", required=True, help="Ticker symbol, e.g. SAFE")
     parser.add_argument("--side", required=True, choices=["BUY", "SELL"], help="Trade side")
@@ -1161,6 +1198,10 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-account-read-reports",
         "kiwoom-account-read-show",
         "kiwoom-account-read-reconcile-preview",
+        "kiwoom-account-read-smoke-plan",
+        "kiwoom-account-read-smoke-run",
+        "kiwoom-account-read-smoke-reports",
+        "kiwoom-account-read-smoke-show",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1616,19 +1657,31 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         if args.command == "kiwoom-sandbox-order-cancel":
             return {"receipts": [item.model_dump(mode="json") for item in service.cancel(args.broker_order_id, config)]}
         return _dump_order_result(service.submit(args.order_intent_id, config, args.dry_run, args.client_order_id))
+    if args.command == "kiwoom-account-read-smoke-plan":
+        return build_account_read_smoke_plan()
+    if args.command.startswith("kiwoom-account-read-smoke-"):
+        repository = RiskRepository(args.db)
+        if args.command == "kiwoom-account-read-smoke-reports":
+            return {"smoke_reports": [item.model_dump(mode="json") for item in repository.list_kiwoom_account_read_smoke_reports(args.limit)]}
+        if args.command == "kiwoom-account-read-smoke-show":
+            try:
+                return repository.get_kiwoom_account_read_smoke_report(args.smoke_run_id).model_dump(mode="json")
+            except LookupError as error:
+                return {"status": "NOT_FOUND", "errors": [str(error)]}
+        config = _account_read_config_from_args(args)
+        account_service = KiwoomAccountReadService(
+            repository, credential_loader=_account_read_credential_loader,
+            transport_factory=lambda current, credentials: RealKiwoomAccountReadTransport(current, credentials),
+        )
+        return KiwoomAccountReadSmokeService(repository, account_service).run(
+            config, args.endpoint_id, args.endpoint_set, args.dry_run
+        ).model_dump(mode="json")
     if args.command.startswith("kiwoom-account-read-"):
         repository = RiskRepository(args.db)
 
-        def account_credential_loader(source, credential_file):
-            env = {
-                key: value for key in ("KIWOOM_APPKEY", "KIWOOM_SECRETKEY", "KIWOOM_ACCOUNT_NUMBER")
-                if (value := os.environ.get(key)) is not None
-            } if source == KiwoomCredentialSource.ENV else {}
-            return load_kiwoom_credentials(source, credential_file, env)
-
         service = KiwoomAccountReadService(
             repository,
-            credential_loader=account_credential_loader,
+            credential_loader=_account_read_credential_loader,
             transport_factory=lambda config, credentials: RealKiwoomAccountReadTransport(config, credentials),
         )
         if args.command == "kiwoom-account-read-health":
@@ -1642,23 +1695,13 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 return {"status": "NOT_FOUND", "errors": [str(error)]}
         if args.command == "kiwoom-account-read-reconcile-preview":
             try:
-                return service.reconcile_preview(args.run_id, args.kill_switch_inactive).model_dump(mode="json")
+                return service.reconcile_preview(
+                    args.run_id, args.kill_switch_inactive, args.local_ledger_file,
+                    args.include_redacted_symbol_details,
+                ).model_dump(mode="json")
             except (LookupError, PermissionError) as error:
                 return {"status": "NOT_FOUND", "errors": [str(error)]}
-        config = KiwoomAccountReadConfig(
-            enable_real_network=args.enable_real_network,
-            enable_account_read=args.enable_account_read,
-            environment=KiwoomRealNetworkEnvironment(args.environment),
-            base_url=args.base_url,
-            credential_source=KiwoomCredentialSource(args.credential_source),
-            credential_file=args.credential_file,
-            allow_auth_token_request=args.allow_auth_token_request,
-            account_confirmed=args.confirm_account,
-            account_fingerprint=args.account_fingerprint,
-            acknowledged_account_data_read=args.i_understand_this_can_read_account_data,
-            kill_switch_inactive=args.kill_switch_inactive,
-            timeout_seconds=args.timeout_seconds,
-        )
+        config = _account_read_config_from_args(args)
         if args.command == "kiwoom-account-read-plan":
             return service.plan(config, args.endpoint_id)
         return service.run(config, args.endpoint_id, args.dry_run).model_dump(mode="json")

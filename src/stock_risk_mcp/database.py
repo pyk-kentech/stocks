@@ -1049,6 +1049,21 @@ def create_schema(connection: sqlite3.Connection) -> None:
             preview_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_account_read_smoke_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            smoke_run_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_account_read_smoke_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            smoke_step_id TEXT NOT NULL UNIQUE,
+            smoke_run_id TEXT NOT NULL,
+            endpoint_id TEXT NOT NULL,
+            step_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

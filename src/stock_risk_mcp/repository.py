@@ -83,6 +83,10 @@ from stock_risk_mcp.kiwoom_account_read_models import (
     KiwoomAccountReadResponse,
     KiwoomAccountReadRun,
 )
+from stock_risk_mcp.kiwoom_account_read_smoke_models import (
+    KiwoomAccountReadSmokeRun,
+    KiwoomAccountReadSmokeStep,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2318,6 +2322,48 @@ class RiskRepository:
                 (preview.preview_id, preview.run_id, preview.model_dump_json(), preview.observed_at.isoformat()),
             )
             return int(cursor.lastrowid)
+
+    def list_kiwoom_account_read_reconcile_previews(self, limit: int = 100) -> list[KiwoomAccountReadReconcilePreview]:
+        return [
+            KiwoomAccountReadReconcilePreview.model_validate_json(value)
+            for value in self._list_json_records("kiwoom_account_read_reconcile_previews", "preview_json", limit)
+        ]
+
+    def save_kiwoom_account_read_smoke_report(self, run: KiwoomAccountReadSmokeRun) -> int:
+        stored = run.model_copy(update={"steps": []})
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_account_read_smoke_runs (smoke_run_id, status, run_json, observed_at) VALUES (?, ?, ?, ?)",
+                (stored.smoke_run_id, stored.status.value, stored.model_dump_json(), stored.observed_at.isoformat()),
+            )
+            connection.executemany(
+                "INSERT INTO kiwoom_account_read_smoke_steps (smoke_step_id, smoke_run_id, endpoint_id, step_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                [
+                    (step.smoke_step_id, step.smoke_run_id, step.endpoint_id, step.model_dump_json(), step.observed_at.isoformat())
+                    for step in run.steps
+                ],
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_account_read_smoke_reports(self, limit: int = 100) -> list[KiwoomAccountReadSmokeRun]:
+        return [
+            KiwoomAccountReadSmokeRun.model_validate_json(value)
+            for value in self._list_json_records("kiwoom_account_read_smoke_runs", "run_json", limit)
+        ]
+
+    def get_kiwoom_account_read_smoke_report(self, smoke_run_id: str) -> KiwoomAccountReadSmokeRun:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT run_json FROM kiwoom_account_read_smoke_runs WHERE smoke_run_id=?", (smoke_run_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Kiwoom account-read smoke run not found: {smoke_run_id}")
+            steps = connection.execute(
+                "SELECT step_json FROM kiwoom_account_read_smoke_steps WHERE smoke_run_id=? ORDER BY id", (smoke_run_id,)
+            ).fetchall()
+        run = KiwoomAccountReadSmokeRun.model_validate_json(str(row["run_json"]))
+        run.steps = [KiwoomAccountReadSmokeStep.model_validate_json(str(item["step_json"])) for item in steps]
+        return run
 
     def _save_sandbox_record(self, table: str, columns: tuple[str, ...], values: tuple) -> int:
         placeholders = ", ".join("?" for _ in columns)

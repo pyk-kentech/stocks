@@ -82,10 +82,19 @@ class KiwoomAccountReadReconcilePreview(StrictModel):
     preview_id: str = Field(default_factory=lambda: f"kiwoom_account_preview_{uuid4().hex}")
     run_id: str
     account_fingerprint: str | None = None
+    reconciliation_status: str = "LOCAL_LEDGER_UNAVAILABLE"
+    account_fingerprint_present: bool = False
+    local_ledger_present: bool = False
+    symbol_count_compared: int = 0
+    missing_in_local_count: int = 0
+    missing_in_account_count: int = 0
+    quantity_mismatch_count: int = 0
     remote_symbol_count: int = 0
     local_symbol_count: int = 0
     mismatch_count: int = 0
+    symbol_details_json: list[dict] = Field(default_factory=list)
     orders_submitted: bool = False
+    live_execution_enabled: bool = False
     observed_at: datetime = Field(default_factory=datetime.now)
     redacted_metadata_json: dict = Field(default_factory=lambda: {"redacted": True})
 

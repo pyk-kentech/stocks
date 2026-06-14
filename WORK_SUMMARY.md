@@ -1414,6 +1414,27 @@ live-execution design checkpoint with an explicit kill switch.
 - Required append-only live audits and strict secret/account/body redaction.
 - Kept fake-only tests and system smoke with `external_network_calls=false`.
 
+## v2.20 Account-Read Manual MOCK Smoke And Reconciliation Hardening
+
+- Added offline smoke plan plus gated manual MOCK smoke run, reports, and show
+  commands around the v2.19 account-read service.
+- Fixed the `minimal` endpoint set to `kt00001` and enforced a hard maximum of
+  two curated `ACCOUNT_READ` endpoints before credentials/token/network.
+- Added redacted smoke run and step SQLite audits containing only safe status
+  counts, classifications, status codes, sanitized errors, and timestamps.
+- Hardened reconciliation to require an inactive kill switch before reading
+  an explicitly selected local ledger or persisting results.
+- Added honest aggregate-only symbol-count comparison. Missing ledger returns
+  `LOCAL_LEDGER_UNAVAILABLE`; missing account summary returns
+  `ACCOUNT_DATA_UNAVAILABLE`; symbol-detail requests return
+  `ACCOUNT_DETAILS_UNAVAILABLE` because account details are not persisted.
+- Reconciliation remains count-only, order-free, LIVE-disabled, strategy-free,
+  sizing-free, credential-free, token-free, and network-free.
+- Kept PROD, LIVE, ORDER, market-data READ_ONLY, unknown, and WebSocket
+  account-read paths blocked.
+- Tests use fake dependencies only; system smoke remains local-only with
+  `external_network_calls=false`.
+
 ## v2.19 Kiwoom Account-Read MOCK Opt-in Adapter
 
 - Added a separate, default-disabled MOCK-only account-read gate, transport,
