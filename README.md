@@ -1756,3 +1756,29 @@ secretkey, token, authorization headers, account number, credential paths, or
 raw request/response bodies. Pytest and system-smoke make no real network
 calls. Future work is a v2.17 live-execution design checkpoint with an explicit
 kill switch; live execution is not implemented here.
+## v2.17 Live Execution Safety Checkpoint
+
+v2.17 is a documentation and approval checkpoint only. It does not implement
+live order submission, PROD transport, credential loading, OAuth, account
+reads, or automatic real-network tests. `ExecutionMode.LIVE` remains blocked
+for every current configuration.
+
+The future live path must be explicit, fail closed, and auditable. It requires
+verified exact PROD endpoint configuration, explicit credentials, account
+confirmation, RiskGate and ExecutionGate approval, strict notional and ticker
+limits, and the documented acknowledgement phrase. A global-default-blocking
+kill switch plus session, broker, and account switches must be checked before
+credentials, tokens, network calls, planning, submission, cancellation, or
+retry handling.
+
+The first future live version is limited to KR cash equity LIMIT orders. MARKET,
+margin, short, credit, leverage, options, futures, fractional orders, automatic
+averaging down, and submit retry remain prohibited. SELL remains blocked until
+a local live ledger proves holdings. Account-read is intentionally separated
+into a future v2.18 opt-in boundary.
+
+See
+`docs/superpowers/specs/2026-06-15-live-execution-safety-checkpoint-design.md`
+for the complete checkpoint. The exact official PROD URL is not yet verified
+and must not be guessed. Tests and system smoke remain fake/local-only with
+`external_network_calls=false`.

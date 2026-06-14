@@ -1396,3 +1396,20 @@ PROD, account reads, MARKET, margin, short, options, futures, leverage,
 fractional quantities, and direct strategy broker access remain blocked.
 Pytest and system-smoke use no real network. v2.17 remains a future
 live-execution design checkpoint with an explicit kill switch.
+## v2.17 Live Execution Safety Checkpoint
+
+- Added a documentation-only safety checkpoint; no live runtime path, PROD
+  transport, live CLI, credential loader, OAuth, or account-read service was
+  added.
+- Kept `ExecutionMode.LIVE` unconditionally blocked and added a regression
+  test that proves approved risk input and sandbox opt-in cannot enable it.
+- Defined future explicit live gates: verified exact PROD URL, explicit
+  credential source, account confirmation, acknowledgement phrase, approved
+  RiskGate/ExecutionGate decisions, notional caps, ticker/side/type allowlists,
+  and default-blocking kill switches.
+- Defined fail-closed global, session, broker, and account kill-switch checks
+  before credential, token, network, planning, submit, cancel, or retry work.
+- Deferred account-read to a separate future v2.18 opt-in boundary. Future live
+  SELL remains blocked unless a local live ledger proves holdings.
+- Required append-only live audits and strict secret/account/body redaction.
+- Kept fake-only tests and system smoke with `external_network_calls=false`.
