@@ -3,11 +3,16 @@ from pathlib import Path
 from stock_risk_mcp.cli import build_command_parser
 from stock_risk_mcp.order_intent import OrderSide
 from stock_risk_mcp.order_risk_gate import RiskGateConfig, evaluate_risk_gate
+from stock_risk_mcp.sell_safety import SellSafetyDecision, SellSafetyStatus
 from tests.test_order_risk_gate import _intent
 
 
 def test_sell_is_not_short_but_explicit_short_is_blocked() -> None:
-    assert evaluate_risk_gate(_intent(side=OrderSide.SELL), RiskGateConfig()).approved
+    intent = _intent(side=OrderSide.SELL)
+    sell_safety = SellSafetyDecision(
+        order_intent_id=intent.order_intent_id, symbol=intent.ticker, status=SellSafetyStatus.APPROVED
+    )
+    assert evaluate_risk_gate(intent, RiskGateConfig(), sell_safety_decision=sell_safety).approved
     assert not evaluate_risk_gate(
         _intent(side=OrderSide.SELL, metadata_json={"short": True}), RiskGateConfig()
     ).approved

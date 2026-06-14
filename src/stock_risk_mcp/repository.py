@@ -87,6 +87,8 @@ from stock_risk_mcp.kiwoom_account_read_smoke_models import (
     KiwoomAccountReadSmokeRun,
     KiwoomAccountReadSmokeStep,
 )
+from stock_risk_mcp.local_ledger import LocalLedgerPosition, LocalLedgerSnapshot, LocalLedgerTransaction
+from stock_risk_mcp.sell_safety import SellSafetyDecision
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2364,6 +2366,76 @@ class RiskRepository:
         run = KiwoomAccountReadSmokeRun.model_validate_json(str(row["run_json"]))
         run.steps = [KiwoomAccountReadSmokeStep.model_validate_json(str(item["step_json"])) for item in steps]
         return run
+
+    def save_local_ledger_position(self, position: LocalLedgerPosition) -> int:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM local_ledger_positions WHERE symbol=? AND region=?",
+                (position.symbol, position.region.value),
+            )
+            cursor = connection.execute(
+                "INSERT INTO local_ledger_positions (position_id, symbol, region, position_json, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (position.position_id, position.symbol, position.region.value, position.model_dump_json(), position.updated_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def get_local_ledger_position(self, symbol, region) -> LocalLedgerPosition | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT position_json FROM local_ledger_positions WHERE symbol=? AND region=?",
+                (str(symbol).strip().upper(), region.value),
+            ).fetchone()
+        return LocalLedgerPosition.model_validate_json(str(row["position_json"])) if row else None
+
+    def list_local_ledger_positions(self, limit: int = 1000) -> list[LocalLedgerPosition]:
+        return [LocalLedgerPosition.model_validate_json(value) for value in self._list_json_records("local_ledger_positions", "position_json", limit)]
+
+    def save_local_ledger_transaction(self, item: LocalLedgerTransaction) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO local_ledger_transactions (transaction_id, symbol, transaction_json, observed_at) VALUES (?, ?, ?, ?)",
+                (item.transaction_id, item.symbol, item.model_dump_json(), item.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_local_ledger_transactions(self, limit: int = 1000) -> list[LocalLedgerTransaction]:
+        return [LocalLedgerTransaction.model_validate_json(value) for value in self._list_json_records("local_ledger_transactions", "transaction_json", limit)]
+
+    def save_local_ledger_snapshot(self, item: LocalLedgerSnapshot) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO local_ledger_snapshots (snapshot_id, snapshot_json, observed_at) VALUES (?, ?, ?)",
+                (item.snapshot_id, item.model_dump_json(), item.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def save_sell_safety_decision(self, decision: SellSafetyDecision) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO sell_safety_decisions (sell_safety_decision_id, order_intent_id, status, decision_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                (decision.sell_safety_decision_id, decision.order_intent_id, decision.status.value, decision.model_dump_json(), decision.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def get_latest_sell_safety_decision(self, order_intent_id: str) -> SellSafetyDecision | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM sell_safety_decisions WHERE order_intent_id=? ORDER BY id DESC LIMIT 1",
+                (order_intent_id,),
+            ).fetchone()
+        return SellSafetyDecision.model_validate_json(str(row["decision_json"])) if row else None
+
+    def list_sell_safety_decisions(self, limit: int = 100) -> list[SellSafetyDecision]:
+        return [SellSafetyDecision.model_validate_json(value) for value in self._list_json_records("sell_safety_decisions", "decision_json", limit)]
+
+    def get_sell_safety_decision(self, decision_id: str) -> SellSafetyDecision:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM sell_safety_decisions WHERE sell_safety_decision_id=?", (decision_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Sell safety decision not found: {decision_id}")
+        return SellSafetyDecision.model_validate_json(str(row["decision_json"]))
 
     def _save_sandbox_record(self, table: str, columns: tuple[str, ...], values: tuple) -> int:
         placeholders = ", ".join("?" for _ in columns)

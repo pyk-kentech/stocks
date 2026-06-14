@@ -1064,6 +1064,42 @@ def create_schema(connection: sqlite3.Connection) -> None:
             step_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS local_ledger_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id TEXT NOT NULL UNIQUE,
+            symbol TEXT NOT NULL,
+            region TEXT NOT NULL,
+            position_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(symbol, region)
+        );
+        CREATE TABLE IF NOT EXISTS local_ledger_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id TEXT NOT NULL UNIQUE,
+            symbol TEXT NOT NULL,
+            transaction_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS local_ledger_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT NOT NULL UNIQUE,
+            snapshot_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sell_safety_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sell_safety_decision_id TEXT NOT NULL UNIQUE,
+            order_intent_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            decision_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ledger_reconciliation_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id TEXT NOT NULL UNIQUE,
+            decision_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

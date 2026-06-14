@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from stock_risk_mcp.order_intent import OrderIntent, OrderSide, OrderType, RiskGateDecision
 from stock_risk_mcp.realtime_market_data import MarketRegion, WatchlistEntry, WatchlistStatus
+from stock_risk_mcp.sell_safety import SellSafetyDecision, SellSafetyStatus
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ def evaluate_risk_gate(
     intent: OrderIntent,
     config: RiskGateConfig,
     watchlist_entry: WatchlistEntry | None = None,
+    sell_safety_decision: SellSafetyDecision | None = None,
 ) -> RiskGateDecision:
     hits: list[str] = []
     if not intent.ticker:
@@ -56,6 +58,13 @@ def evaluate_risk_gate(
             estimated_loss = (entry_price - intent.stop_loss_price) * quantity
         if estimated_loss is None or estimated_loss < 0:
             hits.append("buy_risk_not_calculable")
+    if intent.side == OrderSide.SELL:
+        if sell_safety_decision is None:
+            hits.append("approved_sell_safety_decision_required")
+        elif sell_safety_decision.order_intent_id != intent.order_intent_id:
+            hits.append("sell_safety_decision_for_another_intent")
+        elif sell_safety_decision.status != SellSafetyStatus.APPROVED:
+            hits.append("sell_safety_decision_not_approved")
     if config.max_risk_per_trade is not None and estimated_loss is not None and estimated_loss > config.max_risk_per_trade:
         hits.append("max_risk_per_trade_exceeded")
     if (

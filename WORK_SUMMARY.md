@@ -1475,3 +1475,24 @@ live-execution design checkpoint with an explicit kill switch.
 - Limited future normalized storage to privacy-safe ledger and audit fields;
   raw account identifiers and raw broker response bodies remain forbidden.
 - Kept fake-only tests and system smoke with `external_network_calls=false`.
+
+## v2.21 Local Ledger Sell-Safety Integration
+
+- Added offline local ledger positions, transactions, snapshots, repository
+  helpers, SQLite audit tables, and JSON CLI commands.
+- Defined available SELL quantity as local `quantity - reserved_quantity`,
+  floored at zero. Broker account-read data is not automatically promoted into
+  the local ledger.
+- Added append-only `SellSafetyDecision` audits for approved, blocked, and
+  reconciliation-required outcomes.
+- Required an approved matching SellSafetyDecision for SELL RiskGate and
+  SANDBOX ExecutionGate approval. BUY and existing PAPER behavior remain
+  unchanged.
+- Kept actual Kiwoom sandbox SELL submission blocked with
+  `SELL_SANDBOX_ORDER_SCHEMA_NOT_VERIFIED` because the curated manifest has no
+  verified SELL submit schema.
+- Kept PROD, LIVE, account-read-driven automatic orders, direct strategy
+  access, credentials, tokens, and network calls outside the layer.
+- Reconciliation may conservatively block SELL eligibility but never creates
+  or submits an order. Verified-schema ledger-backed sandbox SELL reservation
+  or a separate live execution dry-run gate remains v2.22 future work.

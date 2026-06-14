@@ -79,6 +79,8 @@ from stock_risk_mcp.fx_service import FXService
 from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceType, TradeProposal
 from stock_risk_mcp.local_llm import LocalLLMBackend, LocalLLMRequest
 from stock_risk_mcp.local_llm_client import LocalLLMClient
+from stock_risk_mcp.local_ledger_service import LocalLedgerService
+from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
 from stock_risk_mcp.notification_templates import (
@@ -297,6 +299,33 @@ def build_command_parser() -> argparse.ArgumentParser:
     realtime_show = subparsers.add_parser("realtime-show")
     realtime_show.add_argument("--db", type=Path, required=True)
     realtime_show.add_argument("--realtime-monitor-run-id", required=True)
+
+    ledger_upsert = subparsers.add_parser("local-ledger-position-upsert")
+    ledger_upsert.add_argument("--db", type=Path, required=True)
+    ledger_upsert.add_argument("--symbol", required=True)
+    ledger_upsert.add_argument("--region", choices=[item.value for item in MarketRegion], required=True)
+    ledger_upsert.add_argument("--quantity", type=int, required=True)
+    ledger_upsert.add_argument("--reserved-quantity", type=int, default=0)
+    ledger_upsert.add_argument("--average-price", type=float)
+    ledger_positions = subparsers.add_parser("local-ledger-positions")
+    ledger_positions.add_argument("--db", type=Path, required=True)
+    ledger_snapshot = subparsers.add_parser("local-ledger-snapshot")
+    ledger_snapshot.add_argument("--db", type=Path, required=True)
+    ledger_transactions = subparsers.add_parser("local-ledger-transactions")
+    ledger_transactions.add_argument("--db", type=Path, required=True)
+    sell_check = subparsers.add_parser("sell-safety-check")
+    sell_check.add_argument("--db", type=Path, required=True)
+    sell_check.add_argument("--symbol", required=True)
+    sell_check.add_argument("--region", choices=[item.value for item in MarketRegion], required=True)
+    sell_check.add_argument("--quantity", type=float, required=True)
+    sell_check.add_argument("--order-intent-id")
+    sell_check.add_argument("--reconciliation-status")
+    sell_decisions = subparsers.add_parser("sell-safety-decisions")
+    sell_decisions.add_argument("--db", type=Path, required=True)
+    sell_decisions.add_argument("--limit", type=int, default=100)
+    sell_show = subparsers.add_parser("sell-safety-show")
+    sell_show.add_argument("--db", type=Path, required=True)
+    sell_show.add_argument("--decision-id", required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1146,6 +1175,13 @@ def main(argv: list[str] | None = None) -> None:
         "watchlist-list",
         "realtime-runs",
         "realtime-show",
+        "local-ledger-position-upsert",
+        "local-ledger-positions",
+        "local-ledger-snapshot",
+        "local-ledger-transactions",
+        "sell-safety-check",
+        "sell-safety-decisions",
+        "sell-safety-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1456,6 +1492,38 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return RiskRepository(args.db).get_realtime_monitor_run(
             args.realtime_monitor_run_id
         ).model_dump(mode="json")
+    if args.command.startswith("local-ledger-"):
+        service = LocalLedgerService(RiskRepository(args.db))
+        if args.command == "local-ledger-position-upsert":
+            try:
+                position = service.upsert_position(
+                    args.symbol, MarketRegion(args.region), args.quantity,
+                    args.reserved_quantity, args.average_price,
+                )
+                return position.model_dump(mode="json") | {"available_quantity": position.available_quantity}
+            except ValueError as error:
+                return {"status": "FAILED", "errors": [str(error)]}
+        if args.command == "local-ledger-positions":
+            return {"positions": [item.model_dump(mode="json") | {"available_quantity": item.available_quantity} for item in service.list_positions()]}
+        if args.command == "local-ledger-snapshot":
+            return service.create_snapshot().model_dump(mode="json")
+        return {"transactions": [item.model_dump(mode="json") for item in service.list_transactions()]}
+    if args.command.startswith("sell-safety-"):
+        repository = RiskRepository(args.db)
+        if args.command == "sell-safety-decisions":
+            return {"decisions": [item.model_dump(mode="json") for item in repository.list_sell_safety_decisions(args.limit)]}
+        if args.command == "sell-safety-show":
+            try:
+                return repository.get_sell_safety_decision(args.decision_id).model_dump(mode="json")
+            except LookupError as error:
+                return {"status": "NOT_FOUND", "errors": [str(error)]}
+        intent = repository.get_order_intent(args.order_intent_id) if args.order_intent_id else OrderIntent(
+            ticker=args.symbol, region=MarketRegion(args.region), side=OrderSide.SELL,
+            order_type=OrderType.LIMIT, quantity=args.quantity, limit_price=1,
+            source_type="manual_sell_safety_check", source_id="cli",
+            reason="offline local-ledger sell-safety check", confidence_score=1,
+        )
+        return SellSafetyGate(repository).evaluate(intent, args.reconciliation_status).model_dump(mode="json")
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(

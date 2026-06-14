@@ -85,6 +85,7 @@ def test_submit_blocks_sell_and_invalid_runtime_config(tmp_path):
         sell.order_intent_id, RiskGateConfig(), ExecutionMode.SANDBOX, enable_sandbox_order=True
     )
     assert service.submit(sell.order_intent_id, _config())["receipt"].status == "BLOCKED"
+    assert "SELL_SANDBOX_ORDER_SCHEMA_NOT_VERIFIED" in service.plan(sell.order_intent_id).blocked_reasons
     assert service.submit(intent.order_intent_id, _config(enable_sandbox_order=False))["receipt"].status == "BLOCKED"
     assert transport.calls == []
 

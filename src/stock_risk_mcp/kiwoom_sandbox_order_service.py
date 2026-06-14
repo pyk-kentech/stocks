@@ -36,6 +36,7 @@ class KiwoomSandboxOrderService:
     def plan(self, intent_id: str) -> KiwoomSandboxOrderPlan:
         intent = self.repository.get_order_intent(intent_id)
         reasons = self._intent_reasons(intent)
+        sell_safety = self.repository.get_latest_sell_safety_decision(intent_id)
         return KiwoomSandboxOrderPlan(
             intent_id=intent_id,
             risk_gate_status="APPROVED" if self._risk_approved(intent_id) else "BLOCKED",
@@ -43,6 +44,7 @@ class KiwoomSandboxOrderService:
             order_type=intent.order_type, side=intent.side, quantity=intent.quantity,
             limit_price=intent.limit_price, stop_loss_present=intent.stop_loss_price is not None,
             blocked_reasons=reasons, would_submit=not reasons,
+            sell_safety_status=sell_safety.status.value if sell_safety else None,
         )
 
     def submit(self, intent_id: str, config: KiwoomSandboxOrderConfig, dry_run: bool = False, client_order_id: str | None = None) -> dict:
@@ -123,7 +125,7 @@ class KiwoomSandboxOrderService:
         if intent.order_type != OrderType.LIMIT:
             reasons.append("LIMIT orders only")
         if intent.side != OrderSide.BUY:
-            reasons.append("official SELL endpoint not present in curated manifest")
+            reasons.append("SELL_SANDBOX_ORDER_SCHEMA_NOT_VERIFIED")
         if intent.quantity is None or intent.quantity <= 0 or not float(intent.quantity).is_integer():
             reasons.append("positive integer quantity required")
         if intent.limit_price is None or intent.limit_price <= 0:

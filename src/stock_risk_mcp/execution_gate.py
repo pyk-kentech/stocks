@@ -10,6 +10,7 @@ from stock_risk_mcp.order_intent import (
     OrderSide,
     OrderType,
 )
+from stock_risk_mcp.sell_safety import SellSafetyDecision, SellSafetyStatus
 
 
 def evaluate_execution_gate(
@@ -18,6 +19,7 @@ def evaluate_execution_gate(
     execution_mode: ExecutionMode,
     has_paper_execution: bool,
     enable_sandbox_order: bool = False,
+    sell_safety_decision: SellSafetyDecision | None = None,
 ) -> ExecutionGateDecision:
     reasons: list[str] = []
     if risk_decision is None or not risk_decision.approved:
@@ -35,6 +37,13 @@ def evaluate_execution_gate(
             reasons.append("sandbox supports LIMIT orders only")
         if intent.side == OrderSide.BUY and intent.stop_loss_price is None:
             reasons.append("sandbox BUY stop-loss required")
+        if intent.side == OrderSide.SELL:
+            if sell_safety_decision is None:
+                reasons.append("approved sell-safety decision required")
+            elif sell_safety_decision.order_intent_id != intent.order_intent_id:
+                reasons.append("sell-safety decision belongs to another order intent")
+            elif sell_safety_decision.status != SellSafetyStatus.APPROVED:
+                reasons.append("sell-safety decision is not approved")
         metadata = intent.metadata_json
         if metadata.get("margin") is True:
             reasons.append("sandbox margin disabled")

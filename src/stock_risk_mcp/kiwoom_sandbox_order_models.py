@@ -46,6 +46,7 @@ class KiwoomSandboxOrderPlan(StrictModel):
     stop_loss_present: bool
     blocked_reasons: list[str] = Field(default_factory=list)
     would_submit: bool = False
+    sell_safety_status: str | None = None
 
 
 class KiwoomSandboxOrderRun(StrictModel):

@@ -1886,3 +1886,32 @@ Reconciliation never submits orders, enables LIVE, calls strategy or sizing
 code, or makes network calls. PROD and LIVE remain blocked. Tests and system
 smoke remain fake/local-only with `external_network_calls=false`. Future work
 is v2.21 local-ledger sell-safety integration; live execution remains disabled.
+
+## v2.21 Local Ledger Sell-Safety Integration
+
+v2.21 adds an offline local position ledger and a deterministic SELL safety
+gate. The local ledger is the authority for SELL eligibility. Available
+quantity is calculated as `quantity - reserved_quantity`, floored at zero.
+Broker account data is not automatically copied into this ledger.
+
+```powershell
+python -m stock_risk_mcp.cli local-ledger-position-upsert --db data/stock_risk_mcp.sqlite3 --symbol 005930 --region KR --quantity 10 --reserved-quantity 2
+python -m stock_risk_mcp.cli local-ledger-positions --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli local-ledger-snapshot --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli sell-safety-check --db data/stock_risk_mcp.sqlite3 --symbol 005930 --region KR --quantity 3
+python -m stock_risk_mcp.cli sell-safety-decisions --db data/stock_risk_mcp.sqlite3
+```
+
+SELL RiskGate and SANDBOX ExecutionGate approval require an approved matching
+`SellSafetyDecision`. Missing ledger data, missing positions, insufficient
+available quantity, or an explicitly supplied unsafe reconciliation status
+block the SELL path. Reconciliation results never generate or submit orders.
+BUY and existing PAPER behavior remain unchanged.
+
+The curated Kiwoom manifest still has no verified SELL submit schema.
+Therefore actual Kiwoom sandbox SELL submission remains blocked with
+`SELL_SANDBOX_ORDER_SCHEMA_NOT_VERIFIED`. No SELL endpoint or request field is
+guessed. PROD, LIVE, account-read-driven automatic orders, direct strategy
+access, credentials, and network calls remain outside this layer. Future work
+for v2.22 may add verified-schema ledger-backed sandbox SELL reservation and
+reconciliation hardening, or a separate live execution dry-run gate.

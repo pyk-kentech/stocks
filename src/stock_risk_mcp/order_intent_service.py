@@ -27,7 +27,8 @@ class OrderIntentService:
             watchlist_entry = self.repository.get_watchlist_entry(intent.ticker, intent.region)
         except LookupError:
             watchlist_entry = None
-        risk = evaluate_risk_gate(intent, risk_config, watchlist_entry)
+        sell_safety = self.repository.get_latest_sell_safety_decision(order_intent_id)
+        risk = evaluate_risk_gate(intent, risk_config, watchlist_entry, sell_safety)
         self.repository.save_risk_gate_decision(risk)
         if not risk.approved:
             self.repository.update_order_intent_status(order_intent_id, OrderIntentStatus.RISK_BLOCKED)
@@ -40,7 +41,7 @@ class OrderIntentService:
         intent = self.repository.get_order_intent(order_intent_id)
         execution = evaluate_execution_gate(
             intent, risk, execution_mode, self.repository.has_paper_execution(order_intent_id),
-            enable_sandbox_order=enable_sandbox_order,
+            enable_sandbox_order=enable_sandbox_order, sell_safety_decision=sell_safety,
         )
         self.repository.save_execution_gate_decision(execution)
         status = OrderIntentStatus.EXECUTION_APPROVED if execution.approved else OrderIntentStatus.EXECUTION_BLOCKED
