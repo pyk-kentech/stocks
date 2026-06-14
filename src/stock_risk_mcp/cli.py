@@ -66,6 +66,7 @@ from stock_risk_mcp.kiwoom_real_readonly_models import (
     KiwoomRealNetworkEnvironment,
 )
 from stock_risk_mcp.kiwoom_real_readonly_service import KiwoomRealReadOnlyService
+from stock_risk_mcp.kiwoom_real_readonly_smoke import KiwoomRealReadOnlySmokeService, build_smoke_plan
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -442,6 +443,26 @@ def build_command_parser() -> argparse.ArgumentParser:
         if name == "kiwoom-real-readonly-rankings":
             command.add_argument("--market", default="0")
             command.add_argument("--sort-type", default="1")
+    subparsers.add_parser("kiwoom-real-readonly-smoke-plan")
+    smoke_run = subparsers.add_parser("kiwoom-real-readonly-smoke-run")
+    smoke_run.add_argument("--db", type=Path, required=True)
+    smoke_run.add_argument("--enable-real-network", action="store_true")
+    smoke_run.add_argument("--environment", choices=[item.value for item in KiwoomRealNetworkEnvironment], default="MOCK")
+    smoke_run.add_argument("--base-url", default="https://mockapi.kiwoom.com")
+    smoke_run.add_argument("--credential-source", choices=[item.value for item in KiwoomCredentialSource], default="NONE")
+    smoke_run.add_argument("--credential-file", type=Path)
+    smoke_run.add_argument("--allow-auth-token-request", action="store_true")
+    smoke_run.add_argument("--endpoint-id", action="append", default=[])
+    smoke_run.add_argument("--endpoint-set", choices=["minimal"])
+    smoke_run.add_argument("--dry-run", action="store_true")
+    smoke_run.add_argument("--timeout-seconds", type=float, default=10)
+    smoke_run.add_argument("--max-requests-per-run", type=int, default=3)
+    smoke_reports = subparsers.add_parser("kiwoom-real-readonly-smoke-reports")
+    smoke_reports.add_argument("--db", type=Path, required=True)
+    smoke_reports.add_argument("--limit", type=int, default=100)
+    smoke_show = subparsers.add_parser("kiwoom-real-readonly-smoke-show")
+    smoke_show.add_argument("--db", type=Path, required=True)
+    smoke_show.add_argument("--smoke-run-id", required=True)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -1027,6 +1048,10 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-real-readonly-flow",
         "kiwoom-real-readonly-minute-chart",
         "kiwoom-real-readonly-daily-chart",
+        "kiwoom-real-readonly-smoke-plan",
+        "kiwoom-real-readonly-smoke-run",
+        "kiwoom-real-readonly-smoke-reports",
+        "kiwoom-real-readonly-smoke-show",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1422,6 +1447,45 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return matches[0].model_dump(mode="json") if matches else {
             "status": "NOT_FOUND", "errors": ["official endpoint manifest entry not found"],
         }
+    if args.command == "kiwoom-real-readonly-smoke-plan":
+        return build_smoke_plan()
+    if args.command == "kiwoom-real-readonly-smoke-reports":
+        return {"smoke_reports": [
+            item.model_dump(mode="json")
+            for item in RiskRepository(args.db).list_kiwoom_real_readonly_smoke_runs(args.limit)
+        ]}
+    if args.command == "kiwoom-real-readonly-smoke-show":
+        try:
+            return RiskRepository(args.db).get_kiwoom_real_readonly_smoke_report(
+                args.smoke_run_id
+            ).model_dump(mode="json")
+        except LookupError as error:
+            return {"status": "NOT_FOUND", "errors": [str(error)]}
+    if args.command == "kiwoom-real-readonly-smoke-run":
+        repository = RiskRepository(args.db)
+        config = KiwoomRealNetworkConfig(
+            enabled=args.enable_real_network, environment=KiwoomRealNetworkEnvironment(args.environment),
+            base_url=args.base_url, timeout_seconds=args.timeout_seconds,
+            max_requests_per_run=args.max_requests_per_run,
+            allow_auth_token_request=args.allow_auth_token_request,
+            credential_source=KiwoomCredentialSource(args.credential_source),
+            credential_file=args.credential_file,
+        )
+
+        def explicit_credential_loader(source, credential_file):
+            env = {
+                key: value for key in ("KIWOOM_APPKEY", "KIWOOM_SECRETKEY")
+                if (value := os.environ.get(key)) is not None
+            } if source == KiwoomCredentialSource.ENV else {}
+            return load_kiwoom_credentials(source, credential_file, env)
+
+        smoke = KiwoomRealReadOnlySmokeService(
+            repository=repository, credential_loader=explicit_credential_loader,
+            service_factory=lambda current_config, credentials: KiwoomRealReadOnlyService(
+                repository, current_config, credentials
+            ),
+        )
+        return smoke.run(config, args.endpoint_id, args.endpoint_set, args.dry_run).model_dump(mode="json")
     if args.command.startswith("kiwoom-real-readonly-"):
         config = KiwoomRealNetworkConfig(
             enabled=args.enable_real_network, environment=KiwoomRealNetworkEnvironment(args.environment),

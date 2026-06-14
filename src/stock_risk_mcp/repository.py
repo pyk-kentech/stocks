@@ -66,6 +66,11 @@ from stock_risk_mcp.kiwoom_real_readonly_models import (
     KiwoomRealReadOnlyResponseAudit,
     KiwoomRealReadOnlyRun,
 )
+from stock_risk_mcp.kiwoom_real_readonly_smoke_models import (
+    KiwoomRealReadOnlySmokeRun,
+    KiwoomRealReadOnlySmokeStep,
+    sanitized_smoke_run,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2163,6 +2168,54 @@ class RiskRepository:
                 "SELECT audit_json FROM kiwoom_real_readonly_responses ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [KiwoomRealReadOnlyResponseAudit.model_validate_json(str(row["audit_json"])) for row in rows]
+
+    def save_kiwoom_real_readonly_smoke_report(self, run: KiwoomRealReadOnlySmokeRun) -> int:
+        safe = sanitized_smoke_run(run)
+        stored_run = safe.model_copy(update={"steps": []})
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO kiwoom_real_readonly_smoke_runs
+                (smoke_run_id, status, run_json, observed_at) VALUES (?, ?, ?, ?)""",
+                (
+                    stored_run.smoke_run_id, stored_run.status.value,
+                    stored_run.model_dump_json(), stored_run.observed_at.isoformat(),
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO kiwoom_real_readonly_smoke_steps
+                (smoke_step_id, smoke_run_id, endpoint_id, request_status, step_json, observed_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        step.smoke_step_id, step.smoke_run_id, step.endpoint_id,
+                        step.request_status, step.model_dump_json(), step.observed_at.isoformat(),
+                    )
+                    for step in safe.steps
+                ],
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_real_readonly_smoke_runs(self, limit: int = 100) -> list[KiwoomRealReadOnlySmokeRun]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT run_json FROM kiwoom_real_readonly_smoke_runs ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [KiwoomRealReadOnlySmokeRun.model_validate_json(str(row["run_json"])) for row in rows]
+
+    def get_kiwoom_real_readonly_smoke_report(self, smoke_run_id: str) -> KiwoomRealReadOnlySmokeRun:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT run_json FROM kiwoom_real_readonly_smoke_runs WHERE smoke_run_id=?", (smoke_run_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Kiwoom real read-only smoke run not found: {smoke_run_id}")
+            step_rows = connection.execute(
+                "SELECT step_json FROM kiwoom_real_readonly_smoke_steps WHERE smoke_run_id=? ORDER BY id",
+                (smoke_run_id,),
+            ).fetchall()
+        run = KiwoomRealReadOnlySmokeRun.model_validate_json(str(row["run_json"]))
+        run.steps = [KiwoomRealReadOnlySmokeStep.model_validate_json(str(item["step_json"])) for item in step_rows]
+        return run
 
     def save_kiwoom_mock_order_request(self, request: KiwoomMockOrderRequest) -> int:
         with self._connect() as connection:

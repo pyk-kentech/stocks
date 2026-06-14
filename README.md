@@ -1666,3 +1666,48 @@ python -m stock_risk_mcp.cli kiwoom-real-readonly-stock-info --db data/stock_ris
 Tests and `system-smoke` use fake transports and make no external network
 calls. v2.14 adds no order, balance, holdings, position, or live-execution
 runtime.
+
+## v2.15 Kiwoom Real-Network Read-only Manual Smoke
+
+v2.15 adds a separate manual-smoke harness for validating the v2.14 MOCK
+read-only adapter. It is never run by pytest or `system-smoke`, and it does not
+modify the v2.11 fake read-only commands.
+
+The manual smoke allowlist is limited to `ka10001`, `ka10004`, `ka10020`,
+`ka10008`, `ka10080`, and `ka10081`. The `minimal` endpoint set calls only
+`ka10001`, duplicate IDs are removed, and a run is limited to three endpoints.
+PROD, WebSocket, AUTH outside the token provider, ORDER, and ACCOUNT_READ
+endpoints are blocked.
+
+```bash
+# Offline plan: no credential read and no network
+python -m stock_risk_mcp.cli kiwoom-real-readonly-smoke-plan
+
+# Full validation without reading credentials or using the network
+python -m stock_risk_mcp.cli kiwoom-real-readonly-smoke-run --db data/stock_risk_mcp.sqlite3 --endpoint-set minimal --enable-real-network --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request --dry-run
+
+# Manual MOCK call. Placeholder credential setup only; never commit credentials.
+python -m stock_risk_mcp.cli kiwoom-real-readonly-smoke-run --db data/stock_risk_mcp.sqlite3 --endpoint-set minimal --enable-real-network --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request
+
+python -m stock_risk_mcp.cli kiwoom-real-readonly-smoke-reports --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-real-readonly-smoke-show --db data/stock_risk_mcp.sqlite3 --smoke-run-id <id>
+```
+
+Smoke reports store endpoint ID/path/classification, status, HTTP status, and
+sanitized errors only. They do not store credentials, credential paths,
+tokens, authorization headers, account numbers, request bodies, or response
+bodies.
+
+Troubleshooting:
+
+- Missing credentials: select `ENV` or an exact `FILE_EXPLICIT` file and
+  configure placeholder-free local credentials outside the repository.
+- Wrong base URL: use the exact `https://mockapi.kiwoom.com` URL.
+- Missing auth opt-in: add `--allow-auth-token-request`.
+- Endpoint rejected: use only the six REST READ_ONLY smoke endpoint IDs.
+- Token/auth failure: verify local MOCK credentials without printing them.
+- Network timeout: verify local connectivity and retry the bounded manual run.
+
+v2.15 is not live trading. It cannot place, cancel, or modify orders and does
+not query account, balance, position, cash, holdings, fills, or order history.
+Automated tests and system-smoke continue to make no real network calls.

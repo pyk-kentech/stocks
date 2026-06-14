@@ -1358,3 +1358,21 @@ changing the v2.11 fake read-only service:
 Tests and system smoke remain fake/local-only. Audit rows exclude credentials,
 tokens, authorization headers, request bodies, and response bodies. This stage
 does not add order, account, balance, position, holdings, or live execution.
+
+## v2.15 Kiwoom Real-Network Read-only Manual Smoke
+
+Added a separate manual-only harness around the v2.14 MOCK read-only adapter:
+
+- offline smoke plan with no credential read or network
+- validation-only dry-run with no credential read, token request, or HTTP call
+- six-ID REST READ_ONLY allowlist, `minimal=ka10001`, deduplication, and a
+  three-endpoint hard maximum
+- sequential fake-testable execution with completed/partial/failed aggregation
+- append-only redacted smoke run and step SQLite audits
+- plan/run/reports/show JSON CLI commands
+
+The harness blocks PROD, WebSocket, ORDER, ACCOUNT_READ, AUTH outside the
+controlled token provider, and unknown endpoints. Reports exclude credentials,
+credential paths, tokens, authorization headers, account numbers, and raw
+request/response bodies. Pytest and system-smoke never execute a real manual
+smoke call. This release adds no live trading or account runtime.
