@@ -89,6 +89,11 @@ from stock_risk_mcp.kiwoom_account_read_smoke_models import (
 )
 from stock_risk_mcp.local_ledger import LocalLedgerPosition, LocalLedgerSnapshot, LocalLedgerTransaction
 from stock_risk_mcp.sell_safety import SellSafetyDecision
+from stock_risk_mcp.kiwoom_sandbox_sell_schema import (
+    SandboxSellDryRunDecision,
+    SandboxSellSchemaFieldEvidence,
+    SandboxSellSchemaVerificationReport,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2436,6 +2441,56 @@ class RiskRepository:
         if row is None:
             raise LookupError(f"Sell safety decision not found: {decision_id}")
         return SellSafetyDecision.model_validate_json(str(row["decision_json"]))
+
+    def save_kiwoom_sandbox_sell_schema_report(self, report: SandboxSellSchemaVerificationReport) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_sandbox_sell_schema_reports (report_id, status, report_json, observed_at) VALUES (?, ?, ?, ?)",
+                (report.report_id, report.status.value, report.model_dump_json(), report.observed_at.isoformat()),
+            )
+            for field in report.fields:
+                connection.execute(
+                    "INSERT INTO kiwoom_sandbox_sell_schema_fields (field_evidence_id, report_id, field_json, observed_at) VALUES (?, ?, ?, ?)",
+                    (field.field_evidence_id, report.report_id, field.model_dump_json(), field.observed_at.isoformat()),
+                )
+            return int(cursor.lastrowid)
+
+    def get_kiwoom_sandbox_sell_schema_report(self, report_id: str) -> SandboxSellSchemaVerificationReport:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT report_json FROM kiwoom_sandbox_sell_schema_reports WHERE report_id=?", (report_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Sandbox SELL schema report not found: {report_id}")
+        return SandboxSellSchemaVerificationReport.model_validate_json(str(row["report_json"]))
+
+    def get_latest_kiwoom_sandbox_sell_schema_report(self) -> SandboxSellSchemaVerificationReport | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT report_json FROM kiwoom_sandbox_sell_schema_reports ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return SandboxSellSchemaVerificationReport.model_validate_json(str(row["report_json"])) if row else None
+
+    def list_kiwoom_sandbox_sell_schema_reports(self, limit: int = 100) -> list[SandboxSellSchemaVerificationReport]:
+        return [SandboxSellSchemaVerificationReport.model_validate_json(value) for value in self._list_json_records("kiwoom_sandbox_sell_schema_reports", "report_json", limit)]
+
+    def list_kiwoom_sandbox_sell_schema_fields(self, report_id: str) -> list[SandboxSellSchemaFieldEvidence]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT field_json FROM kiwoom_sandbox_sell_schema_fields WHERE report_id=? ORDER BY id", (report_id,)
+            ).fetchall()
+        return [SandboxSellSchemaFieldEvidence.model_validate_json(str(row["field_json"])) for row in rows]
+
+    def save_kiwoom_sandbox_sell_dry_run(self, decision: SandboxSellDryRunDecision) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_sandbox_sell_dry_runs (dry_run_id, order_intent_id, status, dry_run_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                (decision.dry_run_id, decision.order_intent_id, decision.status.value, decision.model_dump_json(), decision.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_sandbox_sell_dry_runs(self, limit: int = 100) -> list[SandboxSellDryRunDecision]:
+        return [SandboxSellDryRunDecision.model_validate_json(value) for value in self._list_json_records("kiwoom_sandbox_sell_dry_runs", "dry_run_json", limit)]
 
     def _save_sandbox_record(self, table: str, columns: tuple[str, ...], values: tuple) -> int:
         placeholders = ", ".join("?" for _ in columns)

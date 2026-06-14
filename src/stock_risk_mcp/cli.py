@@ -69,6 +69,8 @@ from stock_risk_mcp.kiwoom_real_readonly_service import KiwoomRealReadOnlyServic
 from stock_risk_mcp.kiwoom_real_readonly_smoke import KiwoomRealReadOnlySmokeService, build_smoke_plan
 from stock_risk_mcp.kiwoom_sandbox_order_models import KiwoomSandboxOrderConfig
 from stock_risk_mcp.kiwoom_sandbox_order_service import KiwoomSandboxOrderService
+from stock_risk_mcp.kiwoom_sandbox_sell_dry_run import KiwoomSandboxSellDryRunService
+from stock_risk_mcp.kiwoom_sandbox_sell_schema_verifier import KiwoomSandboxSellSchemaVerifier
 from stock_risk_mcp.kiwoom_account_read_models import KiwoomAccountReadConfig
 from stock_risk_mcp.kiwoom_account_read_service import KiwoomAccountReadService
 from stock_risk_mcp.kiwoom_account_read_transport import RealKiwoomAccountReadTransport
@@ -525,6 +527,17 @@ def build_command_parser() -> argparse.ArgumentParser:
     sandbox_show = subparsers.add_parser("kiwoom-sandbox-order-show")
     sandbox_show.add_argument("--db", type=Path, required=True)
     sandbox_show.add_argument("--broker-order-id", required=True)
+    sell_schema_verify = subparsers.add_parser("kiwoom-sandbox-sell-schema-verify")
+    sell_schema_verify.add_argument("--db", type=Path, required=True)
+    sell_schema_reports = subparsers.add_parser("kiwoom-sandbox-sell-schema-reports")
+    sell_schema_reports.add_argument("--db", type=Path, required=True)
+    sell_schema_reports.add_argument("--limit", type=int, default=100)
+    sell_schema_show = subparsers.add_parser("kiwoom-sandbox-sell-schema-show")
+    sell_schema_show.add_argument("--db", type=Path, required=True)
+    sell_schema_show.add_argument("--report-id", required=True)
+    sell_dry_run = subparsers.add_parser("kiwoom-sandbox-sell-dry-run")
+    sell_dry_run.add_argument("--db", type=Path, required=True)
+    sell_dry_run.add_argument("--order-intent-id", required=True)
     account_health = subparsers.add_parser("kiwoom-account-read-health")
     account_health.add_argument("--db", type=Path, required=True)
     account_plan = subparsers.add_parser("kiwoom-account-read-plan")
@@ -1228,6 +1241,10 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-sandbox-order-requests",
         "kiwoom-sandbox-order-receipts",
         "kiwoom-sandbox-order-show",
+        "kiwoom-sandbox-sell-schema-verify",
+        "kiwoom-sandbox-sell-schema-reports",
+        "kiwoom-sandbox-sell-schema-show",
+        "kiwoom-sandbox-sell-dry-run",
         "kiwoom-account-read-health",
         "kiwoom-account-read-plan",
         "kiwoom-account-read-run",
@@ -1725,6 +1742,18 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         if args.command == "kiwoom-sandbox-order-cancel":
             return {"receipts": [item.model_dump(mode="json") for item in service.cancel(args.broker_order_id, config)]}
         return _dump_order_result(service.submit(args.order_intent_id, config, args.dry_run, args.client_order_id))
+    if args.command.startswith("kiwoom-sandbox-sell-"):
+        repository = RiskRepository(args.db)
+        if args.command == "kiwoom-sandbox-sell-schema-verify":
+            return KiwoomSandboxSellSchemaVerifier(repository).verify().model_dump(mode="json")
+        if args.command == "kiwoom-sandbox-sell-schema-reports":
+            return {"reports": [item.model_dump(mode="json") for item in repository.list_kiwoom_sandbox_sell_schema_reports(args.limit)]}
+        if args.command == "kiwoom-sandbox-sell-schema-show":
+            try:
+                return repository.get_kiwoom_sandbox_sell_schema_report(args.report_id).model_dump(mode="json")
+            except LookupError as error:
+                return {"status": "NOT_FOUND", "errors": [str(error)]}
+        return KiwoomSandboxSellDryRunService(repository).run(args.order_intent_id).model_dump(mode="json")
     if args.command == "kiwoom-account-read-smoke-plan":
         return build_account_read_smoke_plan()
     if args.command.startswith("kiwoom-account-read-smoke-"):

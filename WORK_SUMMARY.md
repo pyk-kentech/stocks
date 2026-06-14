@@ -1496,3 +1496,26 @@ live-execution design checkpoint with an explicit kill switch.
 - Reconciliation may conservatively block SELL eligibility but never creates
   or submits an order. Verified-schema ledger-backed sandbox SELL reservation
   or a separate live execution dry-run gate remains v2.22 future work.
+
+## v2.22 Kiwoom Sandbox SELL Schema Verification And Dry-Run Gate
+
+- Added offline SELL schema verification models, field evidence, reports, and
+  append-only SQLite audits.
+- Verified only project-local official manifest evidence. Internal request
+  models and test fixtures are not treated as official schema proof.
+- Current result is `UNVERIFIED`: the repository lacks an explicit official
+  SELL value and official side, LIMIT-type, symbol, quantity, limit-price, and
+  account-field mapping.
+- Added a fail-closed SELL dry-run service and four JSON CLI commands.
+- Required a `VERIFIED` report, approved SellSafety/RiskGate/SANDBOX
+  ExecutionGate decisions, sufficient current local ledger, LIMIT order, and
+  MOCK environment for dry-run approval.
+- Kept current dry-run blocked with
+  `SELL_SANDBOX_ORDER_SCHEMA_NOT_VERIFIED`.
+- Kept actual sandbox SELL submission blocked in v2.22 regardless of a stored
+  test-fixture report. Existing BUY sandbox behavior is unchanged.
+- Kept credentials, tokens, transports, network, raw account data,
+  account-read-driven orders, strategy broker access, PROD, and LIVE outside
+  this layer.
+- Future v2.23 work may import/review official SELL schema evidence and then
+  consider MOCK sandbox SELL submission in a separate release.

@@ -1915,3 +1915,35 @@ guessed. PROD, LIVE, account-read-driven automatic orders, direct strategy
 access, credentials, and network calls remain outside this layer. Future work
 for v2.22 may add verified-schema ledger-backed sandbox SELL reservation and
 reconciliation hardening, or a separate live execution dry-run gate.
+
+## v2.22 Kiwoom Sandbox SELL Schema Verification And Dry-Run Gate
+
+v2.22 adds an offline verifier for Kiwoom MOCK sandbox SELL request schemas.
+It uses only committed project-local official evidence and never guesses an
+endpoint, request field, side code, order-type code, or account field.
+
+```powershell
+python -m stock_risk_mcp.cli kiwoom-sandbox-sell-schema-verify --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-sandbox-sell-schema-reports --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-sandbox-sell-schema-show --db data/stock_risk_mcp.sqlite3 --report-id <report-id>
+python -m stock_risk_mcp.cli kiwoom-sandbox-sell-dry-run --db data/stock_risk_mcp.sqlite3 --order-intent-id <intent-id>
+```
+
+The current curated manifest identifies `kt10000` as a BUY ORDER endpoint but
+does not contain an explicit official SELL value or official symbol, quantity,
+limit-price, LIMIT-type, side, and account-field mapping. The current schema
+verification result is therefore `UNVERIFIED`.
+
+SELL dry-run approval requires a persisted `VERIFIED` schema report, approved
+SellSafetyDecision, approved RiskGateDecision, approved SANDBOX ExecutionGate
+decision, sufficient current local-ledger quantity, a LIMIT order, and MOCK
+environment. With current repository evidence, dry-run is blocked with
+`SELL_SANDBOX_ORDER_SCHEMA_NOT_VERIFIED`.
+
+Dry-run never reads credentials, requests tokens, constructs a transport, or
+submits an order. Actual Kiwoom sandbox SELL submission also remains blocked
+in v2.22 even when a test fixture stores a `VERIFIED` report. BUY sandbox
+behavior is unchanged. PROD, LIVE, account-read-driven orders, direct strategy
+broker access, raw account data, and real-network tests remain prohibited.
+Future v2.23 work may import and review official SELL schema evidence, followed
+by a separate MOCK sandbox SELL submission release if verification succeeds.

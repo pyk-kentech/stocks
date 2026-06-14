@@ -1100,6 +1100,28 @@ def create_schema(connection: sqlite3.Connection) -> None:
             decision_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_sell_schema_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            report_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_sell_schema_fields (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            field_evidence_id TEXT NOT NULL UNIQUE,
+            report_id TEXT NOT NULL,
+            field_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_sell_dry_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dry_run_id TEXT NOT NULL UNIQUE,
+            order_intent_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            dry_run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(
