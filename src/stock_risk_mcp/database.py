@@ -926,6 +926,25 @@ def create_schema(connection: sqlite3.Connection) -> None:
             audit_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_mock_order_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kiwoom_mock_order_request_id TEXT NOT NULL UNIQUE,
+            broker_order_request_id TEXT NOT NULL,
+            order_intent_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            request_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_mock_order_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kiwoom_mock_order_receipt_id TEXT NOT NULL UNIQUE,
+            kiwoom_mock_order_request_id TEXT NOT NULL,
+            broker_order_receipt_id TEXT NOT NULL,
+            order_intent_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            receipt_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

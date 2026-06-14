@@ -52,6 +52,7 @@ from stock_risk_mcp.indicators import analyze_price_bars
 from stock_risk_mcp.kiwoom_readonly_adapter import KiwoomRestReadOnlyAdapter
 from stock_risk_mcp.kiwoom_readonly_models import KiwoomEnvironment
 from stock_risk_mcp.kiwoom_readonly_service import KiwoomReadOnlyService
+from stock_risk_mcp.kiwoom_mock_execution_service import KiwoomMockExecutionService
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -380,6 +381,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_condition_run.add_argument("--db", type=Path, required=True)
     kiwoom_condition_run.add_argument("--condition-id", required=True)
     kiwoom_condition_run.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_mock_health = subparsers.add_parser("kiwoom-mock-execution-health")
+    kiwoom_mock_health.add_argument("--db", type=Path, required=True)
+    kiwoom_mock_submit = subparsers.add_parser("kiwoom-mock-submit-order")
+    kiwoom_mock_submit.add_argument("--db", type=Path, required=True)
+    kiwoom_mock_submit.add_argument("--order-intent-id", required=True)
+    kiwoom_mock_submit.add_argument("--mock-fill-price", type=float)
+    for name in ("kiwoom-mock-cancel-order", "kiwoom-mock-order-status"):
+        command = subparsers.add_parser(name)
+        command.add_argument("--db", type=Path, required=True)
+        command.add_argument("--mock-order-id", required=True)
+    for name in ("kiwoom-mock-order-requests-list", "kiwoom-mock-order-receipts-list"):
+        command = subparsers.add_parser(name)
+        command.add_argument("--db", type=Path, required=True)
+        command.add_argument("--order-intent-id")
+        command.add_argument("--limit", type=int, default=100)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -949,6 +965,12 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-readonly-chart",
         "kiwoom-readonly-condition-list",
         "kiwoom-readonly-condition-run",
+        "kiwoom-mock-execution-health",
+        "kiwoom-mock-submit-order",
+        "kiwoom-mock-cancel-order",
+        "kiwoom-mock-order-status",
+        "kiwoom-mock-order-requests-list",
+        "kiwoom-mock-order-receipts-list",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1292,6 +1314,31 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             "kiwoom-readonly-chart": lambda: service.get_chart_bars(args.ticker, args.interval, args.count),
             "kiwoom-readonly-condition-list": service.list_condition_searches,
             "kiwoom-readonly-condition-run": lambda: service.run_condition_search(args.condition_id),
+        }
+        try:
+            return _dump_order_result(operations[args.command]())
+        except (LookupError, ValueError) as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-execution-health":
+        return KiwoomMockExecutionService(RiskRepository(args.db)).health().model_dump(mode="json")
+    if args.command == "kiwoom-mock-order-requests-list":
+        return {"kiwoom_mock_order_requests": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_kiwoom_mock_order_requests(
+                args.order_intent_id, args.limit
+            )
+        ]}
+    if args.command == "kiwoom-mock-order-receipts-list":
+        return {"kiwoom_mock_order_receipts": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_kiwoom_mock_order_receipts(
+                args.order_intent_id, args.limit
+            )
+        ]}
+    if args.command.startswith("kiwoom-mock-"):
+        service = KiwoomMockExecutionService(RiskRepository(args.db))
+        operations = {
+            "kiwoom-mock-submit-order": lambda: service.submit_order(args.order_intent_id, args.mock_fill_price),
+            "kiwoom-mock-cancel-order": lambda: service.cancel_order(args.mock_order_id),
+            "kiwoom-mock-order-status": lambda: service.order_status(args.mock_order_id),
         }
         try:
             return _dump_order_result(operations[args.command]())

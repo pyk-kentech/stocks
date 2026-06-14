@@ -1557,3 +1557,44 @@ Official Kiwoom REST verification is future work; OpenAPI+/OCX/pykiwoom are
 legacy reference paths only and are not imported. The planned execution path
 remains v2.12 sandbox/mock execution, followed by v2.13 live execution with an
 explicit kill switch and default-off live trading.
+
+## v2.12 Kiwoom Sandbox/Mock Execution Adapter
+
+v2.12 adds a Kiwoom-shaped local execution adapter behind the existing
+OrderIntent, RiskGate, and ExecutionGate boundary:
+
+```text
+OrderIntent -> RiskGate -> ExecutionGate -> KiwoomMockExecutionService
+-> KiwoomMockExecutionAdapter -> FakeKiwoomExecutionTransport
+```
+
+Only three internal deterministic fixture endpoints exist:
+`/kiwoom-mock/order/submit`, `/kiwoom-mock/order/cancel`, and
+`/kiwoom-mock/order/status`. They are not official Kiwoom paths. Official
+Kiwoom order endpoint verification is deferred.
+
+LIMIT and STOP_LIMIT requests fill locally at an explicit `mock_fill_price` or
+the LIMIT price. STOP_LIMIT does not simulate a broker-native stop trigger.
+MARKET requires upstream gate approval and an explicit positive
+`mock_fill_price`. v2.12 supports KR-region mock intents only.
+
+Every submission attempt is stored in both generic broker audit tables and
+Kiwoom mock-specific audit tables. Duplicate submission creates a new request
+and REJECTED receipt with `duplicate broker submission`; the adapter fill path
+is not called again. Cancel and status operations are also linked to the
+original intent and audited.
+
+```bash
+python -m stock_risk_mcp.cli kiwoom-mock-execution-health --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-mock-submit-order --db data/stock_risk_mcp.sqlite3 --order-intent-id <id>
+python -m stock_risk_mcp.cli kiwoom-mock-cancel-order --db data/stock_risk_mcp.sqlite3 --mock-order-id <id>
+python -m stock_risk_mcp.cli kiwoom-mock-order-status --db data/stock_risk_mcp.sqlite3 --mock-order-id <id>
+python -m stock_risk_mcp.cli kiwoom-mock-order-requests-list --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-mock-order-receipts-list --db data/stock_risk_mcp.sqlite3
+```
+
+This adapter performs no real Kiwoom trading, OAuth, network request,
+credential access, account/balance/position/holdings/cash read, or live order.
+It imports no OpenAPI+/OCX/pykiwoom or Windows-only dependency. Future stages
+are v2.13 official endpoint verification, v2.14 explicitly opt-in real-network
+sandbox integration, and v2.15 default-off live execution with a kill switch.

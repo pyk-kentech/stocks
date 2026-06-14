@@ -61,6 +61,7 @@ from stock_risk_mcp.models import (
 from stock_risk_mcp.local_llm import LocalLLMRequest
 from stock_risk_mcp.local_llm_response import LocalLLMResponse
 from stock_risk_mcp.kiwoom_readonly_models import KiwoomReadOnlyRequestAudit, KiwoomReadOnlyResponseAudit
+from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
     ExecutionGateDecision,
@@ -2104,6 +2105,74 @@ class RiskRepository:
                     "SELECT audit_json FROM kiwoom_readonly_responses ORDER BY id DESC LIMIT ?", (limit,)
                 ).fetchall()
         return [KiwoomReadOnlyResponseAudit.model_validate_json(str(row["audit_json"])) for row in rows]
+
+    def save_kiwoom_mock_order_request(self, request: KiwoomMockOrderRequest) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO kiwoom_mock_order_requests (
+                    kiwoom_mock_order_request_id, broker_order_request_id, order_intent_id,
+                    ticker, request_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    request.kiwoom_mock_order_request_id, request.broker_order_request_id,
+                    request.order_intent_id, request.ticker, request.model_dump_json(),
+                    request.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_mock_order_requests(
+        self, order_intent_id: str | None = None, limit: int = 100
+    ) -> list[KiwoomMockOrderRequest]:
+        query = "SELECT request_json FROM kiwoom_mock_order_requests"
+        values: list[Any] = []
+        if order_intent_id:
+            query += " WHERE order_intent_id=?"
+            values.append(order_intent_id)
+        query += " ORDER BY id DESC LIMIT ?"
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(query, values).fetchall()
+        return [KiwoomMockOrderRequest.model_validate_json(str(row["request_json"])) for row in rows]
+
+    def save_kiwoom_mock_order_receipt(self, receipt: KiwoomMockOrderReceipt) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO kiwoom_mock_order_receipts (
+                    kiwoom_mock_order_receipt_id, kiwoom_mock_order_request_id,
+                    broker_order_receipt_id, order_intent_id, status, receipt_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    receipt.kiwoom_mock_order_receipt_id, receipt.kiwoom_mock_order_request_id,
+                    receipt.broker_order_receipt_id, receipt.order_intent_id, receipt.status.value,
+                    receipt.model_dump_json(), receipt.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_mock_order_receipts(
+        self, order_intent_id: str | None = None, limit: int = 100
+    ) -> list[KiwoomMockOrderReceipt]:
+        query = "SELECT receipt_json FROM kiwoom_mock_order_receipts"
+        values: list[Any] = []
+        if order_intent_id:
+            query += " WHERE order_intent_id=?"
+            values.append(order_intent_id)
+        query += " ORDER BY id DESC LIMIT ?"
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(query, values).fetchall()
+        return [KiwoomMockOrderReceipt.model_validate_json(str(row["receipt_json"])) for row in rows]
+
+    def get_latest_kiwoom_mock_receipt(self, order_intent_id: str) -> KiwoomMockOrderReceipt | None:
+        receipts = self.list_kiwoom_mock_order_receipts(order_intent_id, 1)
+        return receipts[0] if receipts else None
+
+    def get_kiwoom_mock_receipt_by_mock_order_id(self, mock_order_id: str) -> KiwoomMockOrderReceipt:
+        for receipt in self.list_kiwoom_mock_order_receipts(limit=1000):
+            if receipt.mock_order_id == mock_order_id:
+                return receipt
+        raise LookupError(f"Kiwoom mock order not found: {mock_order_id}")
 
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:

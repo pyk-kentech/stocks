@@ -1295,3 +1295,26 @@ imported.
 The next execution stages remain v2.12 Kiwoom Sandbox/Mock Execution Adapter
 and v2.13 Kiwoom Live Execution Adapter with an explicit kill switch and
 default-off live trading.
+
+## v2.12 Kiwoom Sandbox/Mock Execution Adapter
+
+Added a Kiwoom-shaped deterministic local execution boundary:
+
+- dedicated `KiwoomMockExecutionService` requiring approved RiskGate and
+  ExecutionGate decisions
+- `KiwoomMockExecutionAdapter` with ORDER_SUBMIT and ORDER_CANCEL only
+- local-only `FakeKiwoomExecutionTransport` using three exact internal fixture
+  endpoints
+- KR-only deterministic LIMIT/STOP_LIMIT fills and explicit-price MARKET fills
+- generic broker plus Kiwoom mock-specific append-only SQLite audits
+- duplicate submission rejection without a second adapter fill
+- audited deterministic cancel and status operations
+- six JSON CLI commands
+
+This stage does not use official Kiwoom API IDs or paths. It performs no OAuth,
+real network call, credential access, account/balance/position/holdings/cash
+read, live order, OpenAPI+/OCX/pykiwoom import, or Windows-only integration.
+
+Future work proceeds through v2.13 official endpoint verification, v2.14
+explicitly opt-in real-network sandbox integration, and v2.15 default-off live
+execution with an explicit kill switch.
