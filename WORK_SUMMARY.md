@@ -1272,3 +1272,26 @@ call, secret access, or live order path.
 Future work remains v2.11 Kiwoom REST Read-only Adapter, v2.12 Kiwoom
 Sandbox/Mock Execution Adapter, and v2.13 Kiwoom Live Execution Adapter with
 an explicit kill switch.
+
+## v2.11 Kiwoom REST Read-only Adapter
+
+Added a fake-transport-only read-only contract for future Kiwoom REST
+integration:
+
+- seven exact internal `/readonly/*` endpoint pairs
+- deterministic fake fixtures and bounded continuation handling
+- normalized stock info, quote, ranking, flow, chart, and condition results
+- sanitized append-only SQLite request/response audits
+- nine JSON CLI commands with `MOCK` default and `PROD_DISABLED` behavior
+- safety checks excluding HTTP/Kiwoom SDK imports, credentials, environment
+  access, account reads, orders, and strategy/execution integration
+
+This stage is **internal deterministic endpoint only; official Kiwoom endpoint
+mapping deferred**. It does not implement official `api_id` or path mappings,
+OAuth, real network calls, account/balance/position reads, or orders. Official
+Kiwoom REST verification remains future work. OpenAPI+/OCX/pykiwoom are not
+imported.
+
+The next execution stages remain v2.12 Kiwoom Sandbox/Mock Execution Adapter
+and v2.13 Kiwoom Live Execution Adapter with an explicit kill switch and
+default-off live trading.

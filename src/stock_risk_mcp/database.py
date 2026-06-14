@@ -906,6 +906,26 @@ def create_schema(connection: sqlite3.Connection) -> None:
             health_json TEXT NOT NULL,
             checked_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_readonly_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            api_id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            category TEXT NOT NULL,
+            ticker TEXT,
+            market TEXT,
+            condition_id TEXT,
+            audit_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_readonly_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            response_id TEXT NOT NULL UNIQUE,
+            request_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            audit_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

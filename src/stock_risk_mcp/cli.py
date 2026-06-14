@@ -49,6 +49,9 @@ from stock_risk_mcp.demo_report import DEMO_DISCLAIMER
 from stock_risk_mcp.import_report import import_run_report
 from stock_risk_mcp.ingestion import save_evaluation_inputs_and_result
 from stock_risk_mcp.indicators import analyze_price_bars
+from stock_risk_mcp.kiwoom_readonly_adapter import KiwoomRestReadOnlyAdapter
+from stock_risk_mcp.kiwoom_readonly_models import KiwoomEnvironment
+from stock_risk_mcp.kiwoom_readonly_service import KiwoomReadOnlyService
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -342,6 +345,41 @@ def build_command_parser() -> argparse.ArgumentParser:
     broker_receipts.add_argument("--order-intent-id")
     broker_receipts.add_argument("--status", choices=[item.value for item in BrokerOrderStatus])
     broker_receipts.add_argument("--limit", type=int, default=100)
+
+    kiwoom_health = subparsers.add_parser("kiwoom-readonly-health")
+    kiwoom_health.add_argument("--db", type=Path, required=True)
+    kiwoom_health.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_endpoints = subparsers.add_parser("kiwoom-readonly-endpoints")
+    kiwoom_endpoints.add_argument("--db", type=Path, required=True)
+    kiwoom_endpoints.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    for name in ("kiwoom-readonly-stock-info", "kiwoom-readonly-quote"):
+        command = subparsers.add_parser(name)
+        command.add_argument("--db", type=Path, required=True)
+        command.add_argument("--ticker", required=True)
+        command.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_rankings = subparsers.add_parser("kiwoom-readonly-rankings")
+    kiwoom_rankings.add_argument("--db", type=Path, required=True)
+    kiwoom_rankings.add_argument("--rank-type", required=True)
+    kiwoom_rankings.add_argument("--market", required=True)
+    kiwoom_rankings.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_flow = subparsers.add_parser("kiwoom-readonly-flow")
+    kiwoom_flow.add_argument("--db", type=Path, required=True)
+    kiwoom_flow.add_argument("--ticker")
+    kiwoom_flow.add_argument("--market")
+    kiwoom_flow.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_chart = subparsers.add_parser("kiwoom-readonly-chart")
+    kiwoom_chart.add_argument("--db", type=Path, required=True)
+    kiwoom_chart.add_argument("--ticker", required=True)
+    kiwoom_chart.add_argument("--interval", required=True)
+    kiwoom_chart.add_argument("--count", type=int, default=100)
+    kiwoom_chart.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_condition_list = subparsers.add_parser("kiwoom-readonly-condition-list")
+    kiwoom_condition_list.add_argument("--db", type=Path, required=True)
+    kiwoom_condition_list.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
+    kiwoom_condition_run = subparsers.add_parser("kiwoom-readonly-condition-run")
+    kiwoom_condition_run.add_argument("--db", type=Path, required=True)
+    kiwoom_condition_run.add_argument("--condition-id", required=True)
+    kiwoom_condition_run.add_argument("--environment", choices=[item.value for item in KiwoomEnvironment], default="MOCK")
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -902,6 +940,15 @@ def main(argv: list[str] | None = None) -> None:
         "broker-submit-mock-order",
         "broker-order-requests-list",
         "broker-order-receipts-list",
+        "kiwoom-readonly-health",
+        "kiwoom-readonly-endpoints",
+        "kiwoom-readonly-stock-info",
+        "kiwoom-readonly-quote",
+        "kiwoom-readonly-rankings",
+        "kiwoom-readonly-flow",
+        "kiwoom-readonly-chart",
+        "kiwoom-readonly-condition-list",
+        "kiwoom-readonly-condition-run",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1230,6 +1277,26 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 BrokerOrderStatus(args.status) if args.status else None, args.limit,
             )
         ]}
+    if args.command == "kiwoom-readonly-health":
+        return KiwoomRestReadOnlyAdapter(KiwoomEnvironment(args.environment)).health_check()
+    if args.command == "kiwoom-readonly-endpoints":
+        adapter = KiwoomRestReadOnlyAdapter(KiwoomEnvironment(args.environment))
+        return {"endpoints": _dump_order_result(adapter.list_readonly_endpoints())}
+    if args.command.startswith("kiwoom-readonly-"):
+        service = KiwoomReadOnlyService(RiskRepository(args.db), KiwoomEnvironment(args.environment))
+        operations = {
+            "kiwoom-readonly-stock-info": lambda: service.get_stock_info(args.ticker),
+            "kiwoom-readonly-quote": lambda: service.get_quote(args.ticker),
+            "kiwoom-readonly-rankings": lambda: service.get_rankings(args.rank_type, args.market),
+            "kiwoom-readonly-flow": lambda: service.get_flow(args.ticker, args.market),
+            "kiwoom-readonly-chart": lambda: service.get_chart_bars(args.ticker, args.interval, args.count),
+            "kiwoom-readonly-condition-list": service.list_condition_searches,
+            "kiwoom-readonly-condition-run": lambda: service.run_condition_search(args.condition_id),
+        }
+        try:
+            return _dump_order_result(operations[args.command]())
+        except (LookupError, ValueError) as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "report-pipeline":
         return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
     if args.command == "report-scan":
@@ -1605,11 +1672,14 @@ def run_import_data(args: argparse.Namespace) -> dict[str, object]:
     return import_run_report(run)
 
 
-def _dump_order_result(result: dict) -> dict:
-    return {
-        key: value.model_dump(mode="json") if hasattr(value, "model_dump") else value
-        for key, value in result.items()
-    }
+def _dump_order_result(result):
+    if hasattr(result, "model_dump"):
+        return result.model_dump(mode="json")
+    if isinstance(result, list):
+        return [_dump_order_result(item) for item in result]
+    if isinstance(result, dict):
+        return {key: _dump_order_result(value) for key, value in result.items()}
+    return result
 
 
 def run_analysis_report(args: argparse.Namespace, builder, source_id: str) -> dict[str, object]:

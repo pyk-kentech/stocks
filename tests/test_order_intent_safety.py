@@ -19,6 +19,7 @@ def test_execution_foundation_has_no_live_enable_real_broker_or_secret_read() ->
     source_files = list((root / "src" / "stock_risk_mcp").glob("*.py"))
 
     assert "--enable-live-trading" not in help_text
-    assert not list((root / "src" / "stock_risk_mcp").glob("*kiwoom*.py"))
     assert not list((root / "src" / "stock_risk_mcp").glob("*live_broker*.py"))
     assert all("api_key_kiwoom" not in path.read_text(encoding="utf-8") for path in source_files)
+    for name in ("order_intent_service.py", "order_risk_gate.py", "execution_gate.py", "paper_execution.py"):
+        assert "kiwoom_readonly" not in (root / "src" / "stock_risk_mcp" / name).read_text(encoding="utf-8")

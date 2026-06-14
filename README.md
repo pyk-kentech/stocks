@@ -1528,3 +1528,32 @@ account/balance/position data, read credentials, make network calls, or submit
 live orders. Future work remains v2.11 Kiwoom REST Read-only Adapter, v2.12
 Kiwoom Sandbox/Mock Execution Adapter, and v2.13 Kiwoom Live Execution Adapter
 with an explicit kill switch.
+
+## v2.11 Kiwoom REST Read-only Adapter
+
+v2.11 adds a deterministic read-only adapter contract for future Kiwoom REST
+integration. It uses fake tokens, fake transport, local fixtures, strict
+allowlisting, and sanitized SQLite request/response audits. The default
+environment is `MOCK`; `PROD_DISABLED` returns a JSON-safe disabled result.
+
+This release is **internal deterministic endpoint only; official Kiwoom
+endpoint mapping deferred**. The seven internal endpoints cover stock info,
+quotes, rankings, flow, charts, condition lists, and condition runs under
+`/readonly/*`. They are contract-test identifiers, not official Kiwoom
+`api_id` or path mappings.
+
+```bash
+python -m stock_risk_mcp.cli kiwoom-readonly-health --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-readonly-endpoints --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-readonly-quote --db data/stock_risk_mcp.sqlite3 --ticker 005930
+python -m stock_risk_mcp.cli kiwoom-readonly-rankings --db data/stock_risk_mcp.sqlite3 --rank-type volume --market KOSPI
+python -m stock_risk_mcp.cli kiwoom-readonly-condition-run --db data/stock_risk_mcp.sqlite3 --condition-id C1
+```
+
+v2.11 performs no OAuth request, real HTTP request, credential access,
+account/balance/position read, order submission, or strategy/execution
+integration. The disabled real-transport stub imports no HTTP or Kiwoom SDK.
+Official Kiwoom REST verification is future work; OpenAPI+/OCX/pykiwoom are
+legacy reference paths only and are not imported. The planned execution path
+remains v2.12 sandbox/mock execution, followed by v2.13 live execution with an
+explicit kill switch and default-off live trading.
