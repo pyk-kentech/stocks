@@ -1598,3 +1598,40 @@ credential access, account/balance/position/holdings/cash read, or live order.
 It imports no OpenAPI+/OCX/pykiwoom or Windows-only dependency. Future stages
 are v2.13 official endpoint verification, v2.14 explicitly opt-in real-network
 sandbox integration, and v2.15 default-off live execution with a kill switch.
+
+## v2.13 Kiwoom Official Endpoint Verification
+
+v2.13 uses a curated official endpoint manifest. It is not a complete Kiwoom
+API catalog. It verifies endpoint classification and runtime safety policy.
+Full official endpoint coverage is intentionally deferred.
+
+The committed
+`configs/kiwoom_official_endpoint_manifest.json` contains representative
+endpoints whose API ID, path, method, name, and category were checked against
+official `openapi.kiwoom.com` guide pages. Entries are classified as
+`READ_ONLY`, `AUTH`, `ORDER`, `ACCOUNT_READ`, or
+`UNKNOWN_REVIEW_REQUIRED`.
+
+All official manifest entries, including READ_ONLY entries, have
+`runtime_allowed_in_current_version=false`. The manifest is data for
+verification only and is never passed to an adapter or transport.
+
+The three Kiwoom endpoint sets remain separate:
+
+- v2.11 `/readonly/*`: internal deterministic read-only runtime fixtures
+- v2.12 `/kiwoom-mock/*`: local deterministic mock execution fixtures
+- v2.13 official manifest paths: documentation and safety-verification data
+  only
+
+```bash
+python -m stock_risk_mcp.cli kiwoom-official-endpoints-list --class READ_ONLY
+python -m stock_risk_mcp.cli kiwoom-official-endpoints-validate
+python -m stock_risk_mcp.cli kiwoom-official-endpoint-show --api-id ka10008 --path /api/dostk/frgnistt
+```
+
+v2.13 performs no real Kiwoom network call, OAuth request, credential read,
+account runtime access, or order execution. AUTH, ORDER, ACCOUNT_READ, and
+UNKNOWN_REVIEW_REQUIRED endpoints are explicitly disabled. Future work is
+v2.14 opt-in real-network read-only integration, v2.15 opt-in sandbox order
+integration, and v2.16 default-off live execution with an explicit kill
+switch.

@@ -53,6 +53,11 @@ from stock_risk_mcp.kiwoom_readonly_adapter import KiwoomRestReadOnlyAdapter
 from stock_risk_mcp.kiwoom_readonly_models import KiwoomEnvironment
 from stock_risk_mcp.kiwoom_readonly_service import KiwoomReadOnlyService
 from stock_risk_mcp.kiwoom_mock_execution_service import KiwoomMockExecutionService
+from stock_risk_mcp.kiwoom_official_manifest import (
+    KiwoomOfficialEndpointClass,
+    load_kiwoom_official_manifest,
+)
+from stock_risk_mcp.kiwoom_official_manifest_validator import validate_kiwoom_official_manifest
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -396,6 +401,15 @@ def build_command_parser() -> argparse.ArgumentParser:
         command.add_argument("--db", type=Path, required=True)
         command.add_argument("--order-intent-id")
         command.add_argument("--limit", type=int, default=100)
+    official_list = subparsers.add_parser("kiwoom-official-endpoints-list")
+    official_list.add_argument("--class", dest="endpoint_class", choices=[item.value for item in KiwoomOfficialEndpointClass])
+    official_list.add_argument("--category")
+    official_list.add_argument("--runtime-allowed", action="store_true")
+    official_list.add_argument("--limit", type=int, default=100)
+    subparsers.add_parser("kiwoom-official-endpoints-validate")
+    official_show = subparsers.add_parser("kiwoom-official-endpoint-show")
+    official_show.add_argument("--api-id")
+    official_show.add_argument("--path")
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -971,6 +985,9 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-order-status",
         "kiwoom-mock-order-requests-list",
         "kiwoom-mock-order-receipts-list",
+        "kiwoom-official-endpoints-list",
+        "kiwoom-official-endpoints-validate",
+        "kiwoom-official-endpoint-show",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1344,6 +1361,28 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return _dump_order_result(operations[args.command]())
         except (LookupError, ValueError) as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-official-endpoints-list":
+        endpoints = load_kiwoom_official_manifest().endpoints
+        if args.endpoint_class:
+            endpoints = [item for item in endpoints if item.read_write_class.value == args.endpoint_class]
+        if args.category:
+            endpoints = [item for item in endpoints if item.category == args.category]
+        if args.runtime_allowed:
+            endpoints = [item for item in endpoints if item.runtime_allowed_in_current_version]
+        return {"endpoints": [item.model_dump(mode="json") for item in endpoints[:args.limit]]}
+    if args.command == "kiwoom-official-endpoints-validate":
+        return validate_kiwoom_official_manifest(
+            load_kiwoom_official_manifest()
+        ).model_dump(mode="json")
+    if args.command == "kiwoom-official-endpoint-show":
+        endpoints = load_kiwoom_official_manifest().endpoints
+        matches = [
+            item for item in endpoints
+            if (not args.api_id or item.api_id == args.api_id) and (not args.path or item.path == args.path)
+        ]
+        return matches[0].model_dump(mode="json") if matches else {
+            "status": "NOT_FOUND", "errors": ["official endpoint manifest entry not found"],
+        }
     if args.command == "report-pipeline":
         return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
     if args.command == "report-scan":

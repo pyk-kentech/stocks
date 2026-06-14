@@ -1318,3 +1318,26 @@ read, live order, OpenAPI+/OCX/pykiwoom import, or Windows-only integration.
 Future work proceeds through v2.13 official endpoint verification, v2.14
 explicitly opt-in real-network sandbox integration, and v2.15 default-off live
 execution with an explicit kill switch.
+
+## v2.13 Kiwoom Official Endpoint Verification
+
+Added a curated official endpoint manifest and deterministic safety validator:
+
+- representative official AUTH, READ_ONLY, ORDER, and ACCOUNT_READ entries
+- strict schema with official source and verification date
+- duplicate, class, dangerous-path, source-host, and runtime-overlap checks
+- three JSON-only list/validate/show CLI commands
+- complete separation from v2.11 `/readonly/*` and v2.12 `/kiwoom-mock/*`
+
+v2.13 uses a curated official endpoint manifest. It is not a complete Kiwoom
+API catalog. It verifies endpoint classification and runtime safety policy.
+Full official endpoint coverage is intentionally deferred.
+
+All official manifest entries are runtime-disabled, including READ_ONLY
+entries. The manifest is file-based verification data only; it is not wired
+to any transport, adapter, OAuth flow, account runtime, or order execution
+path.
+
+Future work is v2.14 opt-in real-network read-only integration, v2.15 opt-in
+sandbox order integration, and v2.16 default-off live execution with an
+explicit kill switch.
