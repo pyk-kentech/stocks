@@ -1248,3 +1248,27 @@ secret-reading path was added. Future work proceeds through v2.10 Broker
 Adapter Interface, v2.11 Kiwoom REST Read-only Adapter, v2.12 Kiwoom
 Sandbox/Mock Execution Adapter, and v2.13 Kiwoom Live Execution Adapter with
 an explicit kill switch.
+
+## v2.10 Broker Adapter Interface
+
+Added a broker-neutral interface boundary after the v2.9 execution gate:
+
+- broker request, receipt, health, capability, environment, and status models
+- broker-neutral `BrokerAdapter` protocol
+- deterministic local-only `MockBrokerAdapter`
+- `BrokerAdapterService` requiring matching approved PAPER gate decisions
+- append-only broker request, receipt, and health SQLite audit tables
+- four JSON CLI commands for health, mock submit, request list, and receipt list
+
+Every submission attempt is saved. Duplicate submissions save a new request
+and a new REJECTED receipt with `duplicate broker submission`; the mock
+adapter is not called again and no second fill is created.
+
+v2.9 PaperExecutor remains unchanged and independent. v2.10 MockBrokerAdapter
+proves the interface boundary for future broker integrations but adds no
+Kiwoom connection, broker SDK, account/balance/position read, external network
+call, secret access, or live order path.
+
+Future work remains v2.11 Kiwoom REST Read-only Adapter, v2.12 Kiwoom
+Sandbox/Mock Execution Adapter, and v2.13 Kiwoom Live Execution Adapter with
+an explicit kill switch.

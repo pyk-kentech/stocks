@@ -1490,3 +1490,41 @@ records. Live trading remains unavailable. The planned path is v2.10 Broker
 Adapter Interface, v2.11 Kiwoom REST Read-only Adapter, v2.12 Kiwoom
 Sandbox/Mock Execution Adapter, then v2.13 Kiwoom Live Execution Adapter with
 an explicit kill switch.
+
+## v2.10 Broker Adapter Interface
+
+v2.10 adds a broker-neutral interface boundary after the v2.9 gates:
+
+```text
+OrderIntent -> RiskGate -> ExecutionGate -> BrokerAdapterService -> MockBrokerAdapter
+```
+
+Strategies never receive broker adapters directly. `BrokerAdapterService`
+requires a matching approved PAPER ExecutionGate decision and permits only the
+local `MOCK` broker in `LOCAL_MOCK`.
+
+`MockBrokerAdapter` is deterministic and network-free. It supports local
+`ORDER_SUBMIT` and `ORDER_CANCEL`, but no market-data or account-read
+capability. LIMIT and STOP_LIMIT requests fill at `limit_price`; MARKET
+requests require an explicit positive `mock_fill_price`.
+
+This is separate from v2.9 `PaperExecutor`: PaperExecutor validates the direct
+paper lifecycle, while MockBrokerAdapter proves the future broker interface
+boundary. Neither path submits real orders.
+
+```bash
+python -m stock_risk_mcp.cli broker-adapter-health --db data/stock_risk_mcp.sqlite3 --broker MOCK --environment LOCAL_MOCK
+python -m stock_risk_mcp.cli broker-submit-mock-order --db data/stock_risk_mcp.sqlite3 --order-intent-id <id>
+python -m stock_risk_mcp.cli broker-order-requests-list --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli broker-order-receipts-list --db data/stock_risk_mcp.sqlite3
+```
+
+Every submission attempt creates a new broker request audit record. When the
+same intent already has a successful receipt, the adapter is not called and a
+new REJECTED receipt records `duplicate broker submission`.
+
+v2.10 does not connect to Kiwoom, import broker SDKs, read
+account/balance/position data, read credentials, make network calls, or submit
+live orders. Future work remains v2.11 Kiwoom REST Read-only Adapter, v2.12
+Kiwoom Sandbox/Mock Execution Adapter, and v2.13 Kiwoom Live Execution Adapter
+with an explicit kill switch.

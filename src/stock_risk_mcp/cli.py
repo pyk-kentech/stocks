@@ -19,6 +19,8 @@ from stock_risk_mcp.backtest import BacktestService
 from stock_risk_mcp.basket import BasketPolicy, candidate_from_trade_plan
 from stock_risk_mcp.basket_backtest import run_basket_backtest
 from stock_risk_mcp.basket_builder import build_basket
+from stock_risk_mcp.broker_adapter_service import BrokerAdapterService
+from stock_risk_mcp.broker_models import BrokerEnvironment, BrokerId, BrokerOrderStatus
 from stock_risk_mcp.candidate_universe import (
     CandidateScanPolicy,
     CandidateSource,
@@ -315,6 +317,31 @@ def build_command_parser() -> argparse.ArgumentParser:
     paper_list.add_argument("--ticker")
     paper_list.add_argument("--side", choices=["BUY", "SELL"])
     paper_list.add_argument("--limit", type=int, default=100)
+    broker_health = subparsers.add_parser("broker-adapter-health")
+    broker_health.add_argument("--db", type=Path, required=True)
+    broker_health.add_argument("--broker", type=str.upper, choices=[item.value for item in BrokerId], default="MOCK")
+    broker_health.add_argument(
+        "--environment", choices=[item.value for item in BrokerEnvironment], default="LOCAL_MOCK"
+    )
+    broker_submit = subparsers.add_parser("broker-submit-mock-order")
+    broker_submit.add_argument("--db", type=Path, required=True)
+    broker_submit.add_argument("--order-intent-id", required=True)
+    broker_submit.add_argument("--mock-fill-price", type=float)
+    broker_submit.add_argument("--broker", type=str.upper, choices=[item.value for item in BrokerId], default="MOCK")
+    broker_submit.add_argument(
+        "--environment", choices=[item.value for item in BrokerEnvironment], default="LOCAL_MOCK"
+    )
+    broker_requests = subparsers.add_parser("broker-order-requests-list")
+    broker_requests.add_argument("--db", type=Path, required=True)
+    broker_requests.add_argument("--broker", type=str.upper, choices=[item.value for item in BrokerId])
+    broker_requests.add_argument("--order-intent-id")
+    broker_requests.add_argument("--limit", type=int, default=100)
+    broker_receipts = subparsers.add_parser("broker-order-receipts-list")
+    broker_receipts.add_argument("--db", type=Path, required=True)
+    broker_receipts.add_argument("--broker", type=str.upper, choices=[item.value for item in BrokerId])
+    broker_receipts.add_argument("--order-intent-id")
+    broker_receipts.add_argument("--status", choices=[item.value for item in BrokerOrderStatus])
+    broker_receipts.add_argument("--limit", type=int, default=100)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -871,6 +898,10 @@ def main(argv: list[str] | None = None) -> None:
         "evaluate-order-intents",
         "paper-execute-approved-intents",
         "paper-executions-list",
+        "broker-adapter-health",
+        "broker-submit-mock-order",
+        "broker-order-requests-list",
+        "broker-order-receipts-list",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1171,6 +1202,32 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return {"paper_executions": [
             item.model_dump(mode="json") for item in RiskRepository(args.db).list_paper_executions(
                 args.ticker, OrderSide(args.side) if args.side else None, args.limit,
+            )
+        ]}
+    if args.command == "broker-adapter-health":
+        return BrokerAdapterService(RiskRepository(args.db)).health(
+            BrokerId(args.broker), BrokerEnvironment(args.environment)
+        ).model_dump(mode="json")
+    if args.command == "broker-submit-mock-order":
+        try:
+            result = BrokerAdapterService(RiskRepository(args.db)).submit_mock_order(
+                args.order_intent_id, args.mock_fill_price,
+                BrokerId(args.broker), BrokerEnvironment(args.environment),
+            )
+            return _dump_order_result(result)
+        except (LookupError, ValueError) as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "broker-order-requests-list":
+        return {"broker_order_requests": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_broker_order_requests(
+                BrokerId(args.broker) if args.broker else None, args.order_intent_id, args.limit,
+            )
+        ]}
+    if args.command == "broker-order-receipts-list":
+        return {"broker_order_receipts": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_broker_order_receipts(
+                BrokerId(args.broker) if args.broker else None, args.order_intent_id,
+                BrokerOrderStatus(args.status) if args.status else None, args.limit,
             )
         ]}
     if args.command == "report-pipeline":

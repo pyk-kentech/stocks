@@ -29,6 +29,14 @@ from stock_risk_mcp.database import connect_db, create_schema
 from stock_risk_mcp.indicators import IndicatorSignal, IndicatorValue
 from stock_risk_mcp.import_run import ImportRun, ImportRunStatus, ImportSourceResult, ImportSourceType
 from stock_risk_mcp.basket_performance import summarize_basket_performance
+from stock_risk_mcp.broker_models import (
+    BrokerAdapterHealth,
+    BrokerEnvironment,
+    BrokerId,
+    BrokerOrderReceipt,
+    BrokerOrderRequest,
+    BrokerOrderStatus,
+)
 from stock_risk_mcp.models import (
     BacktestOutcome,
     BacktestResult,
@@ -1889,6 +1897,157 @@ class RiskRepository:
                 "SELECT 1 FROM paper_executions WHERE order_intent_id=? LIMIT 1", (order_intent_id,)
             ).fetchone()
         return row is not None
+
+    def save_broker_order_request(self, request: BrokerOrderRequest) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO broker_order_requests (
+                    broker_order_request_id, order_intent_id, broker_id, environment,
+                    ticker, request_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    request.broker_order_request_id, request.order_intent_id, request.broker_id.value,
+                    request.environment.value, request.ticker, request.model_dump_json(),
+                    request.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_broker_order_request(self, broker_order_request_id: str) -> BrokerOrderRequest:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT request_json FROM broker_order_requests WHERE broker_order_request_id=?",
+                (broker_order_request_id,),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Broker order request not found: {broker_order_request_id}")
+        return BrokerOrderRequest.model_validate_json(str(row["request_json"]))
+
+    def list_broker_order_requests(
+        self,
+        broker_id: BrokerId | None = None,
+        order_intent_id: str | None = None,
+        limit: int = 100,
+    ) -> list[BrokerOrderRequest]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if broker_id:
+            clauses.append("broker_id=?")
+            values.append(broker_id.value)
+        if order_intent_id:
+            clauses.append("order_intent_id=?")
+            values.append(order_intent_id)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT request_json FROM broker_order_requests{where} ORDER BY id DESC LIMIT ?", values
+            ).fetchall()
+        return [BrokerOrderRequest.model_validate_json(str(row["request_json"])) for row in rows]
+
+    def save_broker_order_receipt(self, receipt: BrokerOrderReceipt) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO broker_order_receipts (
+                    broker_order_receipt_id, broker_order_request_id, order_intent_id,
+                    broker_id, environment, status, accepted, receipt_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    receipt.broker_order_receipt_id, receipt.broker_order_request_id,
+                    receipt.order_intent_id, receipt.broker_id.value, receipt.environment.value,
+                    receipt.status.value, int(receipt.accepted), receipt.model_dump_json(),
+                    receipt.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_broker_order_receipt(self, broker_order_receipt_id: str) -> BrokerOrderReceipt:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT receipt_json FROM broker_order_receipts WHERE broker_order_receipt_id=?",
+                (broker_order_receipt_id,),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Broker order receipt not found: {broker_order_receipt_id}")
+        return BrokerOrderReceipt.model_validate_json(str(row["receipt_json"]))
+
+    def get_latest_broker_receipt(self, broker_order_request_id: str) -> BrokerOrderReceipt | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT receipt_json FROM broker_order_receipts WHERE broker_order_request_id=? ORDER BY id DESC LIMIT 1",
+                (broker_order_request_id,),
+            ).fetchone()
+        return BrokerOrderReceipt.model_validate_json(str(row["receipt_json"])) if row else None
+
+    def list_broker_order_receipts(
+        self,
+        broker_id: BrokerId | None = None,
+        order_intent_id: str | None = None,
+        status: BrokerOrderStatus | None = None,
+        limit: int = 100,
+    ) -> list[BrokerOrderReceipt]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        for column, value in (
+            ("broker_id", broker_id.value if broker_id else None),
+            ("order_intent_id", order_intent_id),
+            ("status", status.value if status else None),
+        ):
+            if value is not None:
+                clauses.append(f"{column}=?")
+                values.append(value)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT receipt_json FROM broker_order_receipts{where} ORDER BY id DESC LIMIT ?", values
+            ).fetchall()
+        return [BrokerOrderReceipt.model_validate_json(str(row["receipt_json"])) for row in rows]
+
+    def has_successful_broker_receipt(self, order_intent_id: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT 1 FROM broker_order_receipts
+                WHERE order_intent_id=? AND accepted=1 AND status IN ('ACCEPTED', 'FILLED', 'PARTIALLY_FILLED')
+                LIMIT 1""",
+                (order_intent_id,),
+            ).fetchone()
+        return row is not None
+
+    def save_broker_adapter_health_check(self, health: BrokerAdapterHealth) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO broker_adapter_health_checks (
+                    broker_id, environment, status, health_json, checked_at
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (
+                    health.broker_id.value, health.environment.value, health.status.value,
+                    health.model_dump_json(), health.checked_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_broker_adapter_health_checks(
+        self,
+        broker_id: BrokerId | None = None,
+        environment: BrokerEnvironment | None = None,
+        limit: int = 100,
+    ) -> list[BrokerAdapterHealth]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if broker_id:
+            clauses.append("broker_id=?")
+            values.append(broker_id.value)
+        if environment:
+            clauses.append("environment=?")
+            values.append(environment.value)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT health_json FROM broker_adapter_health_checks{where} ORDER BY id DESC LIMIT ?", values
+            ).fetchall()
+        return [BrokerAdapterHealth.model_validate_json(str(row["health_json"])) for row in rows]
 
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:

@@ -876,6 +876,36 @@ def create_schema(connection: sqlite3.Connection) -> None:
             execution_json TEXT NOT NULL,
             executed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS broker_order_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            broker_order_request_id TEXT NOT NULL UNIQUE,
+            order_intent_id TEXT NOT NULL,
+            broker_id TEXT NOT NULL,
+            environment TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            request_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS broker_order_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            broker_order_receipt_id TEXT NOT NULL UNIQUE,
+            broker_order_request_id TEXT NOT NULL,
+            order_intent_id TEXT NOT NULL,
+            broker_id TEXT NOT NULL,
+            environment TEXT NOT NULL,
+            status TEXT NOT NULL,
+            accepted INTEGER NOT NULL,
+            receipt_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS broker_adapter_health_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            broker_id TEXT NOT NULL,
+            environment TEXT NOT NULL,
+            status TEXT NOT NULL,
+            health_json TEXT NOT NULL,
+            checked_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(
