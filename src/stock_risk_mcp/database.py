@@ -838,6 +838,44 @@ def create_schema(connection: sqlite3.Connection) -> None:
             warnings_json TEXT,
             UNIQUE(symbol, region)
         );
+        CREATE TABLE IF NOT EXISTS order_intents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_intent_id TEXT NOT NULL UNIQUE,
+            ticker TEXT NOT NULL,
+            region TEXT NOT NULL,
+            side TEXT NOT NULL,
+            order_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            intent_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS risk_gate_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            risk_gate_decision_id TEXT NOT NULL UNIQUE,
+            order_intent_id TEXT NOT NULL,
+            approved INTEGER NOT NULL,
+            decision_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS execution_gate_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            execution_gate_decision_id TEXT NOT NULL UNIQUE,
+            order_intent_id TEXT NOT NULL,
+            approved INTEGER NOT NULL,
+            execution_mode TEXT NOT NULL,
+            decision_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS paper_executions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_execution_id TEXT NOT NULL UNIQUE,
+            order_intent_id TEXT NOT NULL UNIQUE,
+            ticker TEXT NOT NULL,
+            side TEXT NOT NULL,
+            execution_json TEXT NOT NULL,
+            executed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

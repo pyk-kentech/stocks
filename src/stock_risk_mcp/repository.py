@@ -53,6 +53,15 @@ from stock_risk_mcp.models import (
 from stock_risk_mcp.local_llm import LocalLLMRequest
 from stock_risk_mcp.local_llm_response import LocalLLMResponse
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
+from stock_risk_mcp.order_intent import (
+    ExecutionGateDecision,
+    ExecutionMode,
+    OrderIntent,
+    OrderIntentStatus,
+    OrderSide,
+    PaperExecution,
+    RiskGateDecision,
+)
 from stock_risk_mcp.normalize_run import NormalizeRun, NormalizeRunStatus, NormalizeSourceResult, NormalizerType
 from stock_risk_mcp.notifications import NotificationChannelType, NotificationMessage, NotificationSeverity
 from stock_risk_mcp.paper_trading import (
@@ -1683,6 +1692,203 @@ class RiskRepository:
                     (status.value, limit),
                 ).fetchall()
         return [_watchlist_entry_from_row(row) for row in rows]
+
+    def save_order_intent(self, intent: OrderIntent) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO order_intents (
+                    order_intent_id, ticker, region, side, order_type, status,
+                    created_at, expires_at, intent_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    intent.order_intent_id, intent.ticker, intent.region.value, intent.side.value,
+                    intent.order_type.value, intent.status.value, intent.created_at.isoformat(),
+                    intent.expires_at.isoformat() if intent.expires_at else None,
+                    intent.model_dump_json(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def update_order_intent_status(self, order_intent_id: str, status: OrderIntentStatus) -> None:
+        intent = self.get_order_intent(order_intent_id).model_copy(update={"status": status})
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE order_intents SET status=?, intent_json=? WHERE order_intent_id=?",
+                (status.value, intent.model_dump_json(), order_intent_id),
+            )
+
+    def get_order_intent(self, order_intent_id: str) -> OrderIntent:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT intent_json FROM order_intents WHERE order_intent_id=?", (order_intent_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Order intent not found: {order_intent_id}")
+        return OrderIntent.model_validate_json(str(row["intent_json"]))
+
+    def list_order_intents(
+        self,
+        status: OrderIntentStatus | None = None,
+        ticker: str | None = None,
+        side: OrderSide | None = None,
+        limit: int = 100,
+    ) -> list[OrderIntent]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        for column, value in (
+            ("status", status.value if status else None),
+            ("ticker", ticker.strip().upper() if ticker else None),
+            ("side", side.value if side else None),
+        ):
+            if value is not None:
+                clauses.append(f"{column}=?")
+                values.append(value)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT intent_json FROM order_intents{where} ORDER BY id DESC LIMIT ?", values
+            ).fetchall()
+        return [OrderIntent.model_validate_json(str(row["intent_json"])) for row in rows]
+
+    def save_risk_gate_decision(self, decision: RiskGateDecision) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO risk_gate_decisions (
+                    risk_gate_decision_id, order_intent_id, approved, decision_json, created_at
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (
+                    decision.risk_gate_decision_id, decision.order_intent_id, int(decision.approved),
+                    decision.model_dump_json(), decision.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_latest_risk_gate_decision(self, order_intent_id: str) -> RiskGateDecision | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM risk_gate_decisions WHERE order_intent_id=? ORDER BY id DESC LIMIT 1",
+                (order_intent_id,),
+            ).fetchone()
+        return RiskGateDecision.model_validate_json(str(row["decision_json"])) if row else None
+
+    def get_risk_gate_decision(self, risk_gate_decision_id: str) -> RiskGateDecision:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM risk_gate_decisions WHERE risk_gate_decision_id=?",
+                (risk_gate_decision_id,),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Risk gate decision not found: {risk_gate_decision_id}")
+        return RiskGateDecision.model_validate_json(str(row["decision_json"]))
+
+    def list_risk_gate_decisions(self, order_intent_id: str | None = None, limit: int = 100) -> list[RiskGateDecision]:
+        with self._connect() as connection:
+            if order_intent_id:
+                rows = connection.execute(
+                    "SELECT decision_json FROM risk_gate_decisions WHERE order_intent_id=? ORDER BY id DESC LIMIT ?",
+                    (order_intent_id, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT decision_json FROM risk_gate_decisions ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+        return [RiskGateDecision.model_validate_json(str(row["decision_json"])) for row in rows]
+
+    def save_execution_gate_decision(self, decision: ExecutionGateDecision) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO execution_gate_decisions (
+                    execution_gate_decision_id, order_intent_id, approved, execution_mode,
+                    decision_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    decision.execution_gate_decision_id, decision.order_intent_id, int(decision.approved),
+                    decision.execution_mode.value, decision.model_dump_json(), decision.created_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_latest_execution_gate_decision(self, order_intent_id: str) -> ExecutionGateDecision | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM execution_gate_decisions WHERE order_intent_id=? ORDER BY id DESC LIMIT 1",
+                (order_intent_id,),
+            ).fetchone()
+        return ExecutionGateDecision.model_validate_json(str(row["decision_json"])) if row else None
+
+    def get_execution_gate_decision(self, execution_gate_decision_id: str) -> ExecutionGateDecision:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM execution_gate_decisions WHERE execution_gate_decision_id=?",
+                (execution_gate_decision_id,),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Execution gate decision not found: {execution_gate_decision_id}")
+        return ExecutionGateDecision.model_validate_json(str(row["decision_json"]))
+
+    def list_execution_gate_decisions(
+        self, order_intent_id: str | None = None, limit: int = 100
+    ) -> list[ExecutionGateDecision]:
+        with self._connect() as connection:
+            if order_intent_id:
+                rows = connection.execute(
+                    "SELECT decision_json FROM execution_gate_decisions WHERE order_intent_id=? ORDER BY id DESC LIMIT ?",
+                    (order_intent_id, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT decision_json FROM execution_gate_decisions ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+        return [ExecutionGateDecision.model_validate_json(str(row["decision_json"])) for row in rows]
+
+    def save_paper_execution(self, execution: PaperExecution) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO paper_executions (
+                    paper_execution_id, order_intent_id, ticker, side, execution_json, executed_at
+                ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    execution.paper_execution_id, execution.order_intent_id, execution.ticker,
+                    execution.side.value, execution.model_dump_json(), execution.executed_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_paper_execution(self, paper_execution_id: str) -> PaperExecution:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT execution_json FROM paper_executions WHERE paper_execution_id=?", (paper_execution_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Paper execution not found: {paper_execution_id}")
+        return PaperExecution.model_validate_json(str(row["execution_json"]))
+
+    def list_paper_executions(
+        self, ticker: str | None = None, side: OrderSide | None = None, limit: int = 100
+    ) -> list[PaperExecution]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if ticker:
+            clauses.append("ticker=?")
+            values.append(ticker.strip().upper())
+        if side:
+            clauses.append("side=?")
+            values.append(side.value)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        values.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT execution_json FROM paper_executions{where} ORDER BY id DESC LIMIT ?", values
+            ).fetchall()
+        return [PaperExecution.model_validate_json(str(row["execution_json"])) for row in rows]
+
+    def has_paper_execution(self, order_intent_id: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM paper_executions WHERE order_intent_id=? LIMIT 1", (order_intent_id,)
+            ).fetchone()
+        return row is not None
 
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:

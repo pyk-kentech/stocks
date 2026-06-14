@@ -1455,3 +1455,38 @@ This v2.8 layer does not create orders or `OrderIntent`. The long-term goal is
 automatic buying and selling through later execution stages, but live trading
 remains off until separate execution gates, audit logging, and kill switches
 are implemented.
+
+## v2.9 Order Intent / Execution Gate Foundation
+
+v2.9 introduces the broker-neutral boundary between research decisions and
+execution:
+
+```text
+Strategy / Signal -> OrderIntent -> RiskGate -> ExecutionGate -> PaperExecution
+```
+
+Strategies create auditable `OrderIntent` records instead of calling broker
+APIs. RiskGate blocks unsafe requests including MARKET orders by default,
+missing BUY stop loss, excessive risk/notional/daily loss, blocked watchlist
+entries, margin, short selling, options, futures, and leverage. HOT watchlist
+status never implies approval.
+
+ExecutionGate requires prior RiskGate approval and permits only `PAPER`.
+`SANDBOX_DISABLED` and `LIVE_DISABLED` always block. PaperExecution fills
+deterministically using an explicit fill price or the LIMIT price, with no
+network, broker, account, balance, position, credential, or slippage
+integration.
+
+```bash
+python -m stock_risk_mcp.cli create-order-intent --db data/stock_risk_mcp.sqlite3 --ticker AAPL --region US --side BUY --order-type LIMIT --quantity 1 --limit-price 100 --stop-loss-price 95 --take-profit-price 115 --source-type manual --reason "manual test intent"
+python -m stock_risk_mcp.cli order-intents-list --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli evaluate-order-intents --db data/stock_risk_mcp.sqlite3 --execution-mode PAPER --max-risk-per-trade 100 --max-position-notional 1000 --max-daily-loss 500 --current-daily-loss 0
+python -m stock_risk_mcp.cli paper-execute-approved-intents --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli paper-executions-list --db data/stock_risk_mcp.sqlite3
+```
+
+All intents, gate decisions, and paper executions are stored as SQLite audit
+records. Live trading remains unavailable. The planned path is v2.10 Broker
+Adapter Interface, v2.11 Kiwoom REST Read-only Adapter, v2.12 Kiwoom
+Sandbox/Mock Execution Adapter, then v2.13 Kiwoom Live Execution Adapter with
+an explicit kill switch.

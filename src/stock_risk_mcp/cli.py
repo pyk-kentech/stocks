@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from stock_risk_mcp.adapters.file_price_history import FilePriceHistoryAdapter
@@ -68,6 +68,9 @@ from stock_risk_mcp.provider_packs import ProviderPackType
 from stock_risk_mcp.notifications import NotificationChannelType, NotificationSeverity
 from stock_risk_mcp.news_signal_file import load_news_signals
 from stock_risk_mcp.operational_pipeline import OperationalPipeline
+from stock_risk_mcp.order_intent import ExecutionMode, OrderIntent, OrderIntentStatus, OrderSide, OrderType
+from stock_risk_mcp.order_intent_service import OrderIntentService
+from stock_risk_mcp.order_risk_gate import RiskGateConfig
 from stock_risk_mcp.pipeline_report import build_pipeline_summary
 from stock_risk_mcp.pipeline_run import PipelineMode
 from stock_risk_mcp.policy import load_policy
@@ -268,6 +271,50 @@ def build_command_parser() -> argparse.ArgumentParser:
     realtime_show = subparsers.add_parser("realtime-show")
     realtime_show.add_argument("--db", type=Path, required=True)
     realtime_show.add_argument("--realtime-monitor-run-id", required=True)
+
+    create_intent = subparsers.add_parser("create-order-intent")
+    create_intent.add_argument("--db", type=Path, required=True)
+    create_intent.add_argument("--ticker", required=True)
+    create_intent.add_argument("--region", required=True)
+    create_intent.add_argument("--side", required=True)
+    create_intent.add_argument("--order-type", required=True)
+    create_intent.add_argument("--quantity", type=float)
+    create_intent.add_argument("--notional", type=float)
+    create_intent.add_argument("--limit-price", type=float)
+    create_intent.add_argument("--stop-loss-price", type=float)
+    create_intent.add_argument("--take-profit-price", type=float)
+    create_intent.add_argument("--source-type", required=True)
+    create_intent.add_argument("--source-id", default="cli")
+    create_intent.add_argument("--reason", required=True)
+    create_intent.add_argument("--confidence-score", type=float, default=1.0)
+    create_intent.add_argument("--expires-at", type=datetime.fromisoformat)
+    order_list = subparsers.add_parser("order-intents-list")
+    order_list.add_argument("--db", type=Path, required=True)
+    order_list.add_argument("--status", choices=[item.value for item in OrderIntentStatus])
+    order_list.add_argument("--ticker")
+    order_list.add_argument("--side", choices=["BUY", "SELL"])
+    order_list.add_argument("--limit", type=int, default=100)
+    evaluate_intents = subparsers.add_parser("evaluate-order-intents")
+    evaluate_intents.add_argument("--db", type=Path, required=True)
+    evaluate_intents.add_argument("--order-intent-id")
+    evaluate_intents.add_argument("--execution-mode", choices=[item.value for item in ExecutionMode], default="PAPER")
+    evaluate_intents.add_argument("--allow-market-orders", action="store_true")
+    evaluate_intents.add_argument("--max-risk-per-trade", type=float)
+    evaluate_intents.add_argument("--max-position-notional", type=float)
+    evaluate_intents.add_argument("--max-daily-loss", type=float)
+    evaluate_intents.add_argument("--current-daily-loss", type=float, default=0)
+    evaluate_intents.add_argument("--blocked-ticker", action="append", default=[])
+    evaluate_intents.add_argument("--limit", type=int, default=100)
+    paper_execute = subparsers.add_parser("paper-execute-approved-intents")
+    paper_execute.add_argument("--db", type=Path, required=True)
+    paper_execute.add_argument("--order-intent-id")
+    paper_execute.add_argument("--fill-price", type=float)
+    paper_execute.add_argument("--limit", type=int, default=100)
+    paper_list = subparsers.add_parser("paper-executions-list")
+    paper_list.add_argument("--db", type=Path, required=True)
+    paper_list.add_argument("--ticker")
+    paper_list.add_argument("--side", choices=["BUY", "SELL"])
+    paper_list.add_argument("--limit", type=int, default=100)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -819,6 +866,11 @@ def main(argv: list[str] | None = None) -> None:
         "watchlist-list",
         "realtime-runs",
         "realtime-show",
+        "create-order-intent",
+        "order-intents-list",
+        "evaluate-order-intents",
+        "paper-execute-approved-intents",
+        "paper-executions-list",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1073,6 +1125,54 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return RiskRepository(args.db).get_realtime_monitor_run(
             args.realtime_monitor_run_id
         ).model_dump(mode="json")
+    if args.command == "create-order-intent":
+        try:
+            intent = OrderIntent(
+                ticker=args.ticker, region=MarketRegion(args.region), side=OrderSide(args.side),
+                order_type=OrderType(args.order_type), quantity=args.quantity, notional=args.notional,
+                limit_price=args.limit_price, stop_loss_price=args.stop_loss_price,
+                take_profit_price=args.take_profit_price, source_type=args.source_type,
+                source_id=args.source_id, reason=args.reason, confidence_score=args.confidence_score,
+                expires_at=args.expires_at,
+            )
+            OrderIntentService(RiskRepository(args.db)).create(intent)
+            return {"status": "CREATED", "order_intent": intent.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "order-intents-list":
+        return {"order_intents": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_order_intents(
+                OrderIntentStatus(args.status) if args.status else None,
+                args.ticker, OrderSide(args.side) if args.side else None, args.limit,
+            )
+        ]}
+    if args.command == "evaluate-order-intents":
+        config = RiskGateConfig(
+            allow_market_orders=args.allow_market_orders, max_risk_per_trade=args.max_risk_per_trade,
+            max_position_notional=args.max_position_notional, max_daily_loss=args.max_daily_loss,
+            current_daily_loss=args.current_daily_loss, blocked_tickers=set(args.blocked_ticker),
+        )
+        try:
+            results = OrderIntentService(RiskRepository(args.db)).evaluate_many(
+                config, ExecutionMode(args.execution_mode), args.order_intent_id, args.limit
+            )
+            return {"results": [_dump_order_result(item) for item in results]}
+        except (LookupError, ValueError) as exc:
+            return {"status": "FAILED", "errors": [str(exc)], "results": []}
+    if args.command == "paper-execute-approved-intents":
+        try:
+            results = OrderIntentService(RiskRepository(args.db)).paper_execute_many(
+                args.order_intent_id, args.fill_price, args.limit
+            )
+            return {"results": [_dump_order_result(item) for item in results]}
+        except (LookupError, ValueError) as exc:
+            return {"status": "FAILED", "errors": [str(exc)], "results": []}
+    if args.command == "paper-executions-list":
+        return {"paper_executions": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_paper_executions(
+                args.ticker, OrderSide(args.side) if args.side else None, args.limit,
+            )
+        ]}
     if args.command == "report-pipeline":
         return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
     if args.command == "report-scan":
@@ -1446,6 +1546,13 @@ def run_import_data(args: argparse.Namespace) -> dict[str, object]:
         as_of_date=args.as_of_date,
     )
     return import_run_report(run)
+
+
+def _dump_order_result(result: dict) -> dict:
+    return {
+        key: value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+        for key, value in result.items()
+    }
 
 
 def run_analysis_report(args: argparse.Namespace, builder, source_id: str) -> dict[str, object]:

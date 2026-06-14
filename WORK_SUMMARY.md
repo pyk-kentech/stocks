@@ -1225,3 +1225,26 @@ non-positive current volume produces `None`.
 This stage is realtime monitoring only. It adds no OrderIntent, broker
 integration, or live order path. The long-term automatic buy/sell goal remains
 scheduled for the execution-gated roadmap after v2.8.
+
+## v2.9 Order Intent / Execution Gate Foundation
+
+Added the broker-neutral, paper-only execution boundary:
+
+- typed OrderIntent, RiskGateDecision, ExecutionGateDecision, and
+  PaperExecution models
+- deterministic RiskGate with immutable safety blocks
+- PAPER-only ExecutionGate with expiry and duplicate checks
+- deterministic paper fills without slippage, network, or broker integration
+- SQLite audit tables and repository lifecycle helpers
+- five JSON CLI commands for intent creation, evaluation, execution, and lists
+
+Strategies and signals still cannot execute directly. HOT watchlist status
+does not approve a BUY, while BLOCKED watchlist status prevents approval.
+MARKET, margin, short selling, options, futures, and leverage remain blocked
+by default. BUY intents require calculable stop-loss risk.
+
+No Kiwoom or other broker API, account/balance/position API, network call, or
+secret-reading path was added. Future work proceeds through v2.10 Broker
+Adapter Interface, v2.11 Kiwoom REST Read-only Adapter, v2.12 Kiwoom
+Sandbox/Mock Execution Adapter, and v2.13 Kiwoom Live Execution Adapter with
+an explicit kill switch.
