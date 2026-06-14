@@ -15,7 +15,10 @@ def test_kiwoom_allowlist_is_internal_readonly_and_has_no_forbidden_terms() -> N
 
 def test_kiwoom_modules_have_no_network_sdk_secret_or_execution_integration() -> None:
     root = Path(__file__).resolve().parents[1]
-    modules = list((root / "src" / "stock_risk_mcp").glob("kiwoom_*.py"))
+    modules = [
+        path for path in (root / "src" / "stock_risk_mcp").glob("kiwoom_*.py")
+        if not path.name.startswith("kiwoom_real_")
+    ]
     forbidden_imports = ("urllib", "requests", "httpx", "pykiwoom", "win32com")
     for module in modules:
         text = module.read_text(encoding="utf-8").lower()

@@ -1635,3 +1635,34 @@ UNKNOWN_REVIEW_REQUIRED endpoints are explicitly disabled. Future work is
 v2.14 opt-in real-network read-only integration, v2.15 opt-in sandbox order
 integration, and v2.16 default-off live execution with an explicit kill
 switch.
+
+## v2.14 Kiwoom Real-Network Read-only Opt-in Adapter
+
+v2.14 adds a separate `KiwoomRealReadOnlyService`; existing v2.11
+`kiwoom-readonly-*` fake commands remain unchanged. The new
+`kiwoom-real-readonly-*` commands default to disabled and only support the
+`MOCK` environment with the exact base URL `https://mockapi.kiwoom.com`.
+
+The runtime allowlist contains only the v2.13 manifest REST READ_ONLY API IDs
+`ka10001`, `ka10004`, `ka10020`, `ka10008`, `ka10080`, and `ka10081`.
+WebSocket, ORDER, ACCOUNT_READ, UNKNOWN, and general AUTH requests are blocked.
+AUTH is available only inside the limited token provider and requires both
+`--enable-real-network` and `--allow-auth-token-request`.
+
+Credentials are loaded only after explicit opt-in from the explicitly selected
+`ENV` source or exact `--credential-file`. There is no credential file
+discovery or directory scanning. SQLite audits store redacted metadata only;
+tokens, credentials, authorization headers, request bodies, and response
+bodies are not persisted.
+
+```bash
+# Safe default: disabled, no credential read, no network call
+python -m stock_risk_mcp.cli kiwoom-real-readonly-health --db data/stock_risk_mcp.sqlite3
+
+# Explicit MOCK read-only opt-in. Configure credentials separately.
+python -m stock_risk_mcp.cli kiwoom-real-readonly-stock-info --db data/stock_risk_mcp.sqlite3 --ticker 005930 --enable-real-network --credential-source ENV --allow-auth-token-request
+```
+
+Tests and `system-smoke` use fake transports and make no external network
+calls. v2.14 adds no order, balance, holdings, position, or live-execution
+runtime.

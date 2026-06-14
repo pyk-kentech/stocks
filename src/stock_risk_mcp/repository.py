@@ -61,6 +61,11 @@ from stock_risk_mcp.models import (
 from stock_risk_mcp.local_llm import LocalLLMRequest
 from stock_risk_mcp.local_llm_response import LocalLLMResponse
 from stock_risk_mcp.kiwoom_readonly_models import KiwoomReadOnlyRequestAudit, KiwoomReadOnlyResponseAudit
+from stock_risk_mcp.kiwoom_real_readonly_models import (
+    KiwoomRealReadOnlyRequestAudit,
+    KiwoomRealReadOnlyResponseAudit,
+    KiwoomRealReadOnlyRun,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2105,6 +2110,59 @@ class RiskRepository:
                     "SELECT audit_json FROM kiwoom_readonly_responses ORDER BY id DESC LIMIT ?", (limit,)
                 ).fetchall()
         return [KiwoomReadOnlyResponseAudit.model_validate_json(str(row["audit_json"])) for row in rows]
+
+    def save_kiwoom_real_readonly_run(self, run: KiwoomRealReadOnlyRun) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_real_readonly_runs (run_id, status, run_json, created_at) VALUES (?, ?, ?, ?)",
+                (run.run_id, run.status, run.model_dump_json(), run.created_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_real_readonly_runs(self, limit: int = 100) -> list[KiwoomRealReadOnlyRun]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT run_json FROM kiwoom_real_readonly_runs ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [KiwoomRealReadOnlyRun.model_validate_json(str(row["run_json"])) for row in rows]
+
+    def save_kiwoom_real_readonly_request(self, audit: KiwoomRealReadOnlyRequestAudit) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO kiwoom_real_readonly_requests
+                (request_id, run_id, api_id, status, audit_json, observed_at) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    audit.request_id, audit.run_id, audit.api_id, audit.status,
+                    audit.model_dump_json(), audit.observed_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_real_readonly_requests(self, limit: int = 100) -> list[KiwoomRealReadOnlyRequestAudit]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT audit_json FROM kiwoom_real_readonly_requests ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [KiwoomRealReadOnlyRequestAudit.model_validate_json(str(row["audit_json"])) for row in rows]
+
+    def save_kiwoom_real_readonly_response(self, audit: KiwoomRealReadOnlyResponseAudit) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO kiwoom_real_readonly_responses
+                (response_id, request_id, status, audit_json, observed_at) VALUES (?, ?, ?, ?, ?)""",
+                (
+                    audit.response_id, audit.request_id, audit.status,
+                    audit.model_dump_json(), audit.observed_at.isoformat(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_real_readonly_responses(self, limit: int = 100) -> list[KiwoomRealReadOnlyResponseAudit]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT audit_json FROM kiwoom_real_readonly_responses ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [KiwoomRealReadOnlyResponseAudit.model_validate_json(str(row["audit_json"])) for row in rows]
 
     def save_kiwoom_mock_order_request(self, request: KiwoomMockOrderRequest) -> int:
         with self._connect() as connection:

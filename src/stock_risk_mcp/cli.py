@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -58,6 +59,13 @@ from stock_risk_mcp.kiwoom_official_manifest import (
     load_kiwoom_official_manifest,
 )
 from stock_risk_mcp.kiwoom_official_manifest_validator import validate_kiwoom_official_manifest
+from stock_risk_mcp.kiwoom_credentials import load_kiwoom_credentials
+from stock_risk_mcp.kiwoom_real_readonly_models import (
+    KiwoomCredentialSource,
+    KiwoomRealNetworkConfig,
+    KiwoomRealNetworkEnvironment,
+)
+from stock_risk_mcp.kiwoom_real_readonly_service import KiwoomRealReadOnlyService
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -410,6 +418,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     official_show = subparsers.add_parser("kiwoom-official-endpoint-show")
     official_show.add_argument("--api-id")
     official_show.add_argument("--path")
+    for name in (
+        "kiwoom-real-readonly-health",
+        "kiwoom-real-readonly-stock-info",
+        "kiwoom-real-readonly-quote",
+        "kiwoom-real-readonly-rankings",
+        "kiwoom-real-readonly-flow",
+        "kiwoom-real-readonly-minute-chart",
+        "kiwoom-real-readonly-daily-chart",
+    ):
+        command = subparsers.add_parser(name)
+        command.add_argument("--db", type=Path, required=True)
+        command.add_argument("--enable-real-network", action="store_true")
+        command.add_argument("--environment", choices=[item.value for item in KiwoomRealNetworkEnvironment], default="MOCK")
+        command.add_argument("--base-url", default="https://mockapi.kiwoom.com")
+        command.add_argument("--credential-source", choices=[item.value for item in KiwoomCredentialSource], default="NONE")
+        command.add_argument("--credential-file", type=Path)
+        command.add_argument("--allow-auth-token-request", action="store_true")
+        command.add_argument("--timeout-seconds", type=float, default=10)
+        command.add_argument("--max-requests-per-run", type=int, default=5)
+        if name in {"kiwoom-real-readonly-stock-info", "kiwoom-real-readonly-quote", "kiwoom-real-readonly-flow", "kiwoom-real-readonly-minute-chart", "kiwoom-real-readonly-daily-chart"}:
+            command.add_argument("--ticker", required=True)
+        if name == "kiwoom-real-readonly-rankings":
+            command.add_argument("--market", default="0")
+            command.add_argument("--sort-type", default="1")
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -988,6 +1020,13 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-official-endpoints-list",
         "kiwoom-official-endpoints-validate",
         "kiwoom-official-endpoint-show",
+        "kiwoom-real-readonly-health",
+        "kiwoom-real-readonly-stock-info",
+        "kiwoom-real-readonly-quote",
+        "kiwoom-real-readonly-rankings",
+        "kiwoom-real-readonly-flow",
+        "kiwoom-real-readonly-minute-chart",
+        "kiwoom-real-readonly-daily-chart",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1383,6 +1422,35 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         return matches[0].model_dump(mode="json") if matches else {
             "status": "NOT_FOUND", "errors": ["official endpoint manifest entry not found"],
         }
+    if args.command.startswith("kiwoom-real-readonly-"):
+        config = KiwoomRealNetworkConfig(
+            enabled=args.enable_real_network, environment=KiwoomRealNetworkEnvironment(args.environment),
+            base_url=args.base_url, timeout_seconds=args.timeout_seconds,
+            max_requests_per_run=args.max_requests_per_run,
+            allow_auth_token_request=args.allow_auth_token_request,
+            credential_source=KiwoomCredentialSource(args.credential_source),
+            credential_file=args.credential_file,
+        )
+        credentials = load_kiwoom_credentials(
+            config.credential_source, config.credential_file,
+            {
+                key: value for key in ("KIWOOM_APPKEY", "KIWOOM_SECRETKEY", "KIWOOM_ACCOUNT_NUMBER")
+                if (value := os.environ.get(key)) is not None
+            } if config.enabled and config.credential_source == KiwoomCredentialSource.ENV else {},
+        ) if config.enabled else load_kiwoom_credentials(KiwoomCredentialSource.NONE)
+        service = KiwoomRealReadOnlyService(RiskRepository(args.db), config, credentials)
+        if args.command == "kiwoom-real-readonly-health":
+            return service.health()
+        operations = {
+            "kiwoom-real-readonly-stock-info": ("ka10001", {"stk_cd": getattr(args, "ticker", None)}),
+            "kiwoom-real-readonly-quote": ("ka10004", {"stk_cd": getattr(args, "ticker", None)}),
+            "kiwoom-real-readonly-rankings": ("ka10020", {"mrkt_tp": getattr(args, "market", None), "sort_tp": getattr(args, "sort_type", None)}),
+            "kiwoom-real-readonly-flow": ("ka10008", {"stk_cd": getattr(args, "ticker", None)}),
+            "kiwoom-real-readonly-minute-chart": ("ka10080", {"stk_cd": getattr(args, "ticker", None)}),
+            "kiwoom-real-readonly-daily-chart": ("ka10081", {"stk_cd": getattr(args, "ticker", None)}),
+        }
+        api_id, body = operations[args.command]
+        return service.request(api_id, body)
     if args.command == "report-pipeline":
         return run_analysis_report(args, build_pipeline_summary_report, args.pipeline_run_id)
     if args.command == "report-scan":

@@ -1341,3 +1341,20 @@ path.
 Future work is v2.14 opt-in real-network read-only integration, v2.15 opt-in
 sandbox order integration, and v2.16 default-off live execution with an
 explicit kill switch.
+
+## v2.14 Kiwoom Real-Network Read-only Opt-in Adapter
+
+Added a separate, default-disabled real-network read-only boundary without
+changing the v2.11 fake read-only service:
+
+- exact `https://mockapi.kiwoom.com` base URL and MOCK-only environment
+- six curated v2.13 manifest REST READ_ONLY API IDs
+- WebSocket/ORDER/ACCOUNT_READ/UNKNOWN blocking
+- AUTH restricted to the explicitly enabled token provider
+- explicit ENV or exact credential-file loading with no auto-discovery
+- per-run request limits, bounded timeout, and redacted SQLite audits
+- separate `kiwoom-real-readonly-*` CLI commands
+
+Tests and system smoke remain fake/local-only. Audit rows exclude credentials,
+tokens, authorization headers, request bodies, and response bodies. This stage
+does not add order, account, balance, position, holdings, or live execution.
