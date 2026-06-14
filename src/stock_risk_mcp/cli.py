@@ -69,6 +69,9 @@ from stock_risk_mcp.kiwoom_real_readonly_service import KiwoomRealReadOnlyServic
 from stock_risk_mcp.kiwoom_real_readonly_smoke import KiwoomRealReadOnlySmokeService, build_smoke_plan
 from stock_risk_mcp.kiwoom_sandbox_order_models import KiwoomSandboxOrderConfig
 from stock_risk_mcp.kiwoom_sandbox_order_service import KiwoomSandboxOrderService
+from stock_risk_mcp.kiwoom_account_read_models import KiwoomAccountReadConfig
+from stock_risk_mcp.kiwoom_account_read_service import KiwoomAccountReadService
+from stock_risk_mcp.kiwoom_account_read_transport import RealKiwoomAccountReadTransport
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -492,6 +495,26 @@ def build_command_parser() -> argparse.ArgumentParser:
     sandbox_show = subparsers.add_parser("kiwoom-sandbox-order-show")
     sandbox_show.add_argument("--db", type=Path, required=True)
     sandbox_show.add_argument("--broker-order-id", required=True)
+    account_health = subparsers.add_parser("kiwoom-account-read-health")
+    account_health.add_argument("--db", type=Path, required=True)
+    account_plan = subparsers.add_parser("kiwoom-account-read-plan")
+    account_plan.add_argument("--db", type=Path, required=True)
+    account_plan.add_argument("--endpoint-id", action="append", default=[])
+    _add_account_read_runtime_args(account_plan)
+    account_run = subparsers.add_parser("kiwoom-account-read-run")
+    account_run.add_argument("--db", type=Path, required=True)
+    account_run.add_argument("--endpoint-id", action="append", default=[])
+    account_run.add_argument("--dry-run", action="store_true")
+    _add_account_read_runtime_args(account_run)
+    account_reports = subparsers.add_parser("kiwoom-account-read-reports")
+    account_reports.add_argument("--db", type=Path, required=True)
+    account_reports.add_argument("--limit", type=int, default=100)
+    for name in ("kiwoom-account-read-show", "kiwoom-account-read-reconcile-preview"):
+        command = subparsers.add_parser(name)
+        command.add_argument("--db", type=Path, required=True)
+        command.add_argument("--run-id", required=True)
+        if name == "kiwoom-account-read-reconcile-preview":
+            command.add_argument("--kill-switch-inactive", action="store_true")
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -1019,6 +1042,21 @@ def add_paper_trade_basket_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--horizon-days", type=int, required=True)
 
 
+def _add_account_read_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--enable-real-network", action="store_true")
+    parser.add_argument("--enable-account-read", action="store_true")
+    parser.add_argument("--environment", choices=[item.value for item in KiwoomRealNetworkEnvironment], default="MOCK")
+    parser.add_argument("--base-url", default="https://mockapi.kiwoom.com")
+    parser.add_argument("--credential-source", choices=[item.value for item in KiwoomCredentialSource], default="NONE")
+    parser.add_argument("--credential-file", type=Path)
+    parser.add_argument("--allow-auth-token-request", action="store_true")
+    parser.add_argument("--confirm-account", action="store_true")
+    parser.add_argument("--account-fingerprint")
+    parser.add_argument("--i-understand-this-can-read-account-data", action="store_true")
+    parser.add_argument("--kill-switch-inactive", action="store_true")
+    parser.add_argument("--timeout-seconds", type=float, default=10)
+
+
 def add_policy_replay_args(
     parser: argparse.ArgumentParser, storage_options: bool = True, include_run_id: bool = True
 ) -> None:
@@ -1117,6 +1155,12 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-sandbox-order-requests",
         "kiwoom-sandbox-order-receipts",
         "kiwoom-sandbox-order-show",
+        "kiwoom-account-read-health",
+        "kiwoom-account-read-plan",
+        "kiwoom-account-read-run",
+        "kiwoom-account-read-reports",
+        "kiwoom-account-read-show",
+        "kiwoom-account-read-reconcile-preview",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1572,6 +1616,52 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         if args.command == "kiwoom-sandbox-order-cancel":
             return {"receipts": [item.model_dump(mode="json") for item in service.cancel(args.broker_order_id, config)]}
         return _dump_order_result(service.submit(args.order_intent_id, config, args.dry_run, args.client_order_id))
+    if args.command.startswith("kiwoom-account-read-"):
+        repository = RiskRepository(args.db)
+
+        def account_credential_loader(source, credential_file):
+            env = {
+                key: value for key in ("KIWOOM_APPKEY", "KIWOOM_SECRETKEY", "KIWOOM_ACCOUNT_NUMBER")
+                if (value := os.environ.get(key)) is not None
+            } if source == KiwoomCredentialSource.ENV else {}
+            return load_kiwoom_credentials(source, credential_file, env)
+
+        service = KiwoomAccountReadService(
+            repository,
+            credential_loader=account_credential_loader,
+            transport_factory=lambda config, credentials: RealKiwoomAccountReadTransport(config, credentials),
+        )
+        if args.command == "kiwoom-account-read-health":
+            return service.health().model_dump(mode="json")
+        if args.command == "kiwoom-account-read-reports":
+            return {"reports": [item.model_dump(mode="json") for item in repository.list_kiwoom_account_read_reports(args.limit)]}
+        if args.command == "kiwoom-account-read-show":
+            try:
+                return repository.get_kiwoom_account_read_report(args.run_id).model_dump(mode="json")
+            except LookupError as error:
+                return {"status": "NOT_FOUND", "errors": [str(error)]}
+        if args.command == "kiwoom-account-read-reconcile-preview":
+            try:
+                return service.reconcile_preview(args.run_id, args.kill_switch_inactive).model_dump(mode="json")
+            except (LookupError, PermissionError) as error:
+                return {"status": "NOT_FOUND", "errors": [str(error)]}
+        config = KiwoomAccountReadConfig(
+            enable_real_network=args.enable_real_network,
+            enable_account_read=args.enable_account_read,
+            environment=KiwoomRealNetworkEnvironment(args.environment),
+            base_url=args.base_url,
+            credential_source=KiwoomCredentialSource(args.credential_source),
+            credential_file=args.credential_file,
+            allow_auth_token_request=args.allow_auth_token_request,
+            account_confirmed=args.confirm_account,
+            account_fingerprint=args.account_fingerprint,
+            acknowledged_account_data_read=args.i_understand_this_can_read_account_data,
+            kill_switch_inactive=args.kill_switch_inactive,
+            timeout_seconds=args.timeout_seconds,
+        )
+        if args.command == "kiwoom-account-read-plan":
+            return service.plan(config, args.endpoint_id)
+        return service.run(config, args.endpoint_id, args.dry_run).model_dump(mode="json")
     if args.command.startswith("kiwoom-real-readonly-"):
         config = KiwoomRealNetworkConfig(
             enabled=args.enable_real_network, environment=KiwoomRealNetworkEnvironment(args.environment),

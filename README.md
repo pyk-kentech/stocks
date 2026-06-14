@@ -1809,3 +1809,41 @@ remain runtime-disabled. See
 `docs/superpowers/specs/2026-06-15-account-read-opt-in-safety-checkpoint-design.md`.
 Tests and system smoke remain fake/local-only with
 `external_network_calls=false`.
+
+## v2.19 Kiwoom Account-Read MOCK Opt-in Adapter
+
+v2.19 adds a separate, default-disabled MOCK-only account-read boundary. It
+allows only the curated manifest `ACCOUNT_READ` IDs `kt00001`, `kt00018`, and
+`kt00007` at the exact `https://mockapi.kiwoom.com` base URL. PROD, LIVE,
+orders, market-data READ_ONLY endpoints, WebSocket, unknown endpoints,
+strategy access, and automatic sizing remain blocked.
+
+Health and plan are offline. Dry-run validates every gate without reading
+credentials, requesting a token, or calling the network:
+
+```powershell
+python -m stock_risk_mcp.cli kiwoom-account-read-health --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-account-read-plan --db data/stock_risk_mcp.sqlite3 --endpoint-id kt00018
+python -m stock_risk_mcp.cli kiwoom-account-read-run --db data/stock_risk_mcp.sqlite3 --endpoint-id kt00018 --enable-real-network --enable-account-read --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request --confirm-account --account-fingerprint mock-confirmation --i-understand-this-can-read-account-data --kill-switch-inactive --dry-run
+```
+
+A manual MOCK run uses the same flags without `--dry-run`. Credential sources
+are explicit ENV or FILE_EXPLICIT only. No path scanning or credential
+auto-discovery occurs. A run defaults to one endpoint and has a hard maximum
+of two.
+
+```powershell
+python -m stock_risk_mcp.cli kiwoom-account-read-reports --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-account-read-show --db data/stock_risk_mcp.sqlite3 --run-id <run-id>
+python -m stock_risk_mcp.cli kiwoom-account-read-reconcile-preview --db data/stock_risk_mcp.sqlite3 --run-id <run-id> --kill-switch-inactive
+```
+
+SQLite and CLI output contain only redacted metadata and normalized counts.
+They never contain raw account numbers, cash/balance values, exact holdings,
+fills/order history, credentials, tokens, authorization headers, or raw
+request/response bodies. Reconciliation preview is count-only, requires an
+inactive kill switch, and cannot submit orders. Tests inject fake dependencies;
+system smoke remains local-only with `external_network_calls=false`.
+
+Future work is v2.20 manual MOCK smoke hardening or local-ledger
+reconciliation. Live execution remains disabled.

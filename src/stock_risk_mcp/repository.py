@@ -77,6 +77,12 @@ from stock_risk_mcp.kiwoom_sandbox_order_models import (
     KiwoomSandboxOrderRun,
     KiwoomSandboxOrderStatusCheck,
 )
+from stock_risk_mcp.kiwoom_account_read_models import (
+    KiwoomAccountReadReconcilePreview,
+    KiwoomAccountReadRequest,
+    KiwoomAccountReadResponse,
+    KiwoomAccountReadRun,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2270,6 +2276,48 @@ class RiskRepository:
 
     def list_kiwoom_sandbox_order_receipts(self, limit: int = 100) -> list[KiwoomSandboxOrderReceipt]:
         return [KiwoomSandboxOrderReceipt.model_validate_json(value) for value in self._list_json_records("kiwoom_sandbox_order_receipts", "receipt_json", limit)]
+
+    def save_kiwoom_account_read_report(self, run: KiwoomAccountReadRun) -> int:
+        stored = run.model_copy(update={"requests": [], "responses": []})
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT OR REPLACE INTO kiwoom_account_read_runs (run_id, status, run_json, observed_at) VALUES (?, ?, ?, ?)",
+                (stored.run_id, stored.status.value, stored.model_dump_json(), stored.observed_at.isoformat()),
+            )
+            for request in run.requests:
+                connection.execute(
+                    "INSERT OR REPLACE INTO kiwoom_account_read_requests (request_id, run_id, endpoint_id, request_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                    (request.request_id, request.run_id, request.endpoint_id, request.model_dump_json(), request.observed_at.isoformat()),
+                )
+            for response in run.responses:
+                connection.execute(
+                    "INSERT OR REPLACE INTO kiwoom_account_read_responses (response_id, run_id, endpoint_id, response_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                    (response.response_id, response.run_id, response.endpoint_id, response.model_dump_json(), response.observed_at.isoformat()),
+                )
+            return int(cursor.lastrowid)
+
+    def list_kiwoom_account_read_reports(self, limit: int = 100) -> list[KiwoomAccountReadRun]:
+        return [KiwoomAccountReadRun.model_validate_json(value) for value in self._list_json_records("kiwoom_account_read_runs", "run_json", limit)]
+
+    def get_kiwoom_account_read_report(self, run_id: str) -> KiwoomAccountReadRun:
+        with self._connect() as connection:
+            row = connection.execute("SELECT run_json FROM kiwoom_account_read_runs WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
+                raise LookupError(f"Kiwoom account-read run not found: {run_id}")
+            requests = connection.execute("SELECT request_json FROM kiwoom_account_read_requests WHERE run_id=? ORDER BY id", (run_id,)).fetchall()
+            responses = connection.execute("SELECT response_json FROM kiwoom_account_read_responses WHERE run_id=? ORDER BY id", (run_id,)).fetchall()
+        run = KiwoomAccountReadRun.model_validate_json(str(row["run_json"]))
+        run.requests = [KiwoomAccountReadRequest.model_validate_json(str(item["request_json"])) for item in requests]
+        run.responses = [KiwoomAccountReadResponse.model_validate_json(str(item["response_json"])) for item in responses]
+        return run
+
+    def save_kiwoom_account_read_reconcile_preview(self, preview: KiwoomAccountReadReconcilePreview) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_account_read_reconcile_previews (preview_id, run_id, preview_json, observed_at) VALUES (?, ?, ?, ?)",
+                (preview.preview_id, preview.run_id, preview.model_dump_json(), preview.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
 
     def _save_sandbox_record(self, table: str, columns: tuple[str, ...], values: tuple) -> int:
         placeholders = ", ".join("?" for _ in columns)

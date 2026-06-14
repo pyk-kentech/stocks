@@ -1019,6 +1019,36 @@ def create_schema(connection: sqlite3.Connection) -> None:
             status_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_account_read_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_account_read_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            endpoint_id TEXT NOT NULL,
+            request_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_account_read_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            response_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            endpoint_id TEXT NOT NULL,
+            response_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_account_read_reconcile_previews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            preview_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            preview_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

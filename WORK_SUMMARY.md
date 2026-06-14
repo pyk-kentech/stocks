@@ -1414,6 +1414,27 @@ live-execution design checkpoint with an explicit kill switch.
 - Required append-only live audits and strict secret/account/body redaction.
 - Kept fake-only tests and system smoke with `external_network_calls=false`.
 
+## v2.19 Kiwoom Account-Read MOCK Opt-in Adapter
+
+- Added a separate, default-disabled MOCK-only account-read gate, transport,
+  service, redacted models, SQLite audits, and six JSON CLI commands.
+- Restricted account-read to the curated manifest IDs `kt00001`, `kt00018`,
+  and `kt00007`, exact `https://mockapi.kiwoom.com`, and at most two endpoints
+  per run.
+- Required explicit real-network/account-read enablement, credentials, auth
+  opt-in, account confirmation, account fingerprint confirmation,
+  acknowledgement, and inactive kill switch.
+- Kept health, plan, and dry-run credential/token/network free.
+- Stored only irreversible short account fingerprints, normalized counts,
+  sanitized errors, and redacted metadata. Raw account and broker payload data
+  is discarded rather than persisted or printed.
+- Added count-only kill-switch-gated reconciliation preview with no order,
+  LIVE, strategy, or automatic sizing integration.
+- Kept PROD, LIVE, ORDER, READ_ONLY market data, WebSocket, unknown endpoints,
+  and direct strategy account-read blocked.
+- Tests use fake credentials/token/HTTP dependencies only; system smoke
+  remains local-only with `external_network_calls=false`.
+
 ## v2.18 Account-Read Opt-in Safety Checkpoint
 
 - Added a documentation-only account-read safety checkpoint; no account
