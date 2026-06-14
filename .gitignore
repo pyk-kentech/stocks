@@ -6,3 +6,14 @@ data/*.sqlite3
 data/*.db
 demo_outputs/
 smoke_outputs/
+
+# Local broker/API secrets
+api_key_kiwoom/
+*.secret
+*.secrets
+*.key
+*.pem
+*.env.local
+.env
+.env.*
+!.env.example
