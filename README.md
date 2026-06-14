@@ -1711,3 +1711,48 @@ Troubleshooting:
 v2.15 is not live trading. It cannot place, cancel, or modify orders and does
 not query account, balance, position, cash, holdings, fills, or order history.
 Automated tests and system-smoke continue to make no real network calls.
+
+## v2.16 Kiwoom Sandbox Order Adapter
+
+v2.16 adds the first controlled Kiwoom MOCK order path:
+
+```text
+OrderIntent -> RiskGateDecision -> ExecutionGateDecision(SANDBOX)
+-> KiwoomSandboxOrderService -> KiwoomSandboxOrderAdapter
+-> strict MOCK ORDER transport -> redacted SQLite audit
+```
+
+`ExecutionMode.PAPER` remains unchanged. `ExecutionMode.SANDBOX` is approved
+only with explicit sandbox enablement and safe KR equity LIMIT conditions.
+LIVE remains disabled in v2.16.
+
+The v2.13 curated manifest is the endpoint source of truth. Runtime submission
+allows only `kt10000`, and cancel allows only `kt10003`. The curated manifest
+does not contain a verified SELL-submit or independent status endpoint, so
+SELL submission is blocked and status is local audit lookup only.
+
+```bash
+# Offline eligibility plan
+python -m stock_risk_mcp.cli kiwoom-sandbox-order-plan --db data/stock_risk_mcp.sqlite3 --order-intent-id <approved-sandbox-intent-id>
+
+# Validation-only submit; no credential read, token request, or network
+python -m stock_risk_mcp.cli kiwoom-sandbox-order-submit --db data/stock_risk_mcp.sqlite3 --order-intent-id <approved-sandbox-intent-id> --enable-real-network --enable-sandbox-order --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request --dry-run
+
+# Explicit manual MOCK sandbox submit
+python -m stock_risk_mcp.cli kiwoom-sandbox-order-submit --db data/stock_risk_mcp.sqlite3 --order-intent-id <approved-sandbox-intent-id> --enable-real-network --enable-sandbox-order --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request
+
+python -m stock_risk_mcp.cli kiwoom-sandbox-order-cancel --db data/stock_risk_mcp.sqlite3 --broker-order-id <sandbox-order-id> --enable-real-network --enable-sandbox-order --environment MOCK --base-url https://mockapi.kiwoom.com --credential-source ENV --allow-auth-token-request
+python -m stock_risk_mcp.cli kiwoom-sandbox-order-status --db data/stock_risk_mcp.sqlite3 --broker-order-id <sandbox-order-id>
+```
+
+Every submit uses a stable client order ID. Duplicate IDs are rejected and
+audited before transport, and submit is never automatically retried. Cancel
+and local status are limited to three IDs per run.
+
+v2.16 is not live trading. PROD, MARKET, margin, short, options, futures,
+leverage, fractional quantity, account reads, balance, cash, holdings,
+positions, fills, and order history are blocked. Audits never store appkey,
+secretkey, token, authorization headers, account number, credential paths, or
+raw request/response bodies. Pytest and system-smoke make no real network
+calls. Future work is a v2.17 live-execution design checkpoint with an explicit
+kill switch; live execution is not implemented here.

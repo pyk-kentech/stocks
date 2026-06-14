@@ -67,6 +67,8 @@ from stock_risk_mcp.kiwoom_real_readonly_models import (
 )
 from stock_risk_mcp.kiwoom_real_readonly_service import KiwoomRealReadOnlyService
 from stock_risk_mcp.kiwoom_real_readonly_smoke import KiwoomRealReadOnlySmokeService, build_smoke_plan
+from stock_risk_mcp.kiwoom_sandbox_order_models import KiwoomSandboxOrderConfig
+from stock_risk_mcp.kiwoom_sandbox_order_service import KiwoomSandboxOrderService
 from stock_risk_mcp.dilution_signal_file import load_dilution_signals
 from stock_risk_mcp.flow_signal_file import load_flow_signals
 from stock_risk_mcp.fx_service import FXService
@@ -324,6 +326,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     evaluate_intents.add_argument("--max-daily-loss", type=float)
     evaluate_intents.add_argument("--current-daily-loss", type=float, default=0)
     evaluate_intents.add_argument("--blocked-ticker", action="append", default=[])
+    evaluate_intents.add_argument("--enable-sandbox-order", action="store_true")
     evaluate_intents.add_argument("--limit", type=int, default=100)
     paper_execute = subparsers.add_parser("paper-execute-approved-intents")
     paper_execute.add_argument("--db", type=Path, required=True)
@@ -463,6 +466,32 @@ def build_command_parser() -> argparse.ArgumentParser:
     smoke_show = subparsers.add_parser("kiwoom-real-readonly-smoke-show")
     smoke_show.add_argument("--db", type=Path, required=True)
     smoke_show.add_argument("--smoke-run-id", required=True)
+    sandbox_health = subparsers.add_parser("kiwoom-sandbox-order-health")
+    sandbox_health.add_argument("--db", type=Path, required=True)
+    sandbox_plan = subparsers.add_parser("kiwoom-sandbox-order-plan")
+    sandbox_plan.add_argument("--db", type=Path, required=True)
+    sandbox_plan.add_argument("--order-intent-id", required=True)
+    sandbox_submit = subparsers.add_parser("kiwoom-sandbox-order-submit")
+    sandbox_submit.add_argument("--db", type=Path, required=True)
+    sandbox_submit.add_argument("--order-intent-id", required=True)
+    sandbox_submit.add_argument("--client-order-id")
+    sandbox_submit.add_argument("--dry-run", action="store_true")
+    for command in (sandbox_submit,):
+        _add_sandbox_runtime_args(command)
+    sandbox_cancel = subparsers.add_parser("kiwoom-sandbox-order-cancel")
+    sandbox_cancel.add_argument("--db", type=Path, required=True)
+    sandbox_cancel.add_argument("--broker-order-id", action="append", required=True)
+    _add_sandbox_runtime_args(sandbox_cancel)
+    sandbox_status = subparsers.add_parser("kiwoom-sandbox-order-status")
+    sandbox_status.add_argument("--db", type=Path, required=True)
+    sandbox_status.add_argument("--broker-order-id", action="append", required=True)
+    for name in ("kiwoom-sandbox-order-requests", "kiwoom-sandbox-order-receipts"):
+        command = subparsers.add_parser(name)
+        command.add_argument("--db", type=Path, required=True)
+        command.add_argument("--limit", type=int, default=100)
+    sandbox_show = subparsers.add_parser("kiwoom-sandbox-order-show")
+    sandbox_show.add_argument("--db", type=Path, required=True)
+    sandbox_show.add_argument("--broker-order-id", required=True)
 
     for name, id_option in (
         ("report-pipeline", "--pipeline-run-id"), ("report-scan", "--scan-run-id"),
@@ -840,6 +869,34 @@ def build_command_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_sandbox_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--enable-real-network", action="store_true")
+    parser.add_argument("--enable-sandbox-order", action="store_true")
+    parser.add_argument("--environment", choices=[item.value for item in KiwoomRealNetworkEnvironment], default="MOCK")
+    parser.add_argument("--base-url", default="https://mockapi.kiwoom.com")
+    parser.add_argument("--credential-source", choices=[item.value for item in KiwoomCredentialSource], default="NONE")
+    parser.add_argument("--credential-file", type=Path)
+    parser.add_argument("--allow-auth-token-request", action="store_true")
+    parser.add_argument("--timeout-seconds", type=float, default=10)
+
+
+def _sandbox_config_from_args(args) -> KiwoomSandboxOrderConfig:
+    return KiwoomSandboxOrderConfig(
+        enable_real_network=args.enable_real_network, enable_sandbox_order=args.enable_sandbox_order,
+        environment=KiwoomRealNetworkEnvironment(args.environment), base_url=args.base_url,
+        credential_source=KiwoomCredentialSource(args.credential_source), credential_file=args.credential_file,
+        allow_auth_token_request=args.allow_auth_token_request, timeout_seconds=args.timeout_seconds,
+    )
+
+
+def _sandbox_credential_loader(source, credential_file):
+    env = {
+        key: value for key in ("KIWOOM_APPKEY", "KIWOOM_SECRETKEY", "KIWOOM_ACCOUNT_NUMBER")
+        if (value := os.environ.get(key)) is not None
+    } if source == KiwoomCredentialSource.ENV else {}
+    return load_kiwoom_credentials(source, credential_file, env)
+
+
 def add_proposal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ticker", required=True, help="Ticker symbol, e.g. SAFE")
     parser.add_argument("--side", required=True, choices=["BUY", "SELL"], help="Trade side")
@@ -1052,6 +1109,14 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-real-readonly-smoke-run",
         "kiwoom-real-readonly-smoke-reports",
         "kiwoom-real-readonly-smoke-show",
+        "kiwoom-sandbox-order-health",
+        "kiwoom-sandbox-order-plan",
+        "kiwoom-sandbox-order-submit",
+        "kiwoom-sandbox-order-cancel",
+        "kiwoom-sandbox-order-status",
+        "kiwoom-sandbox-order-requests",
+        "kiwoom-sandbox-order-receipts",
+        "kiwoom-sandbox-order-show",
         "report-pipeline",
         "report-scan",
         "report-basket",
@@ -1335,7 +1400,8 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         )
         try:
             results = OrderIntentService(RiskRepository(args.db)).evaluate_many(
-                config, ExecutionMode(args.execution_mode), args.order_intent_id, args.limit
+                config, ExecutionMode(args.execution_mode), args.order_intent_id, args.limit,
+                enable_sandbox_order=args.enable_sandbox_order,
             )
             return {"results": [_dump_order_result(item) for item in results]}
         except (LookupError, ValueError) as exc:
@@ -1486,6 +1552,26 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             ),
         )
         return smoke.run(config, args.endpoint_id, args.endpoint_set, args.dry_run).model_dump(mode="json")
+    if args.command.startswith("kiwoom-sandbox-order-"):
+        repository = RiskRepository(args.db)
+        service = KiwoomSandboxOrderService(repository, credential_loader=_sandbox_credential_loader)
+        if args.command == "kiwoom-sandbox-order-health":
+            return service.health().model_dump(mode="json")
+        if args.command == "kiwoom-sandbox-order-plan":
+            return service.plan(args.order_intent_id).model_dump(mode="json")
+        if args.command == "kiwoom-sandbox-order-requests":
+            return {"requests": [item.model_dump(mode="json") for item in repository.list_kiwoom_sandbox_order_requests(args.limit)]}
+        if args.command == "kiwoom-sandbox-order-receipts":
+            return {"receipts": [item.model_dump(mode="json") for item in repository.list_kiwoom_sandbox_order_receipts(args.limit)]}
+        if args.command == "kiwoom-sandbox-order-status":
+            return {"status_checks": [item.model_dump(mode="json") for item in service.status(args.broker_order_id)]}
+        if args.command == "kiwoom-sandbox-order-show":
+            item = repository.get_kiwoom_sandbox_receipt_by_broker_order_id(args.broker_order_id)
+            return item.model_dump(mode="json") if item else {"status": "NOT_FOUND"}
+        config = _sandbox_config_from_args(args)
+        if args.command == "kiwoom-sandbox-order-cancel":
+            return {"receipts": [item.model_dump(mode="json") for item in service.cancel(args.broker_order_id, config)]}
+        return _dump_order_result(service.submit(args.order_intent_id, config, args.dry_run, args.client_order_id))
     if args.command.startswith("kiwoom-real-readonly-"):
         config = KiwoomRealNetworkConfig(
             enabled=args.enable_real_network, environment=KiwoomRealNetworkEnvironment(args.environment),

@@ -985,6 +985,40 @@ def create_schema(connection: sqlite3.Connection) -> None:
             step_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_order_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL UNIQUE,
+            operation TEXT NOT NULL,
+            status TEXT NOT NULL,
+            run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_order_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            intent_id TEXT NOT NULL,
+            client_order_id TEXT NOT NULL,
+            request_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_order_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_id TEXT NOT NULL UNIQUE,
+            request_id TEXT NOT NULL,
+            client_order_id TEXT NOT NULL,
+            broker_order_id TEXT,
+            status TEXT NOT NULL,
+            receipt_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_sandbox_order_status_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            status_check_id TEXT NOT NULL UNIQUE,
+            broker_order_id TEXT NOT NULL,
+            status_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

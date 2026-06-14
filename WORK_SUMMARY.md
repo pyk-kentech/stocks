@@ -1376,3 +1376,23 @@ controlled token provider, and unknown endpoints. Reports exclude credentials,
 credential paths, tokens, authorization headers, account numbers, and raw
 request/response bodies. Pytest and system-smoke never execute a real manual
 smoke call. This release adds no live trading or account runtime.
+
+## v2.16 Kiwoom Sandbox Order Adapter
+
+Added a separate MOCK-only sandbox order boundary behind OrderIntent,
+RiskGateDecision, and the new explicitly enabled `ExecutionMode.SANDBOX`.
+PAPER behavior is unchanged and LIVE remains blocked.
+
+- official manifest ORDER endpoints only: `kt10000` submit and `kt10003` cancel
+- BUY KR equity LIMIT submission only; SELL blocked because no verified
+  SELL-submit endpoint exists in the curated manifest
+- offline health/plan and credential/network-free dry-run
+- stable client order IDs and duplicate rejection before transport
+- bounded known-order cancel and local-audit-only status
+- append-only redacted run/request/receipt/status audit tables
+- separate sandbox order CLI commands
+
+PROD, account reads, MARKET, margin, short, options, futures, leverage,
+fractional quantities, and direct strategy broker access remain blocked.
+Pytest and system-smoke use no real network. v2.17 remains a future
+live-execution design checkpoint with an explicit kill switch.

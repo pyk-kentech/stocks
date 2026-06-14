@@ -71,6 +71,12 @@ from stock_risk_mcp.kiwoom_real_readonly_smoke_models import (
     KiwoomRealReadOnlySmokeStep,
     sanitized_smoke_run,
 )
+from stock_risk_mcp.kiwoom_sandbox_order_models import (
+    KiwoomSandboxOrderReceipt,
+    KiwoomSandboxOrderRequest,
+    KiwoomSandboxOrderRun,
+    KiwoomSandboxOrderStatusCheck,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2216,6 +2222,62 @@ class RiskRepository:
         run = KiwoomRealReadOnlySmokeRun.model_validate_json(str(row["run_json"]))
         run.steps = [KiwoomRealReadOnlySmokeStep.model_validate_json(str(item["step_json"])) for item in step_rows]
         return run
+
+    def save_kiwoom_sandbox_order_run(self, run: KiwoomSandboxOrderRun) -> int:
+        return self._save_sandbox_record(
+            "kiwoom_sandbox_order_runs", ("run_id", "operation", "status", "run_json", "observed_at"),
+            (run.run_id, run.operation, run.status.value, run.model_dump_json(), run.observed_at.isoformat()),
+        )
+
+    def save_kiwoom_sandbox_order_request(self, request: KiwoomSandboxOrderRequest) -> int:
+        return self._save_sandbox_record(
+            "kiwoom_sandbox_order_requests",
+            ("request_id", "run_id", "intent_id", "client_order_id", "request_json", "observed_at"),
+            (request.request_id, request.run_id, request.intent_id, request.client_order_id, request.model_dump_json(), request.observed_at.isoformat()),
+        )
+
+    def save_kiwoom_sandbox_order_receipt(self, receipt: KiwoomSandboxOrderReceipt) -> int:
+        return self._save_sandbox_record(
+            "kiwoom_sandbox_order_receipts",
+            ("receipt_id", "request_id", "client_order_id", "broker_order_id", "status", "receipt_json", "observed_at"),
+            (receipt.receipt_id, receipt.request_id, receipt.client_order_id, receipt.broker_order_id, receipt.status.value, receipt.model_dump_json(), receipt.observed_at.isoformat()),
+        )
+
+    def save_kiwoom_sandbox_order_status_check(self, check: KiwoomSandboxOrderStatusCheck) -> int:
+        return self._save_sandbox_record(
+            "kiwoom_sandbox_order_status_checks",
+            ("status_check_id", "broker_order_id", "status_json", "observed_at"),
+            (check.status_check_id, check.broker_order_id, check.model_dump_json(), check.observed_at.isoformat()),
+        )
+
+    def has_kiwoom_sandbox_client_order_id(self, client_order_id: str) -> bool:
+        with self._connect() as connection:
+            return connection.execute(
+                """SELECT 1 FROM kiwoom_sandbox_order_receipts
+                WHERE client_order_id=? AND status='ACCEPTED' LIMIT 1""", (client_order_id,)
+            ).fetchone() is not None
+
+    def get_kiwoom_sandbox_receipt_by_broker_order_id(self, broker_order_id: str) -> KiwoomSandboxOrderReceipt | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT receipt_json FROM kiwoom_sandbox_order_receipts WHERE broker_order_id=? ORDER BY id DESC LIMIT 1",
+                (broker_order_id,),
+            ).fetchone()
+        return KiwoomSandboxOrderReceipt.model_validate_json(str(row["receipt_json"])) if row else None
+
+    def list_kiwoom_sandbox_order_requests(self, limit: int = 100) -> list[KiwoomSandboxOrderRequest]:
+        return [KiwoomSandboxOrderRequest.model_validate_json(value) for value in self._list_json_records("kiwoom_sandbox_order_requests", "request_json", limit)]
+
+    def list_kiwoom_sandbox_order_receipts(self, limit: int = 100) -> list[KiwoomSandboxOrderReceipt]:
+        return [KiwoomSandboxOrderReceipt.model_validate_json(value) for value in self._list_json_records("kiwoom_sandbox_order_receipts", "receipt_json", limit)]
+
+    def _save_sandbox_record(self, table: str, columns: tuple[str, ...], values: tuple) -> int:
+        placeholders = ", ".join("?" for _ in columns)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})", values
+            )
+            return int(cursor.lastrowid)
 
     def save_kiwoom_mock_order_request(self, request: KiwoomMockOrderRequest) -> int:
         with self._connect() as connection:

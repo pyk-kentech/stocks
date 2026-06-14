@@ -23,7 +23,9 @@ class OrderType(StrEnum):
 
 class ExecutionMode(StrEnum):
     PAPER = "PAPER"
+    SANDBOX = "SANDBOX"
     SANDBOX_DISABLED = "SANDBOX_DISABLED"
+    LIVE = "LIVE"
     LIVE_DISABLED = "LIVE_DISABLED"
 
 

@@ -20,6 +20,7 @@ class OrderIntentService:
         order_intent_id: str,
         risk_config: RiskGateConfig,
         execution_mode: ExecutionMode,
+        enable_sandbox_order: bool = False,
     ) -> dict:
         intent = self.repository.get_order_intent(order_intent_id)
         try:
@@ -38,7 +39,8 @@ class OrderIntentService:
         self.repository.update_order_intent_status(order_intent_id, OrderIntentStatus.RISK_APPROVED)
         intent = self.repository.get_order_intent(order_intent_id)
         execution = evaluate_execution_gate(
-            intent, risk, execution_mode, self.repository.has_paper_execution(order_intent_id)
+            intent, risk, execution_mode, self.repository.has_paper_execution(order_intent_id),
+            enable_sandbox_order=enable_sandbox_order,
         )
         self.repository.save_execution_gate_decision(execution)
         status = OrderIntentStatus.EXECUTION_APPROVED if execution.approved else OrderIntentStatus.EXECUTION_BLOCKED
@@ -55,11 +57,15 @@ class OrderIntentService:
         execution_mode: ExecutionMode,
         order_intent_id: str | None = None,
         limit: int = 100,
+        enable_sandbox_order: bool = False,
     ) -> list[dict]:
         intents = [self.repository.get_order_intent(order_intent_id)] if order_intent_id else self.repository.list_order_intents(
             status=OrderIntentStatus.CREATED, limit=limit
         )
-        return [self.evaluate(intent.order_intent_id, risk_config, execution_mode) for intent in intents]
+        return [
+            self.evaluate(intent.order_intent_id, risk_config, execution_mode, enable_sandbox_order)
+            for intent in intents
+        ]
 
     def paper_execute(self, order_intent_id: str, fill_price: float | None = None) -> dict:
         intent = self.repository.get_order_intent(order_intent_id)
