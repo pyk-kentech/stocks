@@ -2049,3 +2049,31 @@ PROD, or LIVE path is used.
 OHLC paths, limit fills, slippage, fees, partial exits, pyramiding, averaging,
 stop-loss/take-profit, risk-based sizing, and portfolio/basket risk are
 deferred to later explicit simulation boundaries.
+
+## v3.2 Technical Setup Evidence Pack
+
+v3.2 adds a pure offline technical evidence pack for explicitly selected local
+JSON OHLCV fixtures. It computes deterministic MACD, RSI, MA/HMA, ATR, volume,
+and basic RSI divergence evidence and produces advisory technical setup
+taxonomy, component scores, and `A`, `B`, `C`, or `NO_TRADE` grades.
+
+```bash
+python -m stock_risk_mcp.cli technical-evidence-run --fixture-file data/technical_fixture.json
+python -m stock_risk_mcp.cli technical-evidence-run --fixture-file data/technical_fixture.json --output-file outputs/technical_evidence.json
+python -m stock_risk_mcp.cli technical-evidence-show --output-file outputs/technical_evidence.json
+```
+
+Fixture timestamps must include timezone information, ticker points must be
+strictly increasing, OHLC relationships must be valid, and no point may occur
+after the fixture as-of timestamp. Evidence uses only fixture history.
+Insufficient lookback produces null features and grade caps; fewer than 20
+points, excessive ATR risk, or bearish MA plus HMA trend produces
+`NO_TRADE`.
+
+The v3.2 output is advisory evidence only. It does not create
+`StrategyDecision`, trade plans, `OrderIntent`, drafts, trades, orders, or
+execution approvals. It does not use SQLite, providers, realtime data,
+brokers, Kiwoom, account reads, credentials, tokens, external network, PROD,
+or LIVE. Existing indicator calculators and `SetupGrader` behavior remain
+unchanged. True CVD/order flow, configurable periods, persistence, and
+strategy/order integration are deferred.

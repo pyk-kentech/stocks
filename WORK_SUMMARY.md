@@ -1581,3 +1581,23 @@ live-execution design checkpoint with an explicit kill switch.
   external network, PROD, and LIVE outside the backtest path.
 - Deferred OHLC, limit fills, slippage, fees, partial exits, averaging,
   pyramiding, stop/target simulation, risk sizing, and portfolio risk.
+
+## v3.2 Technical Setup Evidence Pack
+
+- Added strict explicit-local-JSON timezone-aware OHLCV fixture and result
+  models with increasing timestamp, as-of, duplicate ticker, and OHLC
+  relationship validation.
+- Added new pure deterministic MACD, RSI, MA, HMA, ATR, volume, and basic RSI
+  divergence calculation modules without changing existing indicator or
+  `SetupGrader` behavior.
+- Added advisory Ross momentum-cross and pullback-reacceleration taxonomy,
+  trend/momentum/volume/risk component scores, hard technical blocks, and
+  data-length ABC grade caps.
+- Added JSON-only `technical-evidence-run` and `technical-evidence-show`
+  commands with optional explicit result-file output and no SQLite audit.
+- Extended system smoke with a temporary local OHLCV fixture while preserving
+  `external_network_calls=false`.
+- Kept DB, provider, realtime, broker, Kiwoom, account, order, credential,
+  token, StrategyDecision, OrderIntent, PROD, and LIVE paths outside v3.2.
+- Used no CVD naming because the fixture contains no true trade-direction
+  order-flow data.

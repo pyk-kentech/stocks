@@ -8,6 +8,7 @@ from stock_risk_mcp.demo_pipeline import DemoStepName, DemoStepStatus, run_local
 from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.strategy_service import StrategyService
 from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
+from stock_risk_mcp.technical_evidence_service import run_technical_evidence
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -58,6 +59,16 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         }],
     }, sort_keys=True), encoding="utf-8")
     backtest = StrategyBacktestService(RiskRepository(db_path)).run_fixture(backtest_fixture)
+    technical_fixture = Path(output_dir) / "technical_evidence_smoke_fixture.json"
+    technical_points = [
+        {"timestamp": f"2026-06-13T09:{index:02d}:00+00:00", "open": 100 + index, "high": 101 + index, "low": 99 + index, "close": 100 + index, "volume": 1000}
+        for index in range(20)
+    ]
+    technical_fixture.write_text(json.dumps({
+        "schema_version": "3.2", "as_of_timestamp": "2026-06-13T10:00:00+00:00",
+        "config": {}, "series": [{"ticker": "DEMO", "points": technical_points}],
+    }, sort_keys=True), encoding="utf-8")
+    technical = run_technical_evidence(technical_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -73,6 +84,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "dashboard_html": complete(DemoStepName.DASHBOARD) and bool(dashboard_path and Path(dashboard_path).exists()),
             "strategy_fixture_run": strategy["run"].status.value == "COMPLETED" and len(strategy["decisions"]) == 1,
             "strategy_backtest_fixture_run": backtest["run"].status == "COMPLETED" and backtest["report"].metric.trade_count == 1,
+            "technical_evidence_fixture_run": len(technical.evidence) == 1,
             "external_network_calls": False,
         },
         "key_outputs": result.key_outputs,
