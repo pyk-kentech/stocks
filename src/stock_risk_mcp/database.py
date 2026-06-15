@@ -1192,6 +1192,52 @@ def create_schema(connection: sqlite3.Connection) -> None:
             review_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS llm_prompt_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_version_id TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            prompt_checksum TEXT NOT NULL,
+            prompt_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            UNIQUE(name, version)
+        );
+        CREATE TABLE IF NOT EXISTS llm_model_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_version_id TEXT NOT NULL UNIQUE,
+            backend TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+            model_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            UNIQUE(backend, model_name, model_version)
+        );
+        CREATE TABLE IF NOT EXISTS llm_feature_store_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL UNIQUE,
+            fixture_checksum TEXT NOT NULL,
+            signal_count INTEGER NOT NULL,
+            run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS llm_feature_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_key TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            signal_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS llm_signal_evaluations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            evaluation_key TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            horizon TEXT NOT NULL,
+            status TEXT NOT NULL,
+            evaluation_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS strategy_backtest_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             backtest_run_id TEXT NOT NULL UNIQUE,

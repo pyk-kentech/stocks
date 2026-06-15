@@ -1619,3 +1619,23 @@ live-execution design checkpoint with an explicit kill switch.
 - Kept DB, provider, realtime, broker, Kiwoom, account, order, credential,
   token, StrategyDecision, OrderIntent, scraping, PROD, and LIVE paths outside
   v3.3.
+
+## v3.4 LLM Feature Store And LLM Signal Evaluation
+
+- Added strict explicit-local-JSON signal and outcome fixtures with
+  timezone-aware timestamps, prompt/model version validation, duplicate-key
+  rejection, false order/gate flag enforcement, and safe runtime metadata.
+- Added pure deterministic 1D/3D/5D evaluation with fixed confidence and risk
+  buckets, directional outcomes, missing-data records, unique-outcome
+  baselines, risk-warning drawdown accuracy, related-ticker spillover, and
+  version-tagged metrics.
+- Added `INSUFFICIENT_SAMPLE` aggregate status below five available samples.
+- Added DB-free-by-default JSON feature-store/evaluation services and optional
+  append-only service-layer SQLite audit.
+- Added `llm-feature-store-run`, `llm-signal-evaluate`, and
+  `llm-signal-evaluation-show` JSON CLI commands.
+- Extended system smoke with temporary local signal/outcome fixtures while
+  preserving `llm_called=false` and `external_network_calls=false`.
+- Kept cloud/local LLM invocation, strategy-weight changes, broker, Kiwoom,
+  account, credential, token, network, StrategyDecision, OrderIntent, gate
+  bypass, order, PROD, and LIVE paths outside v3.4.

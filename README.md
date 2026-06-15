@@ -2102,3 +2102,28 @@ Discovery output is advisory research evidence only. It does not use SQLite,
 DB/provider/realtime data, brokers, Kiwoom, account reads, credentials, tokens,
 external network, scraping, PROD, or LIVE. It does not create technical
 grades, `StrategyDecision`, trade plans, `OrderIntent`, orders, or executions.
+
+## v3.4 LLM Feature Store And Signal Evaluation
+
+v3.4 validates already-created advisory LLM signals from one explicit local
+JSON fixture and evaluates them against one explicit local 1D/3D/5D outcome
+JSON fixture. It does not call an LLM.
+
+```bash
+python -m stock_risk_mcp.cli llm-feature-store-run --signal-fixture-file data/llm_signals.json
+python -m stock_risk_mcp.cli llm-signal-evaluate --signal-fixture-file data/llm_signals.json --outcome-fixture-file data/llm_outcomes.json
+python -m stock_risk_mcp.cli llm-signal-evaluation-show --output-file outputs/llm_signal_evaluation.json
+```
+
+Signals include prompt/model version metadata, semantic/theme/catalyst/risk
+features, required false order/gate flags, and timezone-aware as-of times.
+Evaluation uses exact ticker/as-of matching, fixed confidence buckets,
+directional hit rates, missing-data outcomes, risk-warning drawdown accuracy,
+related-ticker spillover, and version-tagged metrics. Groups below five
+available samples are marked `INSUFFICIENT_SAMPLE`.
+
+Default execution is DB-free JSON output only. Supplying `--db` enables only
+append-only service-layer audit storage. v3.4 does not call local or cloud
+models, access providers/realtime/network/credentials/accounts/brokers, change
+strategy weights, create `StrategyDecision`/`OrderIntent`, bypass gates, or
+enter PROD/LIVE paths.

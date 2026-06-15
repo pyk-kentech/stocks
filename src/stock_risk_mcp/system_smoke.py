@@ -10,6 +10,7 @@ from stock_risk_mcp.strategy_service import StrategyService
 from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.technical_evidence_service import run_technical_evidence
 from stock_risk_mcp.market_discovery_service import run_market_discovery
+from stock_risk_mcp.llm_feature_service import run_feature_store, run_signal_evaluation
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -94,6 +95,21 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         }],
     }, sort_keys=True), encoding="utf-8")
     discovery = run_market_discovery(discovery_fixture)
+    llm_signal_fixture = Path(output_dir) / "llm_signal_smoke_fixture.json"
+    llm_signal_fixture.write_text(json.dumps({
+        "schema_version": "3.4-signals", "run_id": f"llm-{result.demo_run_id}",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "prompt_version": {"prompt_version_id": "smoke-prompt", "name": "smoke", "version": "1", "prompt_checksum": "sha256:smoke", "created_at": "2026-06-13T08:00:00+00:00"},
+        "model_version": {"model_version_id": "smoke-model", "backend": "LOCAL_FIXTURE", "model_name": "fixture", "model_version": "1", "runtime_metadata": {}},
+        "signals": [{"ticker": "DEMO", "as_of_time": "2026-06-13T09:00:00+00:00", "source_ids": [], "event_type": "SMOKE", "theme_tags": [], "direction": "POSITIVE", "catalyst_strength_score": .8, "risk_language_score": .2, "uncertainty_score": .2, "related_tickers": [], "summary": "smoke", "evidence_refs": [], "may_create_order": False, "may_bypass_gates": False}],
+    }, sort_keys=True), encoding="utf-8")
+    llm_outcome_fixture = Path(output_dir) / "llm_outcome_smoke_fixture.json"
+    llm_outcome_fixture.write_text(json.dumps({
+        "schema_version": "3.4-outcomes", "created_at": "2026-06-14T16:00:00+00:00",
+        "snapshots": [{"ticker": "DEMO", "as_of_time": "2026-06-13T09:00:00+00:00", "reference_price": 100, "horizons": [{"horizon": "1D", "outcome_time": "2026-06-14T09:00:00+00:00", "future_price": 105, "return_pct": 5, "max_drawdown_pct": 2}]}],
+    }, sort_keys=True), encoding="utf-8")
+    llm_features = run_feature_store(llm_signal_fixture)
+    llm_evaluation = run_signal_evaluation(llm_signal_fixture, llm_outcome_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -111,6 +127,9 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "strategy_backtest_fixture_run": backtest["run"].status == "COMPLETED" and backtest["report"].metric.trade_count == 1,
             "technical_evidence_fixture_run": len(technical.evidence) == 1,
             "market_discovery_fixture_run": len(discovery.candidates) == 1,
+            "llm_feature_store_fixture_run": llm_features.signal_count == 1,
+            "llm_signal_evaluation_fixture_run": len(llm_evaluation.evaluations) == 3,
+            "llm_called": False,
             "external_network_calls": False,
         },
         "key_outputs": result.key_outputs,

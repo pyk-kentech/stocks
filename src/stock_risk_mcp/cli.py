@@ -139,6 +139,7 @@ from stock_risk_mcp.strategy_service import StrategyService
 from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.technical_evidence_service import load_technical_evidence_result, run_technical_evidence
 from stock_risk_mcp.market_discovery_service import load_market_discovery_result, run_market_discovery
+from stock_risk_mcp.llm_feature_service import load_llm_signal_evaluation_report, run_feature_store, run_signal_evaluation
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
@@ -378,6 +379,17 @@ def build_command_parser() -> argparse.ArgumentParser:
     discovery_run.add_argument("--output-file", type=Path)
     discovery_show = subparsers.add_parser("market-discovery-show")
     discovery_show.add_argument("--output-file", type=Path, required=True)
+    feature_store = subparsers.add_parser("llm-feature-store-run")
+    feature_store.add_argument("--signal-fixture-file", type=Path, required=True)
+    feature_store.add_argument("--db", type=Path)
+    feature_store.add_argument("--output-file", type=Path)
+    signal_evaluate = subparsers.add_parser("llm-signal-evaluate")
+    signal_evaluate.add_argument("--signal-fixture-file", type=Path, required=True)
+    signal_evaluate.add_argument("--outcome-fixture-file", type=Path, required=True)
+    signal_evaluate.add_argument("--db", type=Path)
+    signal_evaluate.add_argument("--output-file", type=Path)
+    evaluation_show = subparsers.add_parser("llm-signal-evaluation-show")
+    evaluation_show.add_argument("--output-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1276,6 +1288,9 @@ def main(argv: list[str] | None = None) -> None:
         "technical-evidence-show",
         "market-discovery-run",
         "market-discovery-show",
+        "llm-feature-store-run",
+        "llm-signal-evaluate",
+        "llm-signal-evaluation-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1713,6 +1728,27 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "market-discovery-show":
         try:
             return load_market_discovery_result(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "llm-feature-store-run":
+        try:
+            result = run_feature_store(args.signal_fixture_file, args.db, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "signal_count": result.signal_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "llm-signal-evaluate":
+        try:
+            result = run_signal_evaluation(args.signal_fixture_file, args.outcome_fixture_file, args.db, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "evaluation_count": len(result.evaluations)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "llm-signal-evaluation-show":
+        try:
+            return load_llm_signal_evaluation_report(args.output_file).model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

@@ -60,6 +60,12 @@ from stock_risk_mcp.models import (
 )
 from stock_risk_mcp.local_llm import LocalLLMRequest
 from stock_risk_mcp.local_llm_response import LocalLLMResponse
+from stock_risk_mcp.llm_feature_models import (
+    LLMFeatureStoreResult,
+    LLMModelVersion,
+    LLMPromptVersion,
+    LLMSignalEvaluation,
+)
 from stock_risk_mcp.kiwoom_readonly_models import KiwoomReadOnlyRequestAudit, KiwoomReadOnlyResponseAudit
 from stock_risk_mcp.kiwoom_real_readonly_models import (
     KiwoomRealReadOnlyRequestAudit,
@@ -2721,6 +2727,60 @@ class RiskRepository:
 
     def list_local_llm_reviews(self, limit: int = 100) -> list[LocalLLMReview]:
         return [LocalLLMReview.model_validate_json(value) for value in self._list_json_records("local_llm_reviews", "review_json", limit)]
+
+    def save_llm_prompt_version(self, item: LLMPromptVersion) -> None:
+        payload = item.model_dump(mode="json")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT prompt_json FROM llm_prompt_versions WHERE prompt_version_id=? OR (name=? AND version=?)",
+                (item.prompt_version_id, item.name, item.version),
+            ).fetchone()
+            if row:
+                if json.loads(str(row["prompt_json"])) != payload:
+                    raise ValueError("LLM prompt version audit conflict")
+                return
+            connection.execute(
+                "INSERT INTO llm_prompt_versions (prompt_version_id, name, version, prompt_checksum, prompt_json, observed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (item.prompt_version_id, item.name, item.version, item.prompt_checksum, _json(payload), item.created_at.isoformat()),
+            )
+
+    def save_llm_model_version(self, item: LLMModelVersion, observed_at: datetime) -> None:
+        payload = item.model_dump(mode="json", exclude={"runtime_metadata"})
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT model_json FROM llm_model_versions WHERE model_version_id=? OR (backend=? AND model_name=? AND model_version=?)",
+                (item.model_version_id, item.backend.value, item.model_name, item.model_version),
+            ).fetchone()
+            if row:
+                if json.loads(str(row["model_json"])) != payload:
+                    raise ValueError("LLM model version audit conflict")
+                return
+            connection.execute(
+                "INSERT INTO llm_model_versions (model_version_id, backend, model_name, model_version, model_json, observed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (item.model_version_id, item.backend.value, item.model_name, item.model_version, _json(payload), observed_at.isoformat()),
+            )
+
+    def save_llm_feature_store_result(self, item: LLMFeatureStoreResult, observed_at: datetime) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO llm_feature_store_runs (run_id, fixture_checksum, signal_count, run_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                (item.run_id, item.fixture_checksum, item.signal_count, item.model_dump_json(), observed_at.isoformat()),
+            )
+            for signal in item.signals:
+                key = "|".join((signal.ticker, signal.as_of_time.isoformat(), signal.event_type, item.prompt_version.prompt_version_id, item.model_version.model_version_id))
+                connection.execute(
+                    "INSERT INTO llm_feature_signals (signal_key, run_id, ticker, signal_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                    (key, item.run_id, signal.ticker, signal.model_dump_json(), signal.as_of_time.isoformat()),
+                )
+
+    def save_llm_signal_evaluations(self, run_id: str, items: list[LLMSignalEvaluation], observed_at: datetime) -> None:
+        with self._connect() as connection:
+            for item in items:
+                key = "|".join((run_id, item.ticker, item.as_of_time.isoformat(), item.event_type, item.horizon.value))
+                connection.execute(
+                    "INSERT INTO llm_signal_evaluations (evaluation_key, run_id, ticker, horizon, status, evaluation_json, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (key, run_id, item.ticker, item.horizon.value, item.status, item.model_dump_json(), observed_at.isoformat()),
+                )
 
     def save_strategy_backtest_run(self, item: StrategyBacktestRun) -> int:
         return self._save_sandbox_record(
