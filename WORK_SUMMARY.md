@@ -1560,3 +1560,24 @@ live-execution design checkpoint with an explicit kill switch.
   preserving `external_network_calls=false`.
 - Future v3.1-v3.3 work may add backtesting, ranking and a separate DB adapter,
   and local LLM prompt evaluation without weakening the strategy-core boundary.
+
+## v3.1 Strategy Fixture Backtest Harness
+
+- Added a strict explicit-local-JSON backtest fixture with positive initial
+  cash and fixed quantity, timezone-aware timestamps, snapshot references,
+  feature-availability lookahead validation, and ordered positive price paths.
+- Reused v3.0 strategy snapshots, candidates, decisions, config, and
+  deterministic engine without changing the v3.0 candidate model.
+- Added a pure deterministic single-long-position-per-ticker simulator with
+  strict-after-decision fills, cash constraints, repeated-BUY and missing-
+  position SELL blocks, full SELL exits, and forced fixture-end exits.
+- Added portfolio equity-curve total return, max drawdown, win/loss, exposure,
+  blocked, missing-data, and zero stop-loss-hit metrics.
+- Added append-only backtest run, trade, report, and metric SQLite audits plus
+  three JSON CLI commands.
+- Extended system smoke with a temporary local v3.1 fixture while preserving
+  `external_network_calls=false`.
+- Kept OrderIntent, broker, Kiwoom, account-read, credentials, tokens,
+  external network, PROD, and LIVE outside the backtest path.
+- Deferred OHLC, limit fills, slippage, fees, partial exits, averaging,
+  pyramiding, stop/target simulation, risk sizing, and portfolio risk.

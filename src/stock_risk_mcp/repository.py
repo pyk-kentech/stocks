@@ -109,6 +109,12 @@ from stock_risk_mcp.strategy_core import (
     StrategyFeatureSnapshot,
     StrategyRun,
 )
+from stock_risk_mcp.strategy_backtest import (
+    StrategyBacktestMetric,
+    StrategyBacktestReport,
+    StrategyBacktestRun,
+    StrategyBacktestTrade,
+)
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
     ExecutionGateDecision,
@@ -2715,6 +2721,59 @@ class RiskRepository:
 
     def list_local_llm_reviews(self, limit: int = 100) -> list[LocalLLMReview]:
         return [LocalLLMReview.model_validate_json(value) for value in self._list_json_records("local_llm_reviews", "review_json", limit)]
+
+    def save_strategy_backtest_run(self, item: StrategyBacktestRun) -> int:
+        return self._save_sandbox_record(
+            "strategy_backtest_runs", ("backtest_run_id", "status", "run_json", "observed_at"),
+            (item.backtest_run_id, item.status, item.model_dump_json(), item.created_at.isoformat()),
+        )
+
+    def get_strategy_backtest_run(self, backtest_run_id: str) -> StrategyBacktestRun:
+        return StrategyBacktestRun.model_validate_json(
+            self._get_json_record("strategy_backtest_runs", "backtest_run_id", backtest_run_id, "run_json")
+        )
+
+    def save_strategy_backtest_trade(self, item: StrategyBacktestTrade) -> int:
+        return self._save_sandbox_record(
+            "strategy_backtest_trades", ("trade_id", "backtest_run_id", "ticker", "status", "trade_json", "observed_at"),
+            (item.trade_id, item.backtest_run_id, item.ticker, item.status.value, item.model_dump_json(), datetime.now().isoformat()),
+        )
+
+    def list_strategy_backtest_trades(self, backtest_run_id: str) -> list[StrategyBacktestTrade]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT trade_json FROM strategy_backtest_trades WHERE backtest_run_id=? ORDER BY id",
+                (backtest_run_id,),
+            ).fetchall()
+        return [StrategyBacktestTrade.model_validate_json(str(row["trade_json"])) for row in rows]
+
+    def save_strategy_backtest_metric(self, item: StrategyBacktestMetric) -> int:
+        return self._save_sandbox_record(
+            "strategy_backtest_metrics", ("metric_id", "backtest_run_id", "metric_json", "observed_at"),
+            (item.metric_id, item.backtest_run_id, item.model_dump_json(), datetime.now().isoformat()),
+        )
+
+    def list_strategy_backtest_metrics(self, backtest_run_id: str) -> list[StrategyBacktestMetric]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT metric_json FROM strategy_backtest_metrics WHERE backtest_run_id=? ORDER BY id",
+                (backtest_run_id,),
+            ).fetchall()
+        return [StrategyBacktestMetric.model_validate_json(str(row["metric_json"])) for row in rows]
+
+    def save_strategy_backtest_report(self, item: StrategyBacktestReport) -> int:
+        return self._save_sandbox_record(
+            "strategy_backtest_reports", ("report_id", "backtest_run_id", "report_json", "observed_at"),
+            (item.report_id, item.backtest_run_id, item.model_dump_json(), item.created_at.isoformat()),
+        )
+
+    def get_strategy_backtest_report(self, report_id: str) -> StrategyBacktestReport:
+        return StrategyBacktestReport.model_validate_json(
+            self._get_json_record("strategy_backtest_reports", "report_id", report_id, "report_json")
+        )
+
+    def list_strategy_backtest_reports(self, limit: int = 100) -> list[StrategyBacktestReport]:
+        return [StrategyBacktestReport.model_validate_json(value) for value in self._list_json_records("strategy_backtest_reports", "report_json", limit)]
 
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:

@@ -2014,3 +2014,38 @@ fixture-external data. Tests and system smoke use local fixtures only and keep
 Future work may add a v3.1 backtest harness, a v3.2 ranking and separate
 DB-to-feature-snapshot adapter, and a v3.3 local LLM prompt/evaluation adapter.
 Live execution and PROD remain blocked.
+
+## v3.1 Strategy Fixture Backtest Harness
+
+v3.1 adds a deterministic, cash-constrained backtest harness that reads one
+explicit local JSON fixture. The fixture contains timezone-aware feature
+availability, candidate decision timestamps, fixed backtest quantity, initial
+cash, and timestamp/price paths. It does not query existing signal, realtime,
+price-history, account, ledger, or order tables.
+
+```bash
+python -m stock_risk_mcp.cli strategy-backtest-run --db data/stock_risk_mcp.sqlite3 --fixture-file data/strategy_backtest_fixture.json
+python -m stock_risk_mcp.cli strategy-backtest-reports --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-backtest-show --db data/stock_risk_mcp.sqlite3 --report-id <report-id>
+```
+
+The harness reuses v3.0 snapshots, candidates, decisions, and deterministic
+engine. Features must be available no later than the candidate event decision
+timestamp. Fills use the first fixture price strictly after the decision
+timestamp, so same-timestamp fills are forbidden.
+
+Only one simulated long position per ticker is allowed. BUY uses
+`backtest_config.fixed_quantity`, cannot exceed simulated cash, and cannot
+average or pyramid. SELL closes the full existing position and is blocked
+without one. Remaining positions are force-closed at the last fixture price
+with `FORCED_END_OF_FIXTURE`.
+
+Reports include total return against `initial_cash`, portfolio equity-curve
+max drawdown, trade outcomes, exposure time, blocked decisions, and missing
+data. SQLite stores append-only backtest runs, trades, reports, and metrics.
+No OrderIntent, broker/Kiwoom/account-read, credentials, tokens, network,
+PROD, or LIVE path is used.
+
+OHLC paths, limit fills, slippage, fees, partial exits, pyramiding, averaging,
+stop-loss/take-profit, risk-based sizing, and portfolio/basket risk are
+deferred to later explicit simulation boundaries.

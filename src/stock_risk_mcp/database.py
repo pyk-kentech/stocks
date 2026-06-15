@@ -1192,6 +1192,36 @@ def create_schema(connection: sqlite3.Connection) -> None:
             review_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS strategy_backtest_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            backtest_run_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS strategy_backtest_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id TEXT NOT NULL UNIQUE,
+            backtest_run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            status TEXT NOT NULL,
+            trade_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS strategy_backtest_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id TEXT NOT NULL UNIQUE,
+            backtest_run_id TEXT NOT NULL,
+            report_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS strategy_backtest_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric_id TEXT NOT NULL UNIQUE,
+            backtest_run_id TEXT NOT NULL,
+            metric_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

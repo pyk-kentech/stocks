@@ -136,6 +136,7 @@ from stock_risk_mcp.strategy_advisor import DisabledLocalLLMAdvisor
 from stock_risk_mcp.strategy_core import StrategyDecisionStatus
 from stock_risk_mcp.strategy_order_intent_draft import create_order_intent_draft
 from stock_risk_mcp.strategy_service import StrategyService
+from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
@@ -356,6 +357,15 @@ def build_command_parser() -> argparse.ArgumentParser:
     strategy_draft.add_argument("--db", type=Path, required=True)
     strategy_draft.add_argument("--decision-id", required=True)
     subparsers.add_parser("local-llm-health")
+    strategy_backtest_run = subparsers.add_parser("strategy-backtest-run")
+    strategy_backtest_run.add_argument("--db", type=Path, required=True)
+    strategy_backtest_run.add_argument("--fixture-file", type=Path, required=True)
+    strategy_backtest_reports = subparsers.add_parser("strategy-backtest-reports")
+    strategy_backtest_reports.add_argument("--db", type=Path, required=True)
+    strategy_backtest_reports.add_argument("--limit", type=int, default=100)
+    strategy_backtest_show = subparsers.add_parser("strategy-backtest-show")
+    strategy_backtest_show.add_argument("--db", type=Path, required=True)
+    strategy_backtest_show.add_argument("--report-id", required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1247,6 +1257,9 @@ def main(argv: list[str] | None = None) -> None:
         "strategy-candidate-show",
         "strategy-create-order-intent-draft",
         "local-llm-health",
+        "strategy-backtest-run",
+        "strategy-backtest-reports",
+        "strategy-backtest-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1638,6 +1651,24 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return {"status": "BLOCKED", "errors": [str(exc)]}
     if args.command == "local-llm-health":
         return DisabledLocalLLMAdvisor().health()
+    if args.command == "strategy-backtest-run":
+        try:
+            result = StrategyBacktestService(RiskRepository(args.db)).run_fixture(args.fixture_file)
+            return {
+                "run": result["run"].model_dump(mode="json"),
+                "report": result["report"].model_dump(mode="json"),
+            }
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-backtest-reports":
+        return {"reports": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_strategy_backtest_reports(args.limit)
+        ]}
+    if args.command == "strategy-backtest-show":
+        try:
+            return RiskRepository(args.db).get_strategy_backtest_report(args.report_id).model_dump(mode="json")
+        except LookupError as exc:
+            return {"status": "NOT_FOUND", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
