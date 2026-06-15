@@ -88,7 +88,7 @@ def test_fractional_and_blocked_product_sell_dry_run_are_blocked(tmp_path):
     assert "LEVERAGE_DISABLED" in result.reasons_json
 
 
-def test_explicit_verified_report_allows_dry_run_but_submits_no_order(tmp_path):
+def test_explicit_verified_report_is_still_blocked_by_v223_policy_and_submits_no_order(tmp_path):
     repository = RiskRepository(tmp_path / "risk.sqlite3")
     intent = _approved_sell(repository)
     report = SandboxSellSchemaVerificationReport(
@@ -101,6 +101,6 @@ def test_explicit_verified_report_allows_dry_run_but_submits_no_order(tmp_path):
 
     result = KiwoomSandboxSellDryRunService(repository).run(intent.order_intent_id)
 
-    assert result.status == SandboxSellDryRunStatus.APPROVED_FOR_DRY_RUN
-    assert result.reasons_json == []
+    assert result.status == SandboxSellDryRunStatus.BLOCKED
+    assert result.reasons_json == ["SELL_DRY_RUN_APPROVAL_DISABLED_IN_V2_23"]
     assert result.metadata_json["orders_submitted"] is False

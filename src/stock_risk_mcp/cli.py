@@ -71,6 +71,8 @@ from stock_risk_mcp.kiwoom_sandbox_order_models import KiwoomSandboxOrderConfig
 from stock_risk_mcp.kiwoom_sandbox_order_service import KiwoomSandboxOrderService
 from stock_risk_mcp.kiwoom_sandbox_sell_dry_run import KiwoomSandboxSellDryRunService
 from stock_risk_mcp.kiwoom_sandbox_sell_schema_verifier import KiwoomSandboxSellSchemaVerifier
+from stock_risk_mcp.kiwoom_official_sell_schema_evidence import OfficialSellSchemaEvidenceReviewStatus
+from stock_risk_mcp.kiwoom_official_sell_schema_evidence_service import KiwoomOfficialSellSchemaEvidenceService
 from stock_risk_mcp.kiwoom_account_read_models import KiwoomAccountReadConfig
 from stock_risk_mcp.kiwoom_account_read_service import KiwoomAccountReadService
 from stock_risk_mcp.kiwoom_account_read_transport import RealKiwoomAccountReadTransport
@@ -538,6 +540,23 @@ def build_command_parser() -> argparse.ArgumentParser:
     sell_dry_run = subparsers.add_parser("kiwoom-sandbox-sell-dry-run")
     sell_dry_run.add_argument("--db", type=Path, required=True)
     sell_dry_run.add_argument("--order-intent-id", required=True)
+    evidence_validate = subparsers.add_parser("kiwoom-official-sell-schema-evidence-validate")
+    evidence_validate.add_argument("--evidence-file", type=Path, required=True)
+    evidence_import = subparsers.add_parser("kiwoom-official-sell-schema-evidence-import")
+    evidence_import.add_argument("--db", type=Path, required=True)
+    evidence_import.add_argument("--evidence-file", type=Path, required=True)
+    evidence_list = subparsers.add_parser("kiwoom-official-sell-schema-evidence-list")
+    evidence_list.add_argument("--db", type=Path, required=True)
+    evidence_list.add_argument("--limit", type=int, default=100)
+    evidence_show = subparsers.add_parser("kiwoom-official-sell-schema-evidence-show")
+    evidence_show.add_argument("--db", type=Path, required=True)
+    evidence_show.add_argument("--evidence-id", required=True)
+    evidence_review = subparsers.add_parser("kiwoom-official-sell-schema-evidence-review")
+    evidence_review.add_argument("--db", type=Path, required=True)
+    evidence_review.add_argument("--evidence-id", required=True)
+    evidence_review.add_argument("--status", choices=[item.value for item in OfficialSellSchemaEvidenceReviewStatus], required=True)
+    evidence_review.add_argument("--reviewed-by")
+    evidence_review.add_argument("--notes")
     account_health = subparsers.add_parser("kiwoom-account-read-health")
     account_health.add_argument("--db", type=Path, required=True)
     account_plan = subparsers.add_parser("kiwoom-account-read-plan")
@@ -1245,6 +1264,11 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-sandbox-sell-schema-reports",
         "kiwoom-sandbox-sell-schema-show",
         "kiwoom-sandbox-sell-dry-run",
+        "kiwoom-official-sell-schema-evidence-validate",
+        "kiwoom-official-sell-schema-evidence-import",
+        "kiwoom-official-sell-schema-evidence-list",
+        "kiwoom-official-sell-schema-evidence-show",
+        "kiwoom-official-sell-schema-evidence-review",
         "kiwoom-account-read-health",
         "kiwoom-account-read-plan",
         "kiwoom-account-read-run",
@@ -1754,6 +1778,27 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             except LookupError as error:
                 return {"status": "NOT_FOUND", "errors": [str(error)]}
         return KiwoomSandboxSellDryRunService(repository).run(args.order_intent_id).model_dump(mode="json")
+    if args.command == "kiwoom-official-sell-schema-evidence-validate":
+        return KiwoomOfficialSellSchemaEvidenceService().validate(args.evidence_file).model_dump(mode="json")
+    if args.command.startswith("kiwoom-official-sell-schema-evidence-"):
+        repository = RiskRepository(args.db)
+        service = KiwoomOfficialSellSchemaEvidenceService(repository)
+        if args.command == "kiwoom-official-sell-schema-evidence-import":
+            return service.import_evidence(args.evidence_file).model_dump(mode="json")
+        if args.command == "kiwoom-official-sell-schema-evidence-list":
+            return {"evidence": [item.model_dump(mode="json") for item in repository.list_official_sell_schema_evidence(args.limit)]}
+        if args.command == "kiwoom-official-sell-schema-evidence-show":
+            try:
+                return repository.get_official_sell_schema_evidence(args.evidence_id).model_dump(mode="json")
+            except LookupError as error:
+                return {"status": "NOT_FOUND", "errors": [str(error)]}
+        try:
+            return service.review(
+                args.evidence_id, OfficialSellSchemaEvidenceReviewStatus(args.status),
+                args.reviewed_by, args.notes,
+            ).model_dump(mode="json")
+        except (LookupError, ValueError) as error:
+            return {"status": "FAILED", "errors": [str(error)]}
     if args.command == "kiwoom-account-read-smoke-plan":
         return build_account_read_smoke_plan()
     if args.command.startswith("kiwoom-account-read-smoke-"):

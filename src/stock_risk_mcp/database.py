@@ -1122,6 +1122,35 @@ def create_schema(connection: sqlite3.Connection) -> None:
             dry_run_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS kiwoom_official_sell_schema_evidence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            evidence_id TEXT NOT NULL UNIQUE,
+            checksum TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_official_sell_schema_evidence_fields (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            evidence_field_id TEXT NOT NULL UNIQUE,
+            evidence_id TEXT NOT NULL,
+            field_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_official_sell_schema_evidence_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            import_id TEXT NOT NULL UNIQUE,
+            evidence_id TEXT,
+            import_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS kiwoom_official_sell_schema_evidence_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            review_id TEXT NOT NULL UNIQUE,
+            evidence_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            review_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(

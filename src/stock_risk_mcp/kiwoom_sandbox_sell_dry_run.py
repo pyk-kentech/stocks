@@ -24,6 +24,7 @@ class KiwoomSandboxSellDryRunService:
         execution = self.repository.get_latest_execution_gate_decision(order_intent_id)
         position = self.repository.get_local_ledger_position(intent.ticker, intent.region)
         reasons = []
+        reasons.append("SELL_DRY_RUN_APPROVAL_DISABLED_IN_V2_23")
         if intent.side != OrderSide.SELL:
             reasons.append("SELL_ORDER_INTENT_REQUIRED")
         if intent.order_type != OrderType.LIMIT:

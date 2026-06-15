@@ -1947,3 +1947,37 @@ behavior is unchanged. PROD, LIVE, account-read-driven orders, direct strategy
 broker access, raw account data, and real-network tests remain prohibited.
 Future v2.23 work may import and review official SELL schema evidence, followed
 by a separate MOCK sandbox SELL submission release if verification succeeds.
+
+## v2.23 Kiwoom Official SELL Schema Evidence Import And Review
+
+v2.23 adds an offline manual workflow for validating, importing, listing,
+showing, and reviewing official Kiwoom SELL schema evidence. Only an explicitly
+provided JSON or YAML file is read. The workflow does not search directories,
+scrape the web, read credentials, request tokens, call a network, or submit an
+order.
+
+Evidence files must identify `source_kind=OFFICIAL_KIWOOM_DOCUMENTATION`, match
+an `ORDER` endpoint in the committed v2.13 manifest, and explicitly document
+the side field, BUY and SELL values, order-type field, LIMIT value, symbol,
+quantity, limit-price, and redacted account-field handling. Guessed,
+ambiguous, unofficial, sensitive, or incomplete evidence is rejected.
+
+```powershell
+python -m stock_risk_mcp.cli kiwoom-official-sell-schema-evidence-validate --evidence-file data/official_sell_schema.json
+python -m stock_risk_mcp.cli kiwoom-official-sell-schema-evidence-import --db data/stock_risk_mcp.sqlite3 --evidence-file data/official_sell_schema.json
+python -m stock_risk_mcp.cli kiwoom-official-sell-schema-evidence-list --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli kiwoom-official-sell-schema-evidence-show --db data/stock_risk_mcp.sqlite3 --evidence-id <evidence-id>
+python -m stock_risk_mcp.cli kiwoom-official-sell-schema-evidence-review --db data/stock_risk_mcp.sqlite3 --evidence-id <evidence-id> --status VALIDATED --reviewed-by operator
+```
+
+Imports store SHA-256 checksum and normalized safe metadata only. Raw evidence
+files, account data, credentials, tokens, authorization headers, and secret
+paths are not persisted. Reviews are append-only.
+
+Complete evidence with latest `VALIDATED` review may make the offline schema
+verifier report `VERIFIED`. This does not grant execution permission. v2.23
+SELL dry-run remains blocked with
+`SELL_DRY_RUN_APPROVAL_DISABLED_IN_V2_23`, and actual sandbox SELL submission
+remains blocked. BUY sandbox behavior is unchanged. PROD and LIVE remain
+separate disabled boundaries. A future v2.24 may separately consider MOCK-only
+SELL dry-run approval.

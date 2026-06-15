@@ -1519,3 +1519,23 @@ live-execution design checkpoint with an explicit kill switch.
   this layer.
 - Future v2.23 work may import/review official SELL schema evidence and then
   consider MOCK sandbox SELL submission in a separate release.
+
+## v2.23 Kiwoom Official SELL Schema Evidence Import And Review
+
+- Added strict official SELL evidence, normalized field, validation, import,
+  and append-only review models.
+- Added explicit-path-only JSON/YAML validation with SHA-256 checksum,
+  manifest ORDER matching, required mapping checks, and sensitive/guessed/
+  unofficial evidence rejection.
+- Added safe normalized SQLite persistence. Raw evidence files, account data,
+  credentials, tokens, authorization headers, and secret paths are not stored.
+- Added five offline JSON CLI commands for validate, import, list, show, and
+  review.
+- Extended the v2.22 verifier so only complete imported evidence whose latest
+  review is `VALIDATED` may contribute to `VERIFIED`.
+- Kept evidence verification separate from execution permission. v2.23 SELL
+  dry-run always includes `SELL_DRY_RUN_APPROVAL_DISABLED_IN_V2_23`.
+- Kept actual sandbox SELL submission, PROD, LIVE, account-read-driven orders,
+  direct strategy broker access, and real-network tests blocked.
+- Existing BUY sandbox behavior remains unchanged. Future v2.24 may separately
+  consider MOCK-only SELL dry-run approval.

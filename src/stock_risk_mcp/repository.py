@@ -94,6 +94,12 @@ from stock_risk_mcp.kiwoom_sandbox_sell_schema import (
     SandboxSellSchemaFieldEvidence,
     SandboxSellSchemaVerificationReport,
 )
+from stock_risk_mcp.kiwoom_official_sell_schema_evidence import (
+    OfficialSellSchemaEvidence,
+    OfficialSellSchemaEvidenceField,
+    OfficialSellSchemaEvidenceImportReport,
+    OfficialSellSchemaEvidenceReview,
+)
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
@@ -2491,6 +2497,71 @@ class RiskRepository:
 
     def list_kiwoom_sandbox_sell_dry_runs(self, limit: int = 100) -> list[SandboxSellDryRunDecision]:
         return [SandboxSellDryRunDecision.model_validate_json(value) for value in self._list_json_records("kiwoom_sandbox_sell_dry_runs", "dry_run_json", limit)]
+
+    def save_official_sell_schema_evidence(self, evidence: OfficialSellSchemaEvidence) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_official_sell_schema_evidence (evidence_id, checksum, evidence_json, observed_at) VALUES (?, ?, ?, ?)",
+                (evidence.evidence_id, evidence.checksum, evidence.model_dump_json(), evidence.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def get_official_sell_schema_evidence(self, evidence_id: str) -> OfficialSellSchemaEvidence:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT evidence_json FROM kiwoom_official_sell_schema_evidence WHERE evidence_id=?", (evidence_id,)
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Official SELL schema evidence not found: {evidence_id}")
+        return OfficialSellSchemaEvidence.model_validate_json(str(row["evidence_json"]))
+
+    def list_official_sell_schema_evidence(self, limit: int = 100) -> list[OfficialSellSchemaEvidence]:
+        return [OfficialSellSchemaEvidence.model_validate_json(value) for value in self._list_json_records("kiwoom_official_sell_schema_evidence", "evidence_json", limit)]
+
+    def save_official_sell_schema_evidence_field(self, field: OfficialSellSchemaEvidenceField) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_official_sell_schema_evidence_fields (evidence_field_id, evidence_id, field_json, observed_at) VALUES (?, ?, ?, ?)",
+                (field.evidence_field_id, field.evidence_id, field.model_dump_json(), field.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_official_sell_schema_evidence_fields(self, evidence_id: str) -> list[OfficialSellSchemaEvidenceField]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT field_json FROM kiwoom_official_sell_schema_evidence_fields WHERE evidence_id=? ORDER BY id", (evidence_id,)
+            ).fetchall()
+        return [OfficialSellSchemaEvidenceField.model_validate_json(str(row["field_json"])) for row in rows]
+
+    def save_official_sell_schema_evidence_import(self, report: OfficialSellSchemaEvidenceImportReport) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_official_sell_schema_evidence_imports (import_id, evidence_id, import_json, observed_at) VALUES (?, ?, ?, ?)",
+                (report.import_id, report.evidence_id, report.model_dump_json(), report.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_official_sell_schema_evidence_imports(self, limit: int = 100) -> list[OfficialSellSchemaEvidenceImportReport]:
+        return [OfficialSellSchemaEvidenceImportReport.model_validate_json(value) for value in self._list_json_records("kiwoom_official_sell_schema_evidence_imports", "import_json", limit)]
+
+    def save_official_sell_schema_evidence_review(self, review: OfficialSellSchemaEvidenceReview) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO kiwoom_official_sell_schema_evidence_reviews (review_id, evidence_id, status, review_json, observed_at) VALUES (?, ?, ?, ?, ?)",
+                (review.review_id, review.evidence_id, review.status.value, review.model_dump_json(), review.observed_at.isoformat()),
+            )
+            return int(cursor.lastrowid)
+
+    def list_official_sell_schema_evidence_reviews(self, evidence_id: str) -> list[OfficialSellSchemaEvidenceReview]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT review_json FROM kiwoom_official_sell_schema_evidence_reviews WHERE evidence_id=? ORDER BY id", (evidence_id,)
+            ).fetchall()
+        return [OfficialSellSchemaEvidenceReview.model_validate_json(str(row["review_json"])) for row in rows]
+
+    def get_latest_official_sell_schema_evidence_review(self, evidence_id: str) -> OfficialSellSchemaEvidenceReview | None:
+        reviews = self.list_official_sell_schema_evidence_reviews(evidence_id)
+        return reviews[-1] if reviews else None
 
     def _save_sandbox_record(self, table: str, columns: tuple[str, ...], values: tuple) -> int:
         placeholders = ", ".join("?" for _ in columns)

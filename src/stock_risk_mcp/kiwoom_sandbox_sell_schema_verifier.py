@@ -8,6 +8,7 @@ from stock_risk_mcp.kiwoom_sandbox_sell_schema import (
     SandboxSellSchemaVerificationReport,
     SandboxSellSchemaVerificationStatus,
 )
+from stock_risk_mcp.kiwoom_official_sell_schema_evidence import OfficialSellSchemaEvidenceReviewStatus
 
 
 REQUIRED_MAPPING_FIELDS = (
@@ -35,6 +36,7 @@ class KiwoomSandboxSellSchemaVerifier:
         verified = []
         missing = []
         blocked_reason = None
+        reviewed_evidence = None
         status = SandboxSellSchemaVerificationStatus.UNVERIFIED
         if environment != KiwoomRealNetworkEnvironment.MOCK:
             status = SandboxSellSchemaVerificationStatus.BLOCKED_UNOFFICIAL_ASSUMPTION
@@ -51,6 +53,12 @@ class KiwoomSandboxSellSchemaVerifier:
         else:
             verified = ["endpoint_id", "endpoint_path", "endpoint_method", "endpoint_classification"]
             missing = list(REQUIRED_MAPPING_FIELDS)
+            reviewed_evidence = self._reviewed_evidence(endpoint_id)
+            if reviewed_evidence:
+                verified.extend(REQUIRED_MAPPING_FIELDS)
+                missing = []
+                status = SandboxSellSchemaVerificationStatus.VERIFIED
+                blocked_reason = None
         report = SandboxSellSchemaVerificationReport(
             status=status,
             endpoint_id=endpoint_id,
@@ -59,7 +67,15 @@ class KiwoomSandboxSellSchemaVerifier:
             verified_fields=verified,
             missing_fields=missing,
             blocked_reason=blocked_reason,
-            source_references=[endpoint.source] if endpoint else [],
+            source_references=list(dict.fromkeys([
+                *([endpoint.source] if endpoint else []),
+                *([reviewed_evidence.source_url] if reviewed_evidence and reviewed_evidence.source_url else []),
+            ])),
+            metadata_json={
+                "redacted": True, "network_called": False, "credentials_read": False,
+                "token_requested": False, "orders_submitted": False,
+                "official_evidence_id": reviewed_evidence.evidence_id if reviewed_evidence else None,
+            },
         )
         report.fields = [
             SandboxSellSchemaFieldEvidence(
@@ -74,3 +90,17 @@ class KiwoomSandboxSellSchemaVerifier:
         if self.repository:
             self.repository.save_kiwoom_sandbox_sell_schema_report(report)
         return report
+
+    def _reviewed_evidence(self, endpoint_id: str):
+        if not self.repository:
+            return None
+        for evidence in self.repository.list_official_sell_schema_evidence():
+            review = self.repository.get_latest_official_sell_schema_evidence_review(evidence.evidence_id)
+            if (
+                evidence.endpoint_id == endpoint_id
+                and review is not None
+                and review.status == OfficialSellSchemaEvidenceReviewStatus.VALIDATED
+                and all(evidence.request_fields.get(name) for name in REQUIRED_MAPPING_FIELDS)
+            ):
+                return evidence
+        return None
