@@ -9,6 +9,7 @@ from stock_risk_mcp.repository import RiskRepository
 from stock_risk_mcp.strategy_service import StrategyService
 from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.technical_evidence_service import run_technical_evidence
+from stock_risk_mcp.market_discovery_service import run_market_discovery
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -69,6 +70,30 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         "config": {}, "series": [{"ticker": "DEMO", "points": technical_points}],
     }, sort_keys=True), encoding="utf-8")
     technical = run_technical_evidence(technical_fixture)
+    discovery_fixture = Path(output_dir) / "market_discovery_smoke_fixture.json"
+    discovery_fixture.write_text(json.dumps({
+        "schema_version": "3.3",
+        "as_of_timestamp": "2026-06-13T10:00:00+00:00",
+        "scanner_config": {
+            "min_price": 1,
+            "max_price": 100,
+            "min_price_change_pct": 2,
+            "min_volume_spike_ratio": 1.5,
+            "min_dollar_volume_spike_ratio": 1.5,
+            "min_average_dollar_volume_20d": 10_000_000,
+            "max_candidates": 10,
+        },
+        "rows": [{
+            "ticker": "DEMO",
+            "observed_at": "2026-06-13T09:59:00+00:00",
+            "price": 12,
+            "previous_close": 10,
+            "volume": 3_000_000,
+            "average_volume_20d": 1_000_000,
+            "average_dollar_volume_20d": 20_000_000,
+        }],
+    }, sort_keys=True), encoding="utf-8")
+    discovery = run_market_discovery(discovery_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -85,6 +110,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "strategy_fixture_run": strategy["run"].status.value == "COMPLETED" and len(strategy["decisions"]) == 1,
             "strategy_backtest_fixture_run": backtest["run"].status == "COMPLETED" and backtest["report"].metric.trade_count == 1,
             "technical_evidence_fixture_run": len(technical.evidence) == 1,
+            "market_discovery_fixture_run": len(discovery.candidates) == 1,
             "external_network_calls": False,
         },
         "key_outputs": result.key_outputs,

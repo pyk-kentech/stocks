@@ -2077,3 +2077,28 @@ brokers, Kiwoom, account reads, credentials, tokens, external network, PROD,
 or LIVE. Existing indicator calculators and `SetupGrader` behavior remain
 unchanged. True CVD/order flow, configurable periods, persistence, and
 strategy/order integration are deferred.
+
+## v3.3 Market Universe / Volume Spike Discovery
+
+v3.3 adds a pure offline discovery scanner for one explicitly selected local
+JSON fixture or CSV screener export. It calculates deterministic price-change,
+volume-spike, dollar-volume-spike, and liquidity evidence, then classifies
+rows as `DISCOVER`, `WATCH`, or `EXCLUDE`.
+
+```bash
+python -m stock_risk_mcp.cli market-discovery-run --fixture-file data/market_discovery_fixture.json
+python -m stock_risk_mcp.cli market-discovery-run --fixture-file data/screener_export.csv --output-file outputs/market_discovery.json
+python -m stock_risk_mcp.cli market-discovery-show --output-file outputs/market_discovery.json
+```
+
+JSON and CSV inputs normalize into the same strict v3.3 snapshot model.
+Timestamps must include timezone information, duplicate tickers and future
+rows are rejected, numeric baselines must be finite and positive, and CSV
+headers/config values are strict. Ranking is deterministic by classification,
+score descending, and ticker ascending; the advisory candidate limit excludes
+`EXCLUDE` rows.
+
+Discovery output is advisory research evidence only. It does not use SQLite,
+DB/provider/realtime data, brokers, Kiwoom, account reads, credentials, tokens,
+external network, scraping, PROD, or LIVE. It does not create technical
+grades, `StrategyDecision`, trade plans, `OrderIntent`, orders, or executions.

@@ -1601,3 +1601,21 @@ live-execution design checkpoint with an explicit kill switch.
   token, StrategyDecision, OrderIntent, PROD, and LIVE paths outside v3.2.
 - Used no CVD naming because the fixture contains no true trade-direction
   order-flow data.
+
+## v3.3 Market Universe / Volume Spike Discovery Layer
+
+- Added strict explicit-local-JSON-or-CSV snapshot fixture and result models
+  with exact CSV headers, repeated-config validation, timezone-aware as-of
+  validation, duplicate ticker rejection, and finite positive baselines.
+- Added pure deterministic price-change, volume-spike, dollar-volume-spike,
+  and liquidity evidence with fixed component scoring and
+  `DISCOVER`/`WATCH`/`EXCLUDE` classification.
+- Added stable classification/score/ticker ranking, candidate limiting, full
+  evaluation audit output, and JSON/CSV normalized-result equivalence.
+- Added JSON-only `market-discovery-run` and `market-discovery-show` commands
+  with optional explicit result-file output and no SQLite audit.
+- Extended system smoke with a temporary local discovery fixture while
+  preserving `external_network_calls=false`.
+- Kept DB, provider, realtime, broker, Kiwoom, account, order, credential,
+  token, StrategyDecision, OrderIntent, scraping, PROD, and LIVE paths outside
+  v3.3.
