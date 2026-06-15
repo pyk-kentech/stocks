@@ -101,6 +101,14 @@ from stock_risk_mcp.kiwoom_official_sell_schema_evidence import (
     OfficialSellSchemaEvidenceReview,
 )
 from stock_risk_mcp.kiwoom_mock_execution_models import KiwoomMockOrderReceipt, KiwoomMockOrderRequest
+from stock_risk_mcp.strategy_advisor import LocalLLMReview
+from stock_risk_mcp.strategy_core import (
+    StrategyCandidate,
+    StrategyDecision,
+    StrategyDecisionStatus,
+    StrategyFeatureSnapshot,
+    StrategyRun,
+)
 from stock_risk_mcp.notification_run import NotificationRun, NotificationRunStatus
 from stock_risk_mcp.order_intent import (
     ExecutionGateDecision,
@@ -2638,6 +2646,75 @@ class RiskRepository:
             if receipt.mock_order_id == mock_order_id:
                 return receipt
         raise LookupError(f"Kiwoom mock order not found: {mock_order_id}")
+
+    def save_strategy_run(self, item: StrategyRun) -> int:
+        return self._save_sandbox_record(
+            "strategy_runs", ("run_id", "status", "run_json", "observed_at"),
+            (item.run_id, item.status.value, item.model_dump_json(), item.created_at.isoformat()),
+        )
+
+    def get_strategy_run(self, run_id: str) -> StrategyRun:
+        return StrategyRun.model_validate_json(self._get_json_record("strategy_runs", "run_id", run_id, "run_json"))
+
+    def save_strategy_feature_snapshot(self, item: StrategyFeatureSnapshot, run_id: str) -> int:
+        return self._save_sandbox_record(
+            "strategy_feature_snapshots", ("snapshot_id", "run_id", "ticker", "snapshot_json", "observed_at"),
+            (item.snapshot_id, run_id, item.ticker, item.model_dump_json(), item.observed_at.isoformat()),
+        )
+
+    def get_strategy_feature_snapshot(self, snapshot_id: str) -> StrategyFeatureSnapshot:
+        return StrategyFeatureSnapshot.model_validate_json(
+            self._get_json_record("strategy_feature_snapshots", "snapshot_id", snapshot_id, "snapshot_json")
+        )
+
+    def save_strategy_candidate(self, item: StrategyCandidate, run_id: str) -> int:
+        return self._save_sandbox_record(
+            "strategy_candidates", ("candidate_id", "run_id", "snapshot_id", "candidate_json", "observed_at"),
+            (item.candidate_id, run_id, item.snapshot_id, item.model_dump_json(), datetime.now().isoformat()),
+        )
+
+    def get_strategy_candidate(self, candidate_id: str) -> StrategyCandidate:
+        return StrategyCandidate.model_validate_json(
+            self._get_json_record("strategy_candidates", "candidate_id", candidate_id, "candidate_json")
+        )
+
+    def list_strategy_candidates(self, limit: int = 100) -> list[StrategyCandidate]:
+        return [StrategyCandidate.model_validate_json(value) for value in self._list_json_records("strategy_candidates", "candidate_json", limit)]
+
+    def save_strategy_decision(self, item: StrategyDecision) -> int:
+        return self._save_sandbox_record(
+            "strategy_decisions", ("decision_id", "run_id", "candidate_id", "status", "decision_json", "observed_at"),
+            (item.decision_id, item.run_id, item.candidate_id, item.status.value, item.model_dump_json(), item.created_at.isoformat()),
+        )
+
+    def get_strategy_decision(self, decision_id: str) -> StrategyDecision:
+        return StrategyDecision.model_validate_json(
+            self._get_json_record("strategy_decisions", "decision_id", decision_id, "decision_json")
+        )
+
+    def list_strategy_decisions(
+        self, status: StrategyDecisionStatus | None = None, limit: int = 100
+    ) -> list[StrategyDecision]:
+        with self._connect() as connection:
+            if status:
+                rows = connection.execute(
+                    "SELECT decision_json FROM strategy_decisions WHERE status=? ORDER BY id DESC LIMIT ?",
+                    (status.value, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT decision_json FROM strategy_decisions ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+        return [StrategyDecision.model_validate_json(str(row["decision_json"])) for row in rows]
+
+    def save_local_llm_review(self, item: LocalLLMReview) -> int:
+        return self._save_sandbox_record(
+            "local_llm_reviews", ("review_id", "run_id", "decision_id", "status", "review_json", "observed_at"),
+            (item.review_id, item.run_id, item.decision_id, item.status, item.model_dump_json(), item.created_at.isoformat()),
+        )
+
+    def list_local_llm_reviews(self, limit: int = 100) -> list[LocalLLMReview]:
+        return [LocalLLMReview.model_validate_json(value) for value in self._list_json_records("local_llm_reviews", "review_json", limit)]
 
     def get_replay_run(self, run_id: str) -> ReplayRun:
         with self._connect() as connection:

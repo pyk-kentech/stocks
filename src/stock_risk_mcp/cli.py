@@ -132,6 +132,10 @@ from stock_risk_mcp.service import RiskEvaluationService
 from stock_risk_mcp.setup import TradeDecision, TradeSizingPolicy
 from stock_risk_mcp.setup_grading import SetupGrader
 from stock_risk_mcp.strategy_optimizer import StrategyOptimizer
+from stock_risk_mcp.strategy_advisor import DisabledLocalLLMAdvisor
+from stock_risk_mcp.strategy_core import StrategyDecisionStatus
+from stock_risk_mcp.strategy_order_intent_draft import create_order_intent_draft
+from stock_risk_mcp.strategy_service import StrategyService
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
@@ -330,6 +334,28 @@ def build_command_parser() -> argparse.ArgumentParser:
     sell_show = subparsers.add_parser("sell-safety-show")
     sell_show.add_argument("--db", type=Path, required=True)
     sell_show.add_argument("--decision-id", required=True)
+
+    strategy_run = subparsers.add_parser("strategy-run")
+    strategy_run.add_argument("--db", type=Path, required=True)
+    strategy_run.add_argument("--fixture-file", type=Path, required=True)
+    strategy_run.add_argument("--include-local-llm-review", action="store_true")
+    strategy_decisions = subparsers.add_parser("strategy-decisions")
+    strategy_decisions.add_argument("--db", type=Path, required=True)
+    strategy_decisions.add_argument("--status", choices=[item.value for item in StrategyDecisionStatus])
+    strategy_decisions.add_argument("--limit", type=int, default=100)
+    strategy_decision_show = subparsers.add_parser("strategy-decision-show")
+    strategy_decision_show.add_argument("--db", type=Path, required=True)
+    strategy_decision_show.add_argument("--decision-id", required=True)
+    strategy_candidates = subparsers.add_parser("strategy-candidates")
+    strategy_candidates.add_argument("--db", type=Path, required=True)
+    strategy_candidates.add_argument("--limit", type=int, default=100)
+    strategy_candidate_show = subparsers.add_parser("strategy-candidate-show")
+    strategy_candidate_show.add_argument("--db", type=Path, required=True)
+    strategy_candidate_show.add_argument("--candidate-id", required=True)
+    strategy_draft = subparsers.add_parser("strategy-create-order-intent-draft")
+    strategy_draft.add_argument("--db", type=Path, required=True)
+    strategy_draft.add_argument("--decision-id", required=True)
+    subparsers.add_parser("local-llm-health")
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1214,6 +1240,13 @@ def main(argv: list[str] | None = None) -> None:
         "sell-safety-check",
         "sell-safety-decisions",
         "sell-safety-show",
+        "strategy-run",
+        "strategy-decisions",
+        "strategy-decision-show",
+        "strategy-candidates",
+        "strategy-candidate-show",
+        "strategy-create-order-intent-draft",
+        "local-llm-health",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1565,6 +1598,46 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             reason="offline local-ledger sell-safety check", confidence_score=1,
         )
         return SellSafetyGate(repository).evaluate(intent, args.reconciliation_status).model_dump(mode="json")
+    if args.command == "strategy-run":
+        try:
+            result = StrategyService(RiskRepository(args.db)).run_fixture(
+                args.fixture_file, args.include_local_llm_review
+            )
+            return {
+                "run": result["run"].model_dump(mode="json"),
+                "decisions": [item.model_dump(mode="json") for item in result["decisions"]],
+                "local_llm_reviews": [item.model_dump(mode="json") for item in result["local_llm_reviews"]],
+            }
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)], "decisions": []}
+    if args.command == "strategy-decisions":
+        items = RiskRepository(args.db).list_strategy_decisions(
+            StrategyDecisionStatus(args.status) if args.status else None, args.limit
+        )
+        return {"decisions": [item.model_dump(mode="json") for item in items]}
+    if args.command == "strategy-decision-show":
+        try:
+            return RiskRepository(args.db).get_strategy_decision(args.decision_id).model_dump(mode="json")
+        except LookupError as exc:
+            return {"status": "NOT_FOUND", "errors": [str(exc)]}
+    if args.command == "strategy-candidates":
+        return {"candidates": [
+            item.model_dump(mode="json") for item in RiskRepository(args.db).list_strategy_candidates(args.limit)
+        ]}
+    if args.command == "strategy-candidate-show":
+        try:
+            return RiskRepository(args.db).get_strategy_candidate(args.candidate_id).model_dump(mode="json")
+        except LookupError as exc:
+            return {"status": "NOT_FOUND", "errors": [str(exc)]}
+    if args.command == "strategy-create-order-intent-draft":
+        try:
+            repository = RiskRepository(args.db)
+            intent = create_order_intent_draft(repository, repository.get_strategy_decision(args.decision_id))
+            return {"status": "CREATED", "order_intent": intent.model_dump(mode="json")}
+        except (LookupError, ValueError) as exc:
+            return {"status": "BLOCKED", "errors": [str(exc)]}
+    if args.command == "local-llm-health":
+        return DisabledLocalLLMAdvisor().health()
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(

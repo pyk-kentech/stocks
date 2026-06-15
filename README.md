@@ -1981,3 +1981,36 @@ SELL dry-run remains blocked with
 remains blocked. BUY sandbox behavior is unchanged. PROD and LIVE remain
 separate disabled boundaries. A future v2.24 may separately consider MOCK-only
 SELL dry-run approval.
+
+## v3.0 Strategy Core And Local LLM Safety Boundary
+
+v3.0 adds a non-executing strategy recommendation layer above the v2.x
+execution safety infrastructure. `strategy-run` reads exactly one explicitly
+selected local JSON fixture. It does not query existing signal or realtime
+SQLite data, call Kiwoom or brokers, read account data or credentials, use a
+network, evaluate gates, or submit orders.
+
+```bash
+python -m stock_risk_mcp.cli strategy-run --db data/stock_risk_mcp.sqlite3 --fixture-file data/strategy_fixture.json
+python -m stock_risk_mcp.cli strategy-decisions --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-candidates --db data/stock_risk_mcp.sqlite3
+python -m stock_risk_mcp.cli strategy-create-order-intent-draft --db data/stock_risk_mcp.sqlite3 --decision-id <decision-id>
+python -m stock_risk_mcp.cli local-llm-health
+```
+
+The deterministic strategy core consumes strict `StrategyFeatureSnapshot` and
+`StrategyCandidate` values and produces `WATCH`, `AVOID`, `CANDIDATE_BUY`,
+`CANDIDATE_SELL`, `BLOCKED`, or `NEEDS_MORE_DATA` decisions. Only eligible
+BUY/SELL decisions may create an `OrderIntent` draft in `CREATED` status.
+MARKET, margin, short, credit, leverage, options, futures, and fractional
+candidate drafts are blocked. SELL drafts explicitly require later local
+ledger sell-safety. RiskGate and ExecutionGate remain separate later steps.
+
+The strategy `LocalLLMAdvisor` is disabled by default and is advisory only. It
+cannot change deterministic decisions, create orders, approve gates, or access
+fixture-external data. Tests and system smoke use local fixtures only and keep
+`external_network_calls=false`.
+
+Future work may add a v3.1 backtest harness, a v3.2 ranking and separate
+DB-to-feature-snapshot adapter, and a v3.3 local LLM prompt/evaluation adapter.
+Live execution and PROD remain blocked.

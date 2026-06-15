@@ -1539,3 +1539,24 @@ live-execution design checkpoint with an explicit kill switch.
   direct strategy broker access, and real-network tests blocked.
 - Existing BUY sandbox behavior remains unchanged. Future v2.24 may separately
   consider MOCK-only SELL dry-run approval.
+
+## v3.0 Strategy Core And Local LLM Safety Boundary
+
+- Added strict strategy snapshot, candidate, decision, run, config, status,
+  and reason models plus a deterministic baseline strategy engine.
+- Added explicit JSON fixture loading only. The strategy run does not query
+  existing provider, signal, or realtime SQLite tables.
+- Added a disabled-by-default advisory-only `LocalLLMAdvisor` boundary with no
+  network, credential, account, order, or gate authority.
+- Added append-only `strategy_runs`, `strategy_feature_snapshots`,
+  `strategy_candidates`, `strategy_decisions`, and `local_llm_reviews` audit
+  tables.
+- Added seven JSON CLI commands for fixture runs, decision/candidate audit
+  reads, draft OrderIntent creation, and disabled local LLM health.
+- Kept drafts in `CREATED` status. MARKET and forbidden exposures are blocked,
+  SELL drafts require later sell-safety, and no strategy command evaluates
+  RiskGate, ExecutionGate, broker submission, PROD, or LIVE.
+- Extended system smoke with an explicit local strategy fixture while
+  preserving `external_network_calls=false`.
+- Future v3.1-v3.3 work may add backtesting, ranking and a separate DB adapter,
+  and local LLM prompt evaluation without weakening the strategy-core boundary.

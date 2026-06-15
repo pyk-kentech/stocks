@@ -1151,6 +1151,47 @@ def create_schema(connection: sqlite3.Connection) -> None:
             review_json TEXT NOT NULL,
             observed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS strategy_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            run_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS strategy_feature_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS strategy_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            candidate_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS strategy_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            decision_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS local_llm_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            review_id TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            decision_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            review_json TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
         """
     )
     _add_missing_columns(
