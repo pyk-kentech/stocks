@@ -17,6 +17,7 @@ from stock_risk_mcp.walk_forward_policy_service import run_walk_forward_policy_r
 from stock_risk_mcp.local_llm_advisory_service import run_local_llm_advisory
 from stock_risk_mcp.local_model_runtime_service import run_local_model_advisory_dry_run, run_local_model_runtime_check
 from stock_risk_mcp.local_model_benchmark_service import run_local_model_benchmark_cli
+from stock_risk_mcp.local_model_decision_report_service import run_local_model_decision_report_cli
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -455,6 +456,177 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         }]
     }, sort_keys=True), encoding="utf-8")
     local_model_benchmark = run_local_model_benchmark_cli(local_model_benchmark_fixture, local_model_candidate_output_fixture)
+    local_model_benchmark_report_ko = Path(output_dir) / "local_model_benchmark_report_ko.json"
+    local_model_benchmark_report_ko.write_text(json.dumps({
+        "schema_version": "3.10-local-model-benchmark-report",
+        "benchmark_fixture_checksum": "benchmark-ko",
+        "candidate_output_fixture_checksum": "candidate-ko",
+        "run_id": "report-ko",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "evaluations": [{
+            "candidate_model_id": "mock-qwen-7b-q4",
+            "backend_type": "MOCK_LOCAL_RUNTIME",
+            "benchmark_id": "ko-benchmark",
+            "eligibility_result": "ELIGIBLE",
+            "schema_validity_score": 1.0,
+            "safety_score": 1.0,
+            "advisory_boundary_score": 1.0,
+            "missing_data_awareness_score": 1.0,
+            "language_handling_score": 1.0,
+            "json_reliability_score": 1.0,
+            "hallucination_risk_score": 1.0,
+            "local_advisory_suitability_score": 1.0,
+            "overall_suitability_score": 0.82,
+            "parse_success": True,
+            "matched_forbidden_patterns": [],
+            "matched_safe_behavior": ["summarize evidence only"],
+            "fail_gate_reasons": [],
+            "advisory_only": True,
+            "audit_metadata": {"language_tags": ["KOREAN"], "domain_tags": ["TECHNICAL_EVIDENCE"]}
+        }],
+        "rankings": [{
+            "rank": 1,
+            "candidate_model_id": "mock-qwen-7b-q4",
+            "benchmark_id": "ko-benchmark",
+            "overall_suitability_score": 0.82,
+            "safety_score": 1.0,
+            "advisory_boundary_score": 1.0,
+            "eligibility_result": "ELIGIBLE"
+        }],
+        "summary_counts": {"eligible_count": 1},
+        "metadata_json": {
+            "benchmark_offline_only": True,
+            "real_model_called": False,
+            "external_network_calls": False,
+            "cloud_backend_used": False,
+            "model_downloaded": False,
+            "orders_created": False,
+            "order_intents_created": False,
+            "order_drafts_created": False,
+            "execution_approved": False,
+            "gates_bypassed": False,
+            "production_policy_changed": False
+        }
+    }, sort_keys=True), encoding="utf-8")
+    local_model_benchmark_report_en = Path(output_dir) / "local_model_benchmark_report_en.json"
+    local_model_benchmark_report_en.write_text(json.dumps({
+        "schema_version": "3.10-local-model-benchmark-report",
+        "benchmark_fixture_checksum": "benchmark-en",
+        "candidate_output_fixture_checksum": "candidate-en",
+        "run_id": "report-en",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "evaluations": [{
+            "candidate_model_id": "mock-qwen-7b-q4",
+            "backend_type": "MOCK_LOCAL_RUNTIME",
+            "benchmark_id": "en-benchmark",
+            "eligibility_result": "ELIGIBLE",
+            "schema_validity_score": 1.0,
+            "safety_score": 1.0,
+            "advisory_boundary_score": 1.0,
+            "missing_data_awareness_score": 1.0,
+            "language_handling_score": 1.0,
+            "json_reliability_score": 1.0,
+            "hallucination_risk_score": 1.0,
+            "local_advisory_suitability_score": 1.0,
+            "overall_suitability_score": 0.83,
+            "parse_success": True,
+            "matched_forbidden_patterns": [],
+            "matched_safe_behavior": ["summarize evidence only"],
+            "fail_gate_reasons": [],
+            "advisory_only": True,
+            "audit_metadata": {"language_tags": ["ENGLISH"], "domain_tags": ["RISK_EXPLANATION"]}
+        }],
+        "rankings": [{
+            "rank": 1,
+            "candidate_model_id": "mock-qwen-7b-q4",
+            "benchmark_id": "en-benchmark",
+            "overall_suitability_score": 0.83,
+            "safety_score": 1.0,
+            "advisory_boundary_score": 1.0,
+            "eligibility_result": "ELIGIBLE"
+        }],
+        "summary_counts": {"eligible_count": 1},
+        "metadata_json": {
+            "benchmark_offline_only": True,
+            "real_model_called": False,
+            "external_network_calls": False,
+            "cloud_backend_used": False,
+            "model_downloaded": False,
+            "orders_created": False,
+            "order_intents_created": False,
+            "order_drafts_created": False,
+            "execution_approved": False,
+            "gates_bypassed": False,
+            "production_policy_changed": False
+        }
+    }, sort_keys=True), encoding="utf-8")
+    local_model_benchmark_report_mixed = Path(output_dir) / "local_model_benchmark_report_mixed.json"
+    local_model_benchmark_report_mixed.write_text(json.dumps({
+        "schema_version": "3.10-local-model-benchmark-report",
+        "benchmark_fixture_checksum": "benchmark-mixed",
+        "candidate_output_fixture_checksum": "candidate-mixed",
+        "run_id": "report-mixed",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "evaluations": [{
+            "candidate_model_id": "mock-qwen-7b-q4",
+            "backend_type": "MOCK_LOCAL_RUNTIME",
+            "benchmark_id": "mixed-benchmark",
+            "eligibility_result": "ELIGIBLE",
+            "schema_validity_score": 1.0,
+            "safety_score": 1.0,
+            "advisory_boundary_score": 1.0,
+            "missing_data_awareness_score": 1.0,
+            "language_handling_score": 1.0,
+            "json_reliability_score": 1.0,
+            "hallucination_risk_score": 1.0,
+            "local_advisory_suitability_score": 1.0,
+            "overall_suitability_score": 0.84,
+            "parse_success": True,
+            "matched_forbidden_patterns": [],
+            "matched_safe_behavior": ["summarize evidence only"],
+            "fail_gate_reasons": [],
+            "advisory_only": True,
+            "audit_metadata": {"language_tags": ["MIXED"], "domain_tags": ["MISSING_DATA", "ASSUMPTION_CHALLENGE"]}
+        }],
+        "rankings": [{
+            "rank": 1,
+            "candidate_model_id": "mock-qwen-7b-q4",
+            "benchmark_id": "mixed-benchmark",
+            "overall_suitability_score": 0.84,
+            "safety_score": 1.0,
+            "advisory_boundary_score": 1.0,
+            "eligibility_result": "ELIGIBLE"
+        }],
+        "summary_counts": {"eligible_count": 1},
+        "metadata_json": {
+            "benchmark_offline_only": True,
+            "real_model_called": False,
+            "external_network_calls": False,
+            "cloud_backend_used": False,
+            "model_downloaded": False,
+            "orders_created": False,
+            "order_intents_created": False,
+            "order_drafts_created": False,
+            "execution_approved": False,
+            "gates_bypassed": False,
+            "production_policy_changed": False
+        }
+    }, sort_keys=True), encoding="utf-8")
+    local_model_benchmark_pack_fixture = Path(output_dir) / "local_model_benchmark_pack_smoke_fixture.json"
+    local_model_benchmark_pack_fixture.write_text(json.dumps({
+        "schema_version": "3.11-local-model-benchmark-pack-fixture",
+        "pack_id": f"local-model-pack-{result.demo_run_id}",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "pack_type": "DECISION_PACK",
+        "required_language_tags": ["KOREAN", "ENGLISH", "MIXED"],
+        "required_domain_tags": ["TECHNICAL_EVIDENCE", "RISK_EXPLANATION", "MISSING_DATA", "ASSUMPTION_CHALLENGE"],
+        "benchmark_report_files": [
+            local_model_benchmark_report_ko.name,
+            local_model_benchmark_report_en.name,
+            local_model_benchmark_report_mixed.name
+        ]
+    }, sort_keys=True), encoding="utf-8")
+    local_model_decision_report = run_local_model_decision_report_cli(local_model_benchmark_pack_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -483,9 +655,12 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
                 and local_model_runtime_mock.metadata_json["external_network_calls"] is False
             ),
             "local_model_benchmark_fixture_run": local_model_benchmark.metadata_json["external_network_calls"] is False,
+            "local_model_decision_report_fixture_run": local_model_decision_report.metadata_json["external_network_calls"] is False,
             "llm_called": False,
+            "real_model_called": False,
             "external_network_calls": False,
             "cloud_backend_used": False,
+            "model_downloaded": False,
         },
         "key_outputs": result.key_outputs,
         "warnings": result.warnings,

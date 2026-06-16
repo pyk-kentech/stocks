@@ -94,6 +94,11 @@ from stock_risk_mcp.local_model_benchmark_service import (
     rank_local_model_candidates_from_report,
     run_local_model_benchmark_cli,
 )
+from stock_risk_mcp.local_model_decision_report_service import (
+    run_local_model_decision_report_cli,
+    load_local_model_decision_report,
+    validate_local_model_benchmark_pack,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -442,6 +447,11 @@ def build_command_parser() -> argparse.ArgumentParser:
     local_model_candidates_rank = subparsers.add_parser("local-model-candidates-rank")
     local_model_candidates_rank.add_argument("--benchmark-report-file", type=Path, required=True)
     local_model_candidates_rank.add_argument("--output-file", type=Path)
+    local_model_decision_report = subparsers.add_parser("local-model-decision-report")
+    local_model_decision_report.add_argument("--pack-file", type=Path, required=True)
+    local_model_decision_report.add_argument("--output-file", type=Path)
+    local_model_benchmark_pack_validate = subparsers.add_parser("local-model-benchmark-pack-validate")
+    local_model_benchmark_pack_validate.add_argument("--pack-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1357,6 +1367,8 @@ def main(argv: list[str] | None = None) -> None:
         "local-model-benchmark-run",
         "local-model-benchmark-show",
         "local-model-candidates-rank",
+        "local-model-decision-report",
+        "local-model-benchmark-pack-validate",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1913,6 +1925,19 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 Path(args.output_file).write_text(json.dumps({"ranked_candidates": ranked}, indent=2), encoding="utf-8")
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "ranked_count": len(ranked)}
             return {"ranked_candidates": ranked}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-decision-report":
+        try:
+            result = run_local_model_decision_report_cli(args.pack_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "recommendation_status": result.recommendation_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-benchmark-pack-validate":
+        try:
+            return validate_local_model_benchmark_pack(args.pack_file)
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
