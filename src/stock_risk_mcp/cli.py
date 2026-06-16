@@ -89,6 +89,11 @@ from stock_risk_mcp.local_model_runtime_service import (
     run_local_model_candidates_list,
     run_local_model_runtime_check,
 )
+from stock_risk_mcp.local_model_benchmark_service import (
+    load_local_model_benchmark_report,
+    rank_local_model_candidates_from_report,
+    run_local_model_benchmark_cli,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -428,6 +433,15 @@ def build_command_parser() -> argparse.ArgumentParser:
     local_model_advisory_dry_run = subparsers.add_parser("local-model-advisory-dry-run")
     local_model_advisory_dry_run.add_argument("--fixture-file", type=Path, required=True)
     local_model_advisory_dry_run.add_argument("--output-file", type=Path)
+    local_model_benchmark_run = subparsers.add_parser("local-model-benchmark-run")
+    local_model_benchmark_run.add_argument("--fixture-file", type=Path, required=True)
+    local_model_benchmark_run.add_argument("--candidate-output-file", type=Path, required=True)
+    local_model_benchmark_run.add_argument("--output-file", type=Path)
+    local_model_benchmark_show = subparsers.add_parser("local-model-benchmark-show")
+    local_model_benchmark_show.add_argument("--output-file", type=Path, required=True)
+    local_model_candidates_rank = subparsers.add_parser("local-model-candidates-rank")
+    local_model_candidates_rank.add_argument("--benchmark-report-file", type=Path, required=True)
+    local_model_candidates_rank.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1340,6 +1354,9 @@ def main(argv: list[str] | None = None) -> None:
         "local-model-candidates-list",
         "local-model-runtime-check",
         "local-model-advisory-dry-run",
+        "local-model-benchmark-run",
+        "local-model-benchmark-show",
+        "local-model-candidates-rank",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1874,6 +1891,28 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "result_status": result.status.value}
             return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-benchmark-run":
+        try:
+            result = run_local_model_benchmark_cli(args.fixture_file, args.candidate_output_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "eligible_count": result.summary_counts["eligible_count"]}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-benchmark-show":
+        try:
+            return load_local_model_benchmark_report(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-candidates-rank":
+        try:
+            ranked = rank_local_model_candidates_from_report(args.benchmark_report_file)
+            if args.output_file:
+                Path(args.output_file).write_text(json.dumps({"ranked_candidates": ranked}, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "ranked_count": len(ranked)}
+            return {"ranked_candidates": ranked}
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

@@ -22,5 +22,6 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["policy_replay_fixture_run"] is True
     assert result["checks"]["llm_advisory_fixture_run"] is True
     assert result["checks"]["local_model_runtime_fixture_run"] is True
+    assert result["checks"]["local_model_benchmark_fixture_run"] is True
     assert result["checks"]["llm_called"] is False
     assert result["checks"]["cloud_backend_used"] is False
