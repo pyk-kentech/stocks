@@ -5,9 +5,9 @@
 - GitHub target: `https://github.com/pyk-kentech/stocks`
 - Current branch: `master`
 - Local branch status: ahead of `origin/master` by local release/design commits
-- Current completed release line: `v3.10 Local Model Backend Selection Benchmark`
-- Current implementation/tag commit: `d40c38e Add local model backend selection benchmark`
-- Current design commit: `7470a88 Document local model backend selection benchmark`
+- Current completed release line: `v3.11 Local Model Backend Decision Report`
+- Current implementation/tag commit: `53f9dd2 Add local model backend decision report`
+- Current design commit: `803ed5b Document local model backend decision report`
 - Working tree before this handoff update: clean
 
 Observed v3 release tags:
@@ -23,12 +23,13 @@ Observed v3 release tags:
 - `v3.8.0-local-llm-advisory-adapter-hardening` -> `cb2b11e`
 - `v3.9.0-local-model-runtime-adapter-contract` -> `5b39cda`
 - `v3.10.0-local-model-backend-selection-benchmark` -> `d40c38e`
+- `v3.11.0-local-model-backend-decision-report` -> `53f9dd2`
 
 ## Current Capability
 
 The project is a local-first, risk-capped trading research and execution
 platform foundation. It now includes the v3 offline research stack through
-v3.10:
+v3.11:
 
 - v3.0 strategy core and local LLM safety boundary
 - v3.1 explicit-fixture strategy backtest harness
@@ -41,6 +42,7 @@ v3.10:
 - v3.8 local LLM advisory adapter hardening
 - v3.9 local model runtime adapter contract
 - v3.10 local model backend selection benchmark
+- v3.11 local model backend decision report
 
 The v3 line is advisory and deterministic by default. It is not live trading,
 does not enable LIVE or PROD, and does not submit orders.
@@ -85,6 +87,14 @@ two-stage benchmark adjudication: absolute scorecard first, hard fail gates
 second, and eligibility before ranking. Only `ELIGIBLE` candidates may be
 ranked. The benchmark does not call any real model or backend runtime.
 
+## v3.11 Summary
+
+v3.11 adds a pack-first local model backend decision report layer. It aggregates
+multiple benchmark reports at the benchmark-pack level, uses single-report
+summaries only as supporting evidence, preserves hard fail persistence across
+the pack, and never recommends a backend from a single report alone. The
+decision report remains offline, advisory-only, and non-activating.
+
 Added recent design docs:
 
 - `docs/superpowers/specs/2026-06-16-paper-trading-strategy-evaluation-design.md`
@@ -92,6 +102,7 @@ Added recent design docs:
 - `docs/superpowers/specs/2026-06-17-local-llm-advisory-adapter-hardening-design.md`
 - `docs/superpowers/specs/2026-06-17-local-model-runtime-adapter-selection-design.md`
 - `docs/superpowers/specs/2026-06-17-local-model-backend-selection-benchmark-design.md`
+- `docs/superpowers/specs/2026-06-17-local-model-backend-decision-report-design.md`
 
 Added recent CLI:
 
@@ -103,6 +114,8 @@ python3.11 -m stock_risk_mcp.cli local-model-runtime-check --fixture-file data/l
 python3.11 -m stock_risk_mcp.cli local-model-advisory-dry-run --fixture-file data/local_model_runtime_fixture.json --output-file outputs/local_model_runtime_dry_run.json
 python3.11 -m stock_risk_mcp.cli local-model-benchmark-run --fixture-file data/local_model_benchmark_fixture.json --candidate-output-file data/local_model_candidate_output_fixture.json --output-file outputs/local_model_benchmark_report.json
 python3.11 -m stock_risk_mcp.cli local-model-candidates-rank --benchmark-report-file outputs/local_model_benchmark_report.json
+python3.11 -m stock_risk_mcp.cli local-model-decision-report --pack-file data/local_model_benchmark_pack_fixture.json --output-file outputs/local_model_decision_report.json
+python3.11 -m stock_risk_mcp.cli local-model-benchmark-pack-validate --pack-file data/local_model_benchmark_pack_fixture.json
 ```
 
 Default execution remains local JSON fixture driven. Optional SQLite audit, when
@@ -110,7 +123,7 @@ present in earlier releases, stays service-layer only.
 
 ## Current Safety State
 
-Current enforced safety state through v3.10:
+Current enforced safety state through v3.11:
 
 - no LIVE
 - no PROD
@@ -127,6 +140,11 @@ Current enforced safety state through v3.10:
 - hard fail gates second
 - eligibility before ranking
 - only `ELIGIBLE` candidates may be ranked
+- pack-first decision report
+- pack-level aggregation first
+- single-report summaries only as supporting evidence
+- hard fail persistence
+- no loose majority voting
 - backend default `DISABLED`
 - `MOCK_LOCAL_RUNTIME` only for deterministic offline fixture/mock behavior
 - `OLLAMA_LOCAL`, `LLAMACPP_LOCAL`, and `PYTHON_LOCAL_WRAPPER` are future-declared only
@@ -152,9 +170,9 @@ git diff --check
 python3.11 -m stock_risk_mcp.cli system-smoke --db data/smoke.sqlite3 --output-dir smoke_outputs
 ```
 
-Expected baseline after v3.10:
+Expected baseline after v3.11:
 
-- `pytest -q`: `773 passed`
+- `pytest -q`: `792 passed`
 - compileall: passed
 - `git diff --check`: passed
 - system-smoke: `COMPLETED`
@@ -166,6 +184,7 @@ Expected baseline after v3.10:
 - `llm_advisory_fixture_run=true`
 - `local_model_runtime_fixture_run=true`
 - `local_model_benchmark_fixture_run=true`
+- `local_model_decision_report_fixture_run=true`
 - `llm_called=false`
 - `real_model_called=false`
 - `cloud_backend_used=false`
@@ -194,6 +213,7 @@ Recent design documents:
 - `docs/superpowers/specs/2026-06-17-local-llm-advisory-adapter-hardening-design.md`
 - `docs/superpowers/specs/2026-06-17-local-model-runtime-adapter-selection-design.md`
 - `docs/superpowers/specs/2026-06-17-local-model-backend-selection-benchmark-design.md`
+- `docs/superpowers/specs/2026-06-17-local-model-backend-decision-report-design.md`
 
 ## Safety Invariants
 
@@ -204,6 +224,7 @@ Recent design documents:
 - No cloud LLM backend may be reached by v3 advisory cores.
 - No real local model runtime may escape fixture-first, advisory-only, fail-closed boundaries.
 - No offline benchmark path may trigger real model calls, backend execution, or ranking of failed candidates.
+- No pack-level decision path may recommend a backend from a single report or override hard fail persistence.
 - No credential/token/network access in pytest or system-smoke.
 - MARKET, margin, short, credit, leverage, options, futures, and unsafe order paths remain blocked in protected execution boundaries.
 - Local secret directories must remain ignored and must not be read, listed, scanned, printed, moved, or committed.
@@ -220,8 +241,11 @@ If continuing the v3 line, start with design only for:
    - completed
 
 3. `v3.11 Local Model Backend Decision Report / Benchmark Pack Expansion`
+   - completed
+
+4. `v3.12 Offline Prompt Pack / Advisory Task Suite Expansion`
    - design only first
-   - expand benchmark packs and decision reporting without real inference
+   - expand offline prompt packs and advisory task coverage without real inference
    - preserve advisory-only behavior and fail-closed validation
    - do not add LIVE, PROD, broker, account, credential, token, or network paths
 
