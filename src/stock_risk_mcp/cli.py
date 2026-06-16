@@ -140,6 +140,7 @@ from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.technical_evidence_service import load_technical_evidence_result, run_technical_evidence
 from stock_risk_mcp.market_discovery_service import load_market_discovery_result, run_market_discovery
 from stock_risk_mcp.llm_feature_service import load_llm_signal_evaluation_report, run_feature_store, run_signal_evaluation
+from stock_risk_mcp.trade_plan_service import load_trade_plan_report, run_trade_plan
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
@@ -390,6 +391,11 @@ def build_command_parser() -> argparse.ArgumentParser:
     signal_evaluate.add_argument("--output-file", type=Path)
     evaluation_show = subparsers.add_parser("llm-signal-evaluation-show")
     evaluation_show.add_argument("--output-file", type=Path, required=True)
+    trade_plan_run = subparsers.add_parser("trade-plan-run")
+    trade_plan_run.add_argument("--fixture-file", type=Path, required=True)
+    trade_plan_run.add_argument("--output-file", type=Path)
+    trade_plan_show = subparsers.add_parser("trade-plan-show")
+    trade_plan_show.add_argument("--output-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1291,6 +1297,8 @@ def main(argv: list[str] | None = None) -> None:
         "llm-feature-store-run",
         "llm-signal-evaluate",
         "llm-signal-evaluation-show",
+        "trade-plan-run",
+        "trade-plan-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1749,6 +1757,19 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "llm-signal-evaluation-show":
         try:
             return load_llm_signal_evaluation_report(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "trade-plan-run":
+        try:
+            result = run_trade_plan(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "summary_counts": result.summary_counts}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "trade-plan-show":
+        try:
+            return load_trade_plan_report(args.output_file).model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

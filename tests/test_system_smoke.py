@@ -17,4 +17,5 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["market_discovery_fixture_run"] is True
     assert result["checks"]["llm_feature_store_fixture_run"] is True
     assert result["checks"]["llm_signal_evaluation_fixture_run"] is True
+    assert result["checks"]["trade_plan_fixture_run"] is True
     assert result["checks"]["llm_called"] is False

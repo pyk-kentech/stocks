@@ -11,6 +11,7 @@ from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.technical_evidence_service import run_technical_evidence
 from stock_risk_mcp.market_discovery_service import run_market_discovery
 from stock_risk_mcp.llm_feature_service import run_feature_store, run_signal_evaluation
+from stock_risk_mcp.trade_plan_service import run_trade_plan
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -110,6 +111,31 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     }, sort_keys=True), encoding="utf-8")
     llm_features = run_feature_store(llm_signal_fixture)
     llm_evaluation = run_signal_evaluation(llm_signal_fixture, llm_outcome_fixture)
+    trade_plan_fixture = Path(output_dir) / "trade_plan_smoke_fixture.json"
+    trade_plan_fixture.write_text(json.dumps({
+        "schema_version": "3.5-trade-plan-fixture",
+        "run_id": f"trade-plan-{result.demo_run_id}",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "config": {
+            "portfolio_equity": 100000.0,
+            "risk_pct_per_trade": 0.01,
+            "max_basket_risk_pct": 0.03,
+            "fixed_min_risk_reward": 2.0,
+        },
+        "candidates": [{
+            "ticker": "DEMO",
+            "side": "BUY",
+            "setup_type": "SMOKE_BREAKOUT",
+            "setup_grade": "A",
+            "entry_reference": 100.0,
+            "stop_reference": 96.0,
+            "target_reference": 108.0,
+            "technical_evidence_summary": "local deterministic smoke fixture",
+            "llm_signal_summary": "advisory only",
+            "warnings": [],
+        }],
+    }, sort_keys=True), encoding="utf-8")
+    trade_plan = run_trade_plan(trade_plan_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -129,6 +155,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "market_discovery_fixture_run": len(discovery.candidates) == 1,
             "llm_feature_store_fixture_run": llm_features.signal_count == 1,
             "llm_signal_evaluation_fixture_run": len(llm_evaluation.evaluations) == 3,
+            "trade_plan_fixture_run": len(trade_plan.plans) == 1 and trade_plan.summary_counts["ready_count"] == 1,
             "llm_called": False,
             "external_network_calls": False,
         },
