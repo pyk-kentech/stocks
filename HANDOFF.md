@@ -5,9 +5,9 @@
 - GitHub target: `https://github.com/pyk-kentech/stocks`
 - Current branch: `master`
 - Local branch status: ahead of `origin/master` by local release/design commits
-- Current completed release line: `v3.4 LLM Feature Store And LLM Signal Evaluation`
-- Current implementation commit: `107228f Add LLM feature store signal evaluation`
-- Current design commit: `a9db5f3 Document LLM feature store signal evaluation`
+- Current completed release line: `v3.8 Local LLM Advisory Adapter Hardening`
+- Current implementation/tag commit: `cb2b11e Add local LLM advisory adapter hardening plan`
+- Current design commit: `f5771ac Document local LLM advisory adapter hardening`
 - Working tree before this handoff update: clean
 
 Observed v3 release tags:
@@ -16,80 +16,88 @@ Observed v3 release tags:
 - `v3.1.0-strategy-fixture-backtest-harness` -> `90355fb`
 - `v3.2.0-technical-setup-evidence-pack` -> `547953b`
 - `v3.3.0-market-universe-volume-spike-discovery` -> `941e36d`
-- `v3.4.0-llm-feature-store-signal-evaluation` is present locally
+- `v3.4.0-llm-feature-store-signal-evaluation` -> `107228f`
+- `v3.5.0-trade-plan-basket-risk-engine` -> `aa51005`
+- `v3.6.0-paper-trading-strategy-evaluation` -> `214d976`
+- `v3.7.0-walk-forward-replay-policy-optimizer` -> `b86f5bc`
+- `v3.8.0-local-llm-advisory-adapter-hardening` -> `cb2b11e`
 
 ## Current Capability
 
 The project is a local-first, risk-capped trading research and execution
-platform foundation. It now includes the v3 offline research stack:
+platform foundation. It now includes the v3 offline research stack through
+v3.8:
 
 - v3.0 strategy core and local LLM safety boundary
 - v3.1 explicit-fixture strategy backtest harness
 - v3.2 technical setup evidence pack
 - v3.3 market universe and volume-spike discovery layer
 - v3.4 LLM feature store and signal evaluation layer
+- v3.5 trade plan and basket risk engine
+- v3.6 paper trading strategy evaluation
+- v3.7 walk-forward / replay policy optimizer
+- v3.8 local LLM advisory adapter hardening
 
 The v3 line is advisory and deterministic by default. It is not live trading,
-does not enable PROD, and does not submit orders.
+does not enable LIVE or PROD, and does not submit orders.
 
-## v3.4 Summary
+## v3.6 Summary
 
-v3.4 validates already-created LLM signal fixtures and evaluates them against
-explicit local future-outcome fixtures. It does not call any LLM.
+v3.6 evaluates advisory strategy and trade-plan outputs with deterministic
+paper-only simulation over explicit local JSON fixtures. It simulates entry,
+stop, target, forced end-of-fixture close, paper P/L, equity curve, and
+drawdown without creating or submitting any real orders.
 
-Added core files:
+## v3.7 Summary
 
-- `src/stock_risk_mcp/llm_feature_models.py`
-- `src/stock_risk_mcp/llm_feature_fixture.py`
-- `src/stock_risk_mcp/llm_signal_evaluation.py`
-- `src/stock_risk_mcp/llm_feature_service.py`
+v3.7 reruns baseline and candidate policies against the same explicit local
+replay fixtures by deterministic walk-forward window. It produces advisory
+promotion or demotion recommendations only and does not change production
+strategy behavior automatically.
 
-Added tests:
+## v3.8 Summary
 
-- `tests/test_llm_feature_fixture.py`
-- `tests/test_llm_signal_evaluation.py`
-- `tests/test_llm_feature_safety.py`
-- `tests/test_llm_feature_service.py`
-- `tests/test_llm_feature_cli.py`
+v3.8 hardens a local LLM advisory adapter around explicit local JSON fixtures.
+The backend defaults to `DISABLED`. `LOCAL_MODEL` is representable only through
+explicit local fixture/config metadata, and unsafe output is rejected or
+converted into a safe refusal. The adapter remains advisory-only and does not
+create `StrategyDecision`, `OrderIntent`, order drafts, or execution approvals.
 
-Added docs:
+Added recent design docs:
 
-- `docs/superpowers/specs/2026-06-16-llm-feature-store-signal-evaluation-design.md`
-- `docs/superpowers/plans/2026-06-16-llm-feature-store-signal-evaluation.md`
+- `docs/superpowers/specs/2026-06-16-paper-trading-strategy-evaluation-design.md`
+- `docs/superpowers/specs/2026-06-17-walk-forward-replay-policy-optimizer-design.md`
+- `docs/superpowers/specs/2026-06-17-local-llm-advisory-adapter-hardening-design.md`
 
-Added CLI:
+Added recent CLI:
 
 ```bash
-python3.11 -m stock_risk_mcp.cli llm-feature-store-run --signal-fixture-file data/llm_signals.json
-python3.11 -m stock_risk_mcp.cli llm-signal-evaluate --signal-fixture-file data/llm_signals.json --outcome-fixture-file data/llm_outcomes.json
-python3.11 -m stock_risk_mcp.cli llm-signal-evaluation-show --output-file outputs/llm_signal_evaluation.json
+python3.11 -m stock_risk_mcp.cli paper-eval-run --fixture-file data/paper_eval_fixture.json --output-file outputs/paper_eval.json
+python3.11 -m stock_risk_mcp.cli policy-replay-run --fixture-file data/policy_replay_fixture.json --output-file outputs/policy_replay.json
+python3.11 -m stock_risk_mcp.cli local-llm-advisory-run --fixture-file data/local_llm_advisory_fixture.json --output-file outputs/local_llm_advisory.json
 ```
 
-Default v3.4 execution is DB-free JSON output only. Supplying `--db` enables
-only append-only service-layer audit storage.
+Default execution remains local JSON fixture driven. Optional SQLite audit, when
+present in earlier releases, stays service-layer only.
 
-## v3.4 Safety Boundary
+## Current Safety State
 
-v3.4:
+Current enforced safety state through v3.8:
 
-- consumes explicit local JSON signal fixtures only
-- consumes explicit local JSON outcome fixtures only
-- does not call local or cloud LLMs
-- does not use external network
-- does not read credentials or tokens
-- does not call broker, Kiwoom, account-read, order, RiskGate, or ExecutionGate
-- does not create `StrategyDecision`
-- does not create `OrderIntent`
-- does not create order drafts
-- does not approve execution
-- does not change strategy weights automatically
-- keeps core modules free of SQLite/repository/provider/realtime/broker/Kiwoom/account/order/network imports
-
-Optional SQLite audit is service-layer only and append-only.
+- no LIVE
+- no PROD
+- no broker/Kiwoom/account-read
+- no credential/token/network access
+- no real `OrderIntent`, order draft, or order submission
+- local LLM remains advisory-only
+- backend default `DISABLED`
+- no cloud backend
+- no strategy, policy, or LLM path may bypass `RiskGate` or `ExecutionGate`
+- core modules remain free of DB/repository/provider/realtime/broker/Kiwoom/account/order/network imports
 
 ## Verification Baseline
 
-The v3.4 implementation was validated with:
+The current release line was validated with:
 
 ```bash
 python3.11 -m pytest -q
@@ -98,14 +106,18 @@ git diff --check
 python3.11 -m stock_risk_mcp.cli system-smoke --db data/smoke.sqlite3 --output-dir smoke_outputs
 ```
 
-Expected v3.4 baseline:
+Expected baseline after v3.8:
 
-- `pytest -q`: `648 passed`
+- `pytest -q`: `723 passed`
 - compileall: passed
 - `git diff --check`: passed
 - system-smoke: `COMPLETED`
 - `llm_feature_store_fixture_run=true`
 - `llm_signal_evaluation_fixture_run=true`
+- `trade_plan_fixture_run=true`
+- `paper_eval_fixture_run=true`
+- `policy_replay_fixture_run=true`
+- `llm_advisory_fixture_run=true`
 - `llm_called=false`
 - `external_network_calls=false`
 
@@ -125,6 +137,10 @@ Recent design documents:
 - `docs/superpowers/specs/2026-06-15-technical-setup-evidence-pack-design.md`
 - `docs/superpowers/specs/2026-06-15-market-universe-volume-spike-discovery-layer-design.md`
 - `docs/superpowers/specs/2026-06-16-llm-feature-store-signal-evaluation-design.md`
+- `docs/superpowers/specs/2026-06-16-trade-plan-basket-risk-engine-design.md`
+- `docs/superpowers/specs/2026-06-16-paper-trading-strategy-evaluation-design.md`
+- `docs/superpowers/specs/2026-06-17-walk-forward-replay-policy-optimizer-design.md`
+- `docs/superpowers/specs/2026-06-17-local-llm-advisory-adapter-hardening-design.md`
 
 ## Safety Invariants
 
@@ -132,6 +148,7 @@ Recent design documents:
 - No PROD order execution.
 - No strategy, LLM, scanner, or evidence path may bypass RiskGate or ExecutionGate.
 - No broker/Kiwoom/account-read/order path may be reached by v3 advisory cores.
+- No cloud LLM backend may be reached by v3 advisory cores.
 - No credential/token/network access in pytest or system-smoke.
 - MARKET, margin, short, credit, leverage, options, futures, and unsafe order paths remain blocked in protected execution boundaries.
 - Local secret directories must remain ignored and must not be read, listed, scanned, printed, moved, or committed.
@@ -139,22 +156,13 @@ Recent design documents:
 
 ## Recommended Next Step
 
-If continuing the v3 line, start with a design document first. Candidate next
-release options:
+If continuing the v3 line, start with design only for:
 
-1. `v3.5 LLM Signal Report Comparison`
-   - Compare multiple v3.4 evaluation reports.
-   - Do not auto-promote prompts/models.
-   - Keep common-outcome and sample-adequacy rules explicit.
-
-2. `v3.5 Strategy Feature Snapshot Builder`
-   - Build `StrategyFeatureSnapshot` from explicit local technical/discovery/LLM result files.
-   - Keep strategy core dependent only on snapshots.
-   - Do not add live/provider/realtime reads.
-
-3. `v3.5 Research Dashboard For v3 Evidence`
-   - Local report/dashboard only.
-   - No strategy decisions, orders, or execution approvals.
+1. `v3.9 Local Model Runtime Adapter / Model Selection`
+   - design only first
+   - keep backend default disabled unless explicitly approved later
+   - preserve advisory-only behavior and fail-closed validation
+   - do not add LIVE, PROD, broker, account, credential, token, or network paths
 
 ## Release Workflow
 
@@ -164,4 +172,3 @@ release options:
 4. Run the full verification baseline.
 5. Commit implementation.
 6. Create a release tag only after explicit approval.
-
