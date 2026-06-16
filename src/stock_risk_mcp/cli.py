@@ -142,6 +142,7 @@ from stock_risk_mcp.market_discovery_service import load_market_discovery_result
 from stock_risk_mcp.llm_feature_service import load_llm_signal_evaluation_report, run_feature_store, run_signal_evaluation
 from stock_risk_mcp.paper_eval_service import load_paper_eval_report, run_paper_eval
 from stock_risk_mcp.trade_plan_service import load_trade_plan_report, run_trade_plan
+from stock_risk_mcp.walk_forward_policy_service import load_walk_forward_policy_report, run_walk_forward_policy_replay
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
@@ -402,6 +403,11 @@ def build_command_parser() -> argparse.ArgumentParser:
     paper_eval_run.add_argument("--output-file", type=Path)
     paper_eval_show = subparsers.add_parser("paper-eval-show")
     paper_eval_show.add_argument("--output-file", type=Path, required=True)
+    policy_replay_run = subparsers.add_parser("policy-replay-run")
+    policy_replay_run.add_argument("--fixture-file", type=Path, required=True)
+    policy_replay_run.add_argument("--output-file", type=Path)
+    policy_replay_show = subparsers.add_parser("policy-replay-show")
+    policy_replay_show.add_argument("--output-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1307,6 +1313,8 @@ def main(argv: list[str] | None = None) -> None:
         "trade-plan-show",
         "paper-eval-run",
         "paper-eval-show",
+        "policy-replay-run",
+        "policy-replay-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1791,6 +1799,19 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "paper-eval-show":
         try:
             return load_paper_eval_report(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "policy-replay-run":
+        try:
+            result = run_walk_forward_policy_replay(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": len(result.candidate_comparisons)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "policy-replay-show":
+        try:
+            return load_walk_forward_policy_report(args.output_file).model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

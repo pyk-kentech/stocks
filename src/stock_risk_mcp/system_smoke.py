@@ -13,6 +13,7 @@ from stock_risk_mcp.market_discovery_service import run_market_discovery
 from stock_risk_mcp.llm_feature_service import run_feature_store, run_signal_evaluation
 from stock_risk_mcp.trade_plan_service import run_trade_plan
 from stock_risk_mcp.paper_eval_service import run_paper_eval
+from stock_risk_mcp.walk_forward_policy_service import run_walk_forward_policy_replay
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -174,6 +175,86 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         }]
     }, sort_keys=True), encoding="utf-8")
     paper_eval = run_paper_eval(paper_eval_fixture)
+    policy_replay_fixture = Path(output_dir) / "policy_replay_smoke_fixture.json"
+    policy_replay_fixture.write_text(json.dumps({
+        "schema_version": "3.7-policy-replay-fixture",
+        "run_id": f"policy-replay-{result.demo_run_id}",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "window_config": {
+            "train_window_count": 2,
+            "eval_window_count": 1,
+            "window_stride": 1,
+            "minimum_eval_trades": 1
+        },
+        "promotion_gates": {
+            "minimum_sample_count": 1,
+            "max_drawdown_pct_cap": 12.0,
+            "minimum_return_improvement_pct": 1.0,
+            "minimum_stability_score": 0.5,
+            "max_missing_data_rate": 0.5,
+            "max_blocked_rate": 0.5
+        },
+        "baseline_policy": {
+            "policy_id": "baseline-v1",
+            "score_weights": {"technical": 0.5, "discovery": 0.3, "llm": 0.2},
+            "minimum_score_threshold": 70.0,
+            "minimum_risk_reward": 2.0,
+            "allowed_setup_grades": ["A", "B"],
+            "max_risk_pct_per_trade": 0.01,
+            "max_basket_risk_pct": 0.03,
+            "llm_weight_cap": 0.25,
+            "allow_short": False,
+            "allow_margin": False,
+            "allow_leverage": False,
+            "allow_market_orders": False
+        },
+        "candidate_policies": [{
+            "policy_id": "candidate-v2",
+            "score_weights": {"technical": 0.7, "discovery": 0.2, "llm": 0.1},
+            "minimum_score_threshold": 70.0,
+            "minimum_risk_reward": 2.0,
+            "allowed_setup_grades": ["A", "B"],
+            "max_risk_pct_per_trade": 0.01,
+            "max_basket_risk_pct": 0.03,
+            "llm_weight_cap": 0.20,
+            "allow_short": False,
+            "allow_margin": False,
+            "allow_leverage": False,
+            "allow_market_orders": False
+        }],
+        "replay_rows": [
+            {
+                "ticker": "DEMO", "timestamp": "2026-06-11T09:30:00+00:00", "setup_grade": "A",
+                "technical_score": 80.0, "discovery_score": 70.0, "llm_score": 60.0,
+                "entry_reference": 100.0, "stop_reference": 96.0, "target_reference": 108.0, "price_path_id": "DEMO-1"
+            },
+            {
+                "ticker": "DEMO", "timestamp": "2026-06-12T09:30:00+00:00", "setup_grade": "A",
+                "technical_score": 85.0, "discovery_score": 70.0, "llm_score": 60.0,
+                "entry_reference": 100.0, "stop_reference": 96.0, "target_reference": 108.0, "price_path_id": "DEMO-2"
+            },
+            {
+                "ticker": "DEMO", "timestamp": "2026-06-13T09:30:00+00:00", "setup_grade": "A",
+                "technical_score": 90.0, "discovery_score": 70.0, "llm_score": 60.0,
+                "entry_reference": 100.0, "stop_reference": 96.0, "target_reference": 108.0, "price_path_id": "DEMO-3"
+            }
+        ],
+        "price_paths": [
+            {"price_path_id": "DEMO-1", "ticker": "DEMO", "bars": [
+                {"timestamp": "2026-06-11T09:31:00+00:00", "open": 99.5, "high": 101.0, "low": 99.0, "close": 100.0},
+                {"timestamp": "2026-06-11T09:32:00+00:00", "open": 100.0, "high": 109.0, "low": 100.0, "close": 108.0}
+            ]},
+            {"price_path_id": "DEMO-2", "ticker": "DEMO", "bars": [
+                {"timestamp": "2026-06-12T09:31:00+00:00", "open": 99.5, "high": 101.0, "low": 99.0, "close": 100.0},
+                {"timestamp": "2026-06-12T09:32:00+00:00", "open": 100.0, "high": 109.0, "low": 100.0, "close": 108.0}
+            ]},
+            {"price_path_id": "DEMO-3", "ticker": "DEMO", "bars": [
+                {"timestamp": "2026-06-13T09:31:00+00:00", "open": 99.5, "high": 101.0, "low": 99.0, "close": 100.0},
+                {"timestamp": "2026-06-13T09:32:00+00:00", "open": 100.0, "high": 109.0, "low": 100.0, "close": 108.0}
+            ]}
+        ]
+    }, sort_keys=True), encoding="utf-8")
+    policy_replay = run_walk_forward_policy_replay(policy_replay_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -195,6 +276,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "llm_signal_evaluation_fixture_run": len(llm_evaluation.evaluations) == 3,
             "trade_plan_fixture_run": len(trade_plan.plans) == 1 and trade_plan.summary_counts["ready_count"] == 1,
             "paper_eval_fixture_run": len(paper_eval.paper_trades) == 1 and paper_eval.metrics.trade_count == 1,
+            "policy_replay_fixture_run": len(policy_replay.candidate_comparisons) == 1,
             "llm_called": False,
             "external_network_calls": False,
         },
