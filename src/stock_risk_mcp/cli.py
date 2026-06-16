@@ -143,6 +143,7 @@ from stock_risk_mcp.llm_feature_service import load_llm_signal_evaluation_report
 from stock_risk_mcp.paper_eval_service import load_paper_eval_report, run_paper_eval
 from stock_risk_mcp.trade_plan_service import load_trade_plan_report, run_trade_plan
 from stock_risk_mcp.walk_forward_policy_service import load_walk_forward_policy_report, run_walk_forward_policy_replay
+from stock_risk_mcp.local_llm_advisory_service import load_local_llm_advisory_result, run_local_llm_advisory
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
 from stock_risk_mcp.trade_plan import create_trade_plan
@@ -408,6 +409,11 @@ def build_command_parser() -> argparse.ArgumentParser:
     policy_replay_run.add_argument("--output-file", type=Path)
     policy_replay_show = subparsers.add_parser("policy-replay-show")
     policy_replay_show.add_argument("--output-file", type=Path, required=True)
+    local_llm_advisory_run = subparsers.add_parser("local-llm-advisory-run")
+    local_llm_advisory_run.add_argument("--fixture-file", type=Path, required=True)
+    local_llm_advisory_run.add_argument("--output-file", type=Path)
+    local_llm_advisory_show = subparsers.add_parser("local-llm-advisory-show")
+    local_llm_advisory_show.add_argument("--output-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1315,6 +1321,8 @@ def main(argv: list[str] | None = None) -> None:
         "paper-eval-show",
         "policy-replay-run",
         "policy-replay-show",
+        "local-llm-advisory-run",
+        "local-llm-advisory-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1812,6 +1820,19 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "policy-replay-show":
         try:
             return load_walk_forward_policy_report(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-llm-advisory-run":
+        try:
+            result = run_local_llm_advisory(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "result_status": result.status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-llm-advisory-show":
+        try:
+            return load_local_llm_advisory_result(args.output_file).model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

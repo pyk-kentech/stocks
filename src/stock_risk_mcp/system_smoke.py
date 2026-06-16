@@ -14,6 +14,7 @@ from stock_risk_mcp.llm_feature_service import run_feature_store, run_signal_eva
 from stock_risk_mcp.trade_plan_service import run_trade_plan
 from stock_risk_mcp.paper_eval_service import run_paper_eval
 from stock_risk_mcp.walk_forward_policy_service import run_walk_forward_policy_replay
+from stock_risk_mcp.local_llm_advisory_service import run_local_llm_advisory
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -255,6 +256,35 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         ]
     }, sort_keys=True), encoding="utf-8")
     policy_replay = run_walk_forward_policy_replay(policy_replay_fixture)
+    llm_advisory_fixture = Path(output_dir) / "local_llm_advisory_smoke_fixture.json"
+    llm_advisory_fixture.write_text(json.dumps({
+        "schema_version": "3.8-local-llm-advisory-fixture",
+        "run_id": f"llm-advisory-{result.demo_run_id}",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "task_type": "SUMMARIZE_TECHNICAL_EVIDENCE",
+        "backend": {
+            "backend_type": "DISABLED",
+            "model_name": "disabled",
+            "model_version": "0",
+            "runtime_metadata": {}
+        },
+        "prompt_metadata": {
+            "prompt_id": "smoke-advisory",
+            "prompt_version": "1",
+            "prompt_checksum": "sha256:smoke"
+        },
+        "inputs": {
+            "ticker": "DEMO",
+            "title": "technical summary",
+            "text_blocks": ["RSI recovered above 50", "Price above 20 EMA"]
+        },
+        "safety": {
+            "advisory_only": True,
+            "may_create_order": False,
+            "may_bypass_gates": False
+        }
+    }, sort_keys=True), encoding="utf-8")
+    llm_advisory = run_local_llm_advisory(llm_advisory_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -277,6 +307,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "trade_plan_fixture_run": len(trade_plan.plans) == 1 and trade_plan.summary_counts["ready_count"] == 1,
             "paper_eval_fixture_run": len(paper_eval.paper_trades) == 1 and paper_eval.metrics.trade_count == 1,
             "policy_replay_fixture_run": len(policy_replay.candidate_comparisons) == 1,
+            "llm_advisory_fixture_run": llm_advisory.metadata_json["external_network_calls"] is False,
             "llm_called": False,
             "external_network_calls": False,
         },
