@@ -5,9 +5,9 @@
 - GitHub target: `https://github.com/pyk-kentech/stocks`
 - Current branch: `master`
 - Local branch status: ahead of `origin/master` by local release/design commits
-- Current completed release line: `v3.8 Local LLM Advisory Adapter Hardening`
-- Current implementation/tag commit: `cb2b11e Add local LLM advisory adapter hardening plan`
-- Current design commit: `f5771ac Document local LLM advisory adapter hardening`
+- Current completed release line: `v3.9 Local Model Runtime Adapter Contract`
+- Current implementation/tag commit: `5b39cda Add local model runtime adapter contract`
+- Current design commit: `9cad34c Document local model runtime adapter selection`
 - Working tree before this handoff update: clean
 
 Observed v3 release tags:
@@ -21,12 +21,13 @@ Observed v3 release tags:
 - `v3.6.0-paper-trading-strategy-evaluation` -> `214d976`
 - `v3.7.0-walk-forward-replay-policy-optimizer` -> `b86f5bc`
 - `v3.8.0-local-llm-advisory-adapter-hardening` -> `cb2b11e`
+- `v3.9.0-local-model-runtime-adapter-contract` -> `5b39cda`
 
 ## Current Capability
 
 The project is a local-first, risk-capped trading research and execution
 platform foundation. It now includes the v3 offline research stack through
-v3.8:
+v3.9:
 
 - v3.0 strategy core and local LLM safety boundary
 - v3.1 explicit-fixture strategy backtest harness
@@ -37,6 +38,7 @@ v3.8:
 - v3.6 paper trading strategy evaluation
 - v3.7 walk-forward / replay policy optimizer
 - v3.8 local LLM advisory adapter hardening
+- v3.9 local model runtime adapter contract
 
 The v3 line is advisory and deterministic by default. It is not live trading,
 does not enable LIVE or PROD, and does not submit orders.
@@ -63,11 +65,22 @@ explicit local fixture/config metadata, and unsafe output is rejected or
 converted into a safe refusal. The adapter remains advisory-only and does not
 create `StrategyDecision`, `OrderIntent`, order drafts, or execution approvals.
 
+## v3.9 Summary
+
+v3.9 adds a contract-first mock local model runtime layer around explicit local
+JSON fixtures. The runtime contract remains fixture-first and advisory-only.
+`DISABLED` remains the default backend. `MOCK_LOCAL_RUNTIME` is the only
+execution-capable backend in v3.9, and it returns deterministic fixture-derived
+responses only. `OLLAMA_LOCAL`, `LLAMACPP_LOCAL`, and
+`PYTHON_LOCAL_WRAPPER` are schema-declared future backends that are rejected at
+runtime in v3.9.
+
 Added recent design docs:
 
 - `docs/superpowers/specs/2026-06-16-paper-trading-strategy-evaluation-design.md`
 - `docs/superpowers/specs/2026-06-17-walk-forward-replay-policy-optimizer-design.md`
 - `docs/superpowers/specs/2026-06-17-local-llm-advisory-adapter-hardening-design.md`
+- `docs/superpowers/specs/2026-06-17-local-model-runtime-adapter-selection-design.md`
 
 Added recent CLI:
 
@@ -75,6 +88,8 @@ Added recent CLI:
 python3.11 -m stock_risk_mcp.cli paper-eval-run --fixture-file data/paper_eval_fixture.json --output-file outputs/paper_eval.json
 python3.11 -m stock_risk_mcp.cli policy-replay-run --fixture-file data/policy_replay_fixture.json --output-file outputs/policy_replay.json
 python3.11 -m stock_risk_mcp.cli local-llm-advisory-run --fixture-file data/local_llm_advisory_fixture.json --output-file outputs/local_llm_advisory.json
+python3.11 -m stock_risk_mcp.cli local-model-runtime-check --fixture-file data/local_model_runtime_fixture.json --output-file outputs/local_model_runtime.json
+python3.11 -m stock_risk_mcp.cli local-model-advisory-dry-run --fixture-file data/local_model_runtime_fixture.json --output-file outputs/local_model_runtime_dry_run.json
 ```
 
 Default execution remains local JSON fixture driven. Optional SQLite audit, when
@@ -82,7 +97,7 @@ present in earlier releases, stays service-layer only.
 
 ## Current Safety State
 
-Current enforced safety state through v3.8:
+Current enforced safety state through v3.9:
 
 - no LIVE
 - no PROD
@@ -90,8 +105,18 @@ Current enforced safety state through v3.8:
 - no credential/token/network access
 - no real `OrderIntent`, order draft, or order submission
 - local LLM remains advisory-only
+- contract-first mock adapter for local model runtime
+- fixture-first local model runtime contract
 - backend default `DISABLED`
+- `MOCK_LOCAL_RUNTIME` only for deterministic offline fixture/mock behavior
+- `OLLAMA_LOCAL`, `LLAMACPP_LOCAL`, and `PYTHON_LOCAL_WRAPPER` are future-declared only
+- no real model call
+- no Ollama call
+- no llama.cpp call
+- no transformers or direct Python inference
+- no model download
 - no cloud backend
+- advisory-only and fail-closed behavior preserved
 - no strategy, policy, or LLM path may bypass `RiskGate` or `ExecutionGate`
 - core modules remain free of DB/repository/provider/realtime/broker/Kiwoom/account/order/network imports
 
@@ -106,9 +131,9 @@ git diff --check
 python3.11 -m stock_risk_mcp.cli system-smoke --db data/smoke.sqlite3 --output-dir smoke_outputs
 ```
 
-Expected baseline after v3.8:
+Expected baseline after v3.9:
 
-- `pytest -q`: `723 passed`
+- `pytest -q`: `747 passed`
 - compileall: passed
 - `git diff --check`: passed
 - system-smoke: `COMPLETED`
@@ -118,7 +143,9 @@ Expected baseline after v3.8:
 - `paper_eval_fixture_run=true`
 - `policy_replay_fixture_run=true`
 - `llm_advisory_fixture_run=true`
+- `local_model_runtime_fixture_run=true`
 - `llm_called=false`
+- `cloud_backend_used=false`
 - `external_network_calls=false`
 
 The project requires Python `>=3.11`; use `python3.11` for validation.
@@ -141,6 +168,7 @@ Recent design documents:
 - `docs/superpowers/specs/2026-06-16-paper-trading-strategy-evaluation-design.md`
 - `docs/superpowers/specs/2026-06-17-walk-forward-replay-policy-optimizer-design.md`
 - `docs/superpowers/specs/2026-06-17-local-llm-advisory-adapter-hardening-design.md`
+- `docs/superpowers/specs/2026-06-17-local-model-runtime-adapter-selection-design.md`
 
 ## Safety Invariants
 
@@ -149,6 +177,7 @@ Recent design documents:
 - No strategy, LLM, scanner, or evidence path may bypass RiskGate or ExecutionGate.
 - No broker/Kiwoom/account-read/order path may be reached by v3 advisory cores.
 - No cloud LLM backend may be reached by v3 advisory cores.
+- No real local model runtime may escape fixture-first, advisory-only, fail-closed boundaries.
 - No credential/token/network access in pytest or system-smoke.
 - MARKET, margin, short, credit, leverage, options, futures, and unsafe order paths remain blocked in protected execution boundaries.
 - Local secret directories must remain ignored and must not be read, listed, scanned, printed, moved, or committed.
@@ -159,8 +188,11 @@ Recent design documents:
 If continuing the v3 line, start with design only for:
 
 1. `v3.9 Local Model Runtime Adapter / Model Selection`
+   - completed
+
+2. `v3.10 Local Model Backend Selection / Offline Benchmark Fixture`
    - design only first
-   - keep backend default disabled unless explicitly approved later
+   - compare future local backend representations without real inference
    - preserve advisory-only behavior and fail-closed validation
    - do not add LIVE, PROD, broker, account, credential, token, or network paths
 
