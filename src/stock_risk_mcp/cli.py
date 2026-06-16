@@ -140,6 +140,7 @@ from stock_risk_mcp.strategy_backtest_service import StrategyBacktestService
 from stock_risk_mcp.technical_evidence_service import load_technical_evidence_result, run_technical_evidence
 from stock_risk_mcp.market_discovery_service import load_market_discovery_result, run_market_discovery
 from stock_risk_mcp.llm_feature_service import load_llm_signal_evaluation_report, run_feature_store, run_signal_evaluation
+from stock_risk_mcp.paper_eval_service import load_paper_eval_report, run_paper_eval
 from stock_risk_mcp.trade_plan_service import load_trade_plan_report, run_trade_plan
 from stock_risk_mcp.strategy_policy import apply_strategy_policy_to_basket_policy, create_default_strategy_policy
 from stock_risk_mcp.system_smoke import run_system_smoke
@@ -396,6 +397,11 @@ def build_command_parser() -> argparse.ArgumentParser:
     trade_plan_run.add_argument("--output-file", type=Path)
     trade_plan_show = subparsers.add_parser("trade-plan-show")
     trade_plan_show.add_argument("--output-file", type=Path, required=True)
+    paper_eval_run = subparsers.add_parser("paper-eval-run")
+    paper_eval_run.add_argument("--fixture-file", type=Path, required=True)
+    paper_eval_run.add_argument("--output-file", type=Path)
+    paper_eval_show = subparsers.add_parser("paper-eval-show")
+    paper_eval_show.add_argument("--output-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1299,6 +1305,8 @@ def main(argv: list[str] | None = None) -> None:
         "llm-signal-evaluation-show",
         "trade-plan-run",
         "trade-plan-show",
+        "paper-eval-run",
+        "paper-eval-show",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1770,6 +1778,19 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "trade-plan-show":
         try:
             return load_trade_plan_report(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-eval-run":
+        try:
+            result = run_paper_eval(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "trade_count": result.metrics.trade_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-eval-show":
+        try:
+            return load_paper_eval_report(args.output_file).model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

@@ -12,6 +12,7 @@ from stock_risk_mcp.technical_evidence_service import run_technical_evidence
 from stock_risk_mcp.market_discovery_service import run_market_discovery
 from stock_risk_mcp.llm_feature_service import run_feature_store, run_signal_evaluation
 from stock_risk_mcp.trade_plan_service import run_trade_plan
+from stock_risk_mcp.paper_eval_service import run_paper_eval
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -136,6 +137,43 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         }],
     }, sort_keys=True), encoding="utf-8")
     trade_plan = run_trade_plan(trade_plan_fixture)
+    paper_eval_fixture = Path(output_dir) / "paper_eval_smoke_fixture.json"
+    paper_eval_fixture.write_text(json.dumps({
+        "schema_version": "3.6-paper-eval-fixture",
+        "run_id": f"paper-eval-{result.demo_run_id}",
+        "created_at": "2026-06-13T10:00:00+00:00",
+        "config": {
+            "initial_cash": 100000.0,
+            "allow_limit_entry_only": True,
+            "fee_per_trade": 0.0,
+            "slippage_per_share": 0.0,
+            "same_bar_exit_policy": "STOP_FIRST",
+            "max_open_positions": 10,
+        },
+        "inputs": [{
+            "ticker": "DEMO",
+            "source_type": "TRADE_PLAN",
+            "decision_time": "2026-06-13T09:30:00+00:00",
+            "side": "BUY",
+            "setup_grade": "A",
+            "entry_reference": 100.0,
+            "stop_reference": 96.0,
+            "target_reference": 108.0,
+            "suggested_quantity": 10,
+            "plan_status": "TRADE_PLAN_READY",
+            "technical_evidence_summary": "local deterministic smoke fixture",
+            "market_discovery_summary": "volume spike",
+            "llm_signal_summary": "advisory only"
+        }],
+        "price_paths": [{
+            "ticker": "DEMO",
+            "bars": [
+                {"timestamp": "2026-06-13T09:31:00+00:00", "open": 99.0, "high": 101.0, "low": 98.0, "close": 100.0},
+                {"timestamp": "2026-06-13T09:32:00+00:00", "open": 100.0, "high": 109.0, "low": 100.0, "close": 108.0}
+            ]
+        }]
+    }, sort_keys=True), encoding="utf-8")
+    paper_eval = run_paper_eval(paper_eval_fixture)
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -156,6 +194,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "llm_feature_store_fixture_run": llm_features.signal_count == 1,
             "llm_signal_evaluation_fixture_run": len(llm_evaluation.evaluations) == 3,
             "trade_plan_fixture_run": len(trade_plan.plans) == 1 and trade_plan.summary_counts["ready_count"] == 1,
+            "paper_eval_fixture_run": len(paper_eval.paper_trades) == 1 and paper_eval.metrics.trade_count == 1,
             "llm_called": False,
             "external_network_calls": False,
         },
