@@ -84,6 +84,11 @@ from stock_risk_mcp.models import DataSource, IngestionStatus, PriceBar, SourceT
 from stock_risk_mcp.local_llm import LocalLLMBackend, LocalLLMRequest
 from stock_risk_mcp.local_llm_client import LocalLLMClient
 from stock_risk_mcp.local_ledger_service import LocalLedgerService
+from stock_risk_mcp.local_model_runtime_service import (
+    run_local_model_advisory_dry_run,
+    run_local_model_candidates_list,
+    run_local_model_runtime_check,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -414,6 +419,15 @@ def build_command_parser() -> argparse.ArgumentParser:
     local_llm_advisory_run.add_argument("--output-file", type=Path)
     local_llm_advisory_show = subparsers.add_parser("local-llm-advisory-show")
     local_llm_advisory_show.add_argument("--output-file", type=Path, required=True)
+    local_model_candidates = subparsers.add_parser("local-model-candidates-list")
+    local_model_candidates.add_argument("--fixture-file", type=Path, required=True)
+    local_model_candidates.add_argument("--output-file", type=Path)
+    local_model_runtime_check = subparsers.add_parser("local-model-runtime-check")
+    local_model_runtime_check.add_argument("--fixture-file", type=Path, required=True)
+    local_model_runtime_check.add_argument("--output-file", type=Path)
+    local_model_advisory_dry_run = subparsers.add_parser("local-model-advisory-dry-run")
+    local_model_advisory_dry_run.add_argument("--fixture-file", type=Path, required=True)
+    local_model_advisory_dry_run.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1323,6 +1337,9 @@ def main(argv: list[str] | None = None) -> None:
         "policy-replay-show",
         "local-llm-advisory-run",
         "local-llm-advisory-show",
+        "local-model-candidates-list",
+        "local-model-runtime-check",
+        "local-model-advisory-dry-run",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1833,6 +1850,30 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "local-llm-advisory-show":
         try:
             return load_local_llm_advisory_result(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-candidates-list":
+        try:
+            result = run_local_model_candidates_list(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-runtime-check":
+        try:
+            result = run_local_model_runtime_check(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "result_status": result.status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "local-model-advisory-dry-run":
+        try:
+            result = run_local_model_advisory_dry_run(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "result_status": result.status.value}
+            return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
