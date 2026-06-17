@@ -135,6 +135,12 @@ from stock_risk_mcp.domestic_replay_service import (
     run_domestic_replay_promotion_readiness,
     run_domestic_replay_run,
 )
+from stock_risk_mcp.domestic_calibration_service import (
+    run_domestic_calibration_config_validate,
+    run_domestic_calibration_run,
+    run_domestic_policy_compare,
+    run_domestic_promotion_gate_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -560,6 +566,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_replay_readiness = subparsers.add_parser("domestic-replay-promotion-readiness")
     domestic_replay_readiness.add_argument("--fixture-file", type=Path, required=True)
     domestic_replay_readiness.add_argument("--output-file", type=Path)
+    domestic_calibration_validate = subparsers.add_parser("domestic-calibration-config-validate")
+    domestic_calibration_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_calibration_validate.add_argument("--output-file", type=Path)
+    domestic_calibration_run = subparsers.add_parser("domestic-calibration-run")
+    domestic_calibration_run.add_argument("--fixture-file", type=Path, required=True)
+    domestic_calibration_run.add_argument("--output-file", type=Path)
+    domestic_policy_compare = subparsers.add_parser("domestic-policy-compare")
+    domestic_policy_compare.add_argument("--fixture-file", type=Path, required=True)
+    domestic_policy_compare.add_argument("--output-file", type=Path)
+    domestic_promotion_gate = subparsers.add_parser("domestic-promotion-gate-report")
+    domestic_promotion_gate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_promotion_gate.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1511,6 +1529,10 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-replay-run",
         "domestic-replay-metrics-report",
         "domestic-replay-promotion-readiness",
+        "domestic-calibration-config-validate",
+        "domestic-calibration-run",
+        "domestic-policy-compare",
+        "domestic-promotion-gate-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2263,6 +2285,39 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_domestic_replay_promotion_readiness(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-calibration-config-validate":
+        try:
+            result = run_domestic_calibration_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "calibration_run_id": result.calibration_run_id}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-calibration-run":
+        try:
+            result = run_domestic_calibration_run(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "single_run_count": len(result.single_run_results)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-policy-compare":
+        try:
+            result = run_domestic_policy_compare(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": len(result.candidate_policy_ids)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-promotion-gate-report":
+        try:
+            result = run_domestic_promotion_gate_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gate_status": result.gate_status.value}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}

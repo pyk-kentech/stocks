@@ -37,6 +37,10 @@ from stock_risk_mcp.domestic_replay_service import (
     run_domestic_replay_promotion_readiness,
     run_domestic_replay_run,
 )
+from stock_risk_mcp.domestic_calibration_service import (
+    run_domestic_calibration_run,
+    run_domestic_promotion_gate_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1059,6 +1063,143 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_replay_fixture,
         output_dir / "domestic_replay_promotion_readiness_report.json",
     )
+    domestic_calibration_fixture = Path(output_dir) / "domestic_calibration_smoke_fixture.json"
+    domestic_calibration_fixture.write_text(json.dumps({
+        "schema_version": "4.6-domestic-calibration-fixture",
+        "run_id": f"domestic-calibration-{result.demo_run_id}",
+        "created_at": "2026-06-17T10:00:00+09:00",
+        "calibration_run_config": {
+            "calibration_run_id": "domestic-calibration-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "baseline_policy_id": "BASELINE_POLICY",
+            "candidate_policy_ids": ["STRICTER_POLICY", "LOOSER_POLICY"],
+            "comparison_mode": "HYBRID_SINGLE_RUN_PLUS_PACK",
+            "required_scenario_families": ["BASELINE", "STALE_REPORT_ONLY"],
+            "minimum_replay_count": 2,
+            "minimum_window_count": 2,
+            "regression_policy": "FAIL_CLOSED",
+            "coverage_policy": "PACK_REQUIRED",
+            "promotion_gate_criteria": {
+                "minimum_calibration_pack_size": 2,
+                "minimum_scenario_family_count": 2,
+                "minimum_window_coverage": 2,
+                "maximum_safety_regression_count": 0,
+                "maximum_stale_data_regression_count": 10,
+                "maximum_domestic_only_regression_count": 0,
+                "maximum_report_only_invariant_regression_count": 10,
+                "maximum_non_actionable_invariant_regression_count": 999,
+                "maximum_unsafe_trigger_regression_count": 0,
+                "minimum_safety_score": 100,
+                "minimum_coverage_score": 70,
+                "minimum_stability_score": 50
+            }
+        },
+        "calibration_input_set": {
+            "input_set_id": "domestic-calibration-input-set",
+            "market_profile_summary": domestic_replay_report.market_profile_summary,
+            "scenario_family_labels": ["BASELINE", "STALE_REPORT_ONLY"],
+            "advisory_context_markers": ["OFFLINE_ONLY"],
+            "replay_reports": [
+                domestic_replay_report.model_dump(mode="json"),
+                domestic_replay_report.model_dump(mode="json")
+            ],
+            "replay_fixture_provenance_markers": ["V4.5_SMOKE_FIXTURE"]
+        },
+        "baseline_policy": {
+            "policy_id": "BASELINE_POLICY",
+            "label": "Baseline policy",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_summary": domestic_replay_report.market_profile_summary,
+            "scanner_threshold_config": {
+                "volume_spike_threshold": 2.0,
+                "momentum_threshold": 1.0,
+                "liquidity_threshold": 0.02,
+                "stale_data_strictness": "FAIL_CLOSED",
+                "report_only_handling": "ALLOW_EXPLICIT_REPORT_ONLY",
+                "watchlist_add_threshold": 70,
+                "watchlist_remove_threshold": 25,
+                "scanner_candidate_explosion_guardrail": 5
+            },
+            "evaluation_threshold_config": {
+                "minimum_technical_score": 60,
+                "minimum_net_profit_threshold": 0.01,
+                "maximum_break_even_move": 0.02,
+                "risk_block_threshold": 50,
+                "technical_evidence_missing_policy": "BLOCK_OR_WATCH",
+                "profitability_context_missing_policy": "BLOCK_OR_WATCH",
+                "compatibility_mapping_preservation_policy": "PRESERVE"
+            },
+            "report_only_policy_markers": ["NON_ACTIONABLE_ONLY"],
+            "stale_data_handling_markers": ["FAIL_CLOSED"],
+            "provenance_markers": ["FIXTURE_ONLY"]
+        },
+        "candidate_policies": [
+            {
+                "policy_id": "STRICTER_POLICY",
+                "label": "Stricter policy",
+                "strategy_track": "DOMESTIC_KR",
+                "market_profile_summary": domestic_replay_report.market_profile_summary,
+                "scanner_threshold_config": {
+                    "volume_spike_threshold": 3.0,
+                    "momentum_threshold": 1.5,
+                    "liquidity_threshold": 0.02,
+                    "stale_data_strictness": "FAIL_CLOSED",
+                    "report_only_handling": "ALLOW_EXPLICIT_REPORT_ONLY",
+                    "watchlist_add_threshold": 75,
+                    "watchlist_remove_threshold": 30,
+                    "scanner_candidate_explosion_guardrail": 5
+                },
+                "evaluation_threshold_config": {
+                    "minimum_technical_score": 75,
+                    "minimum_net_profit_threshold": 0.02,
+                    "maximum_break_even_move": 0.02,
+                    "risk_block_threshold": 60,
+                    "technical_evidence_missing_policy": "BLOCK_OR_WATCH",
+                    "profitability_context_missing_policy": "BLOCK_OR_WATCH",
+                    "compatibility_mapping_preservation_policy": "PRESERVE"
+                },
+                "report_only_policy_markers": ["NON_ACTIONABLE_ONLY"],
+                "stale_data_handling_markers": ["FAIL_CLOSED"],
+                "provenance_markers": ["FIXTURE_ONLY"]
+            },
+            {
+                "policy_id": "LOOSER_POLICY",
+                "label": "Looser policy",
+                "strategy_track": "DOMESTIC_KR",
+                "market_profile_summary": domestic_replay_report.market_profile_summary,
+                "scanner_threshold_config": {
+                    "volume_spike_threshold": 1.5,
+                    "momentum_threshold": 0.5,
+                    "liquidity_threshold": 0.02,
+                    "stale_data_strictness": "FAIL_CLOSED",
+                    "report_only_handling": "ALLOW_EXPLICIT_REPORT_ONLY",
+                    "watchlist_add_threshold": 60,
+                    "watchlist_remove_threshold": 20,
+                    "scanner_candidate_explosion_guardrail": 5
+                },
+                "evaluation_threshold_config": {
+                    "minimum_technical_score": 50,
+                    "minimum_net_profit_threshold": 0.005,
+                    "maximum_break_even_move": 0.03,
+                    "risk_block_threshold": 40,
+                    "technical_evidence_missing_policy": "BLOCK_OR_WATCH",
+                    "profitability_context_missing_policy": "BLOCK_OR_WATCH",
+                    "compatibility_mapping_preservation_policy": "PRESERVE"
+                },
+                "report_only_policy_markers": ["NON_ACTIONABLE_ONLY"],
+                "stale_data_handling_markers": ["FAIL_CLOSED"],
+                "provenance_markers": ["FIXTURE_ONLY"]
+            }
+        ]
+    }, sort_keys=True), encoding="utf-8")
+    domestic_calibration_run = run_domestic_calibration_run(
+        domestic_calibration_fixture,
+        output_dir / "domestic_calibration_run_result.json",
+    )
+    domestic_calibration_gate = run_domestic_promotion_gate_report(
+        domestic_calibration_fixture,
+        output_dir / "domestic_calibration_promotion_gate_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1198,6 +1339,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_scanner_fixture_run": domestic_scanner_quality.metadata_json["domestic_scanner_fixture_run"],
             "domestic_candidate_evaluation_fixture_run": domestic_candidate_evaluation.metadata_json["domestic_candidate_evaluation_fixture_run"],
             "domestic_replay_fixture_run": domestic_replay_report.metadata_json["domestic_replay_fixture_run"],
+            "domestic_calibration_fixture_run": domestic_calibration_run.metadata_json["domestic_calibration_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1217,6 +1359,12 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "candidate_evaluation_trace_generated": domestic_replay_report.metadata_json["candidate_evaluation_trace_generated"],
             "replay_metrics_report_generated": domestic_replay_report.metadata_json["replay_metrics_report_generated"],
             "promotion_readiness_report_generated": domestic_replay_readiness.metadata_json["promotion_readiness_report_generated"],
+            "replay_evaluation_report_consumed": domestic_calibration_run.metadata_json["replay_evaluation_report_consumed"],
+            "single_replay_comparison_generated": domestic_calibration_run.metadata_json["single_replay_comparison_generated"],
+            "calibration_pack_aggregated": domestic_calibration_run.metadata_json["calibration_pack_aggregated"],
+            "policy_candidate_comparison_generated": domestic_calibration_run.metadata_json["policy_candidate_comparison_generated"],
+            "promotion_gate_report_generated": domestic_calibration_gate.metadata_json["promotion_gate_report_generated"],
+            "promotion_gate_pack_level_only": domestic_calibration_gate.metadata_json["promotion_gate_pack_level_only"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],
