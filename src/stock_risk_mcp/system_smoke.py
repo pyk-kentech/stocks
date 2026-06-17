@@ -18,6 +18,7 @@ from stock_risk_mcp.local_llm_advisory_service import run_local_llm_advisory
 from stock_risk_mcp.local_model_runtime_service import run_local_model_advisory_dry_run, run_local_model_runtime_check
 from stock_risk_mcp.local_model_benchmark_service import run_local_model_benchmark_cli
 from stock_risk_mcp.local_model_decision_report_service import run_local_model_decision_report_cli
+from stock_risk_mcp.strategy_track_service import run_strategy_track_compare, run_strategy_track_profile_validation
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -627,6 +628,74 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         ]
     }, sort_keys=True), encoding="utf-8")
     local_model_decision_report = run_local_model_decision_report_cli(local_model_benchmark_pack_fixture)
+    strategy_track_fixture = Path(output_dir) / "strategy_track_smoke_fixture.json"
+    strategy_track_fixture.write_text(json.dumps({
+        "schema_version": "4.0-strategy-track-fixture",
+        "run_id": f"strategy-track-{result.demo_run_id}",
+        "created_at": "2026-06-17T12:00:00+00:00",
+        "strategy_requests": [
+            {
+                "request_id": "domestic-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "strategy_track_candidates": ["DOMESTIC_KR"],
+                "market_profile": {
+                    "market_id": "KRX",
+                    "country": "KR",
+                    "base_currency": "KRW",
+                    "exchange_session_profile": "KRX_REGULAR",
+                    "trading_hours": "09:00-15:30 Asia/Seoul",
+                    "settlement_cash_availability": "T+2 domestic placeholder",
+                    "fee_tax_profile_reference": "fee_tax/domestic_kr.json",
+                    "realtime_data_profile_reference": "realtime/domestic_kr.json",
+                    "provider_capability_reference": "providers/kiwoom_domestic_kr.json",
+                    "fx_reference": None
+                },
+                "provider_capability": {
+                    "provider_id": "KIWOOM",
+                    "track": "DOMESTIC_KR",
+                    "supported_markets": ["KRX"],
+                    "supported_asset_types": ["STOCK"],
+                    "domestic_support": True,
+                    "overseas_support": False,
+                    "realtime_support": True,
+                    "order_support": False,
+                    "account_support": False,
+                    "status": "AVAILABLE_DOMESTIC_ONLY"
+                }
+            },
+            {
+                "request_id": "overseas-smoke",
+                "strategy_track": "OVERSEAS_US",
+                "strategy_track_candidates": ["OVERSEAS_US"],
+                "market_profile": {
+                    "market_id": "US_EQUITY",
+                    "country": "US",
+                    "base_currency": "USD",
+                    "exchange_session_profile": "US_EXTENDED_HOURS",
+                    "trading_hours": "PRE+REGULAR+AFTER_HOURS",
+                    "settlement_cash_availability": "T+1 overseas placeholder",
+                    "fee_tax_profile_reference": "fee_tax/overseas_us.json",
+                    "realtime_data_profile_reference": "realtime/overseas_us.json",
+                    "provider_capability_reference": "providers/overseas_us_simulation_only.json",
+                    "fx_reference": "USD/KRW"
+                },
+                "provider_capability": {
+                    "provider_id": "UNRESOLVED",
+                    "track": "OVERSEAS_US",
+                    "supported_markets": ["NYSE", "NASDAQ"],
+                    "supported_asset_types": ["STOCK"],
+                    "domestic_support": False,
+                    "overseas_support": True,
+                    "realtime_support": False,
+                    "order_support": False,
+                    "account_support": False,
+                    "status": "SIMULATION_ONLY"
+                }
+            }
+        ]
+    }, sort_keys=True), encoding="utf-8")
+    strategy_track = run_strategy_track_profile_validation(strategy_track_fixture, output_dir / "strategy_track_report.json")
+    strategy_track_compare = run_strategy_track_compare(strategy_track_fixture, output_dir / "strategy_track_compare.json")
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -656,11 +725,17 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             ),
             "local_model_benchmark_fixture_run": local_model_benchmark.metadata_json["external_network_calls"] is False,
             "local_model_decision_report_fixture_run": local_model_decision_report.metadata_json["external_network_calls"] is False,
+            "strategy_track_fixture_run": strategy_track.metadata_json["strategy_track_fixture_run"],
             "llm_called": False,
             "real_model_called": False,
+            "broker_api_called": strategy_track.metadata_json["broker_api_called"],
+            "credentials_accessed": strategy_track.metadata_json["credentials_accessed"],
             "external_network_calls": False,
             "cloud_backend_used": False,
             "model_downloaded": False,
+            "orders_created": strategy_track.metadata_json["orders_created"],
+            "live_or_prod_used": strategy_track.metadata_json["live_or_prod_used"],
+            "strategy_track_comparison_count": strategy_track_compare.comparison_count,
         },
         "key_outputs": result.key_outputs,
         "warnings": result.warnings,

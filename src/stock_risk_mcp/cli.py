@@ -99,6 +99,11 @@ from stock_risk_mcp.local_model_decision_report_service import (
     load_local_model_decision_report,
     validate_local_model_benchmark_pack,
 )
+from stock_risk_mcp.strategy_track_service import (
+    load_strategy_track_validation_report,
+    run_strategy_track_compare,
+    run_strategy_track_profile_validation,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -452,6 +457,14 @@ def build_command_parser() -> argparse.ArgumentParser:
     local_model_decision_report.add_argument("--output-file", type=Path)
     local_model_benchmark_pack_validate = subparsers.add_parser("local-model-benchmark-pack-validate")
     local_model_benchmark_pack_validate.add_argument("--pack-file", type=Path, required=True)
+    strategy_track_profile_validate = subparsers.add_parser("strategy-track-profile-validate")
+    strategy_track_profile_validate.add_argument("--fixture-file", type=Path, required=True)
+    strategy_track_profile_validate.add_argument("--output-file", type=Path)
+    strategy_track_profile_show = subparsers.add_parser("strategy-track-profile-show")
+    strategy_track_profile_show.add_argument("--output-file", type=Path, required=True)
+    strategy_track_compare = subparsers.add_parser("strategy-track-compare")
+    strategy_track_compare.add_argument("--fixture-file", type=Path, required=True)
+    strategy_track_compare.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1369,6 +1382,9 @@ def main(argv: list[str] | None = None) -> None:
         "local-model-candidates-rank",
         "local-model-decision-report",
         "local-model-benchmark-pack-validate",
+        "strategy-track-profile-validate",
+        "strategy-track-profile-show",
+        "strategy-track-compare",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1938,6 +1954,27 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "local-model-benchmark-pack-validate":
         try:
             return validate_local_model_benchmark_pack(args.pack_file)
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-track-profile-validate":
+        try:
+            result = run_strategy_track_profile_validation(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "request_count": result.summary["request_count"]}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-track-profile-show":
+        try:
+            return load_strategy_track_validation_report(args.output_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-track-compare":
+        try:
+            result = run_strategy_track_compare(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "comparison_count": result.comparison_count}
+            return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
