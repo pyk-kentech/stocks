@@ -29,6 +29,7 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["domestic_realtime_fixture_run"] is True
     assert result["checks"]["domestic_scanner_fixture_run"] is True
     assert result["checks"]["domestic_candidate_evaluation_fixture_run"] is True
+    assert result["checks"]["domestic_replay_fixture_run"] is True
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True
@@ -43,6 +44,11 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["technical_evidence_context_checked"] is True
     assert result["checks"]["profitability_context_checked"] is True
     assert result["checks"]["candidate_evaluation_report_generated"] is True
+    assert result["checks"]["normalized_realtime_event_sequence_consumed"] is True
+    assert result["checks"]["scanner_candidate_trace_generated"] is True
+    assert result["checks"]["candidate_evaluation_trace_generated"] is True
+    assert result["checks"]["replay_metrics_report_generated"] is True
+    assert result["checks"]["promotion_readiness_report_generated"] is True
     assert result["checks"]["strategy_track_required_for_trading_advisory"] is True
     assert result["checks"]["market_profile_required_for_trading_advisory"] is True
     assert result["checks"]["profitability_context_checked"] is True

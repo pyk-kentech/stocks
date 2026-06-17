@@ -33,6 +33,10 @@ from stock_risk_mcp.domestic_candidate_evaluation_service import (
     run_domestic_candidate_evaluate,
     run_domestic_candidate_evaluation_safety_report,
 )
+from stock_risk_mcp.domestic_replay_service import (
+    run_domestic_replay_promotion_readiness,
+    run_domestic_replay_run,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1007,6 +1011,54 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_candidate_evaluation_fixture,
         output_dir / "domestic_candidate_evaluation_safety_report.json",
     )
+    domestic_replay_fixture = Path(output_dir) / "domestic_replay_smoke_fixture.json"
+    replay_candidate_payload = json.loads(domestic_candidate_evaluation_fixture.read_text(encoding="utf-8"))
+    replay_events = replay_candidate_payload["domestic_scanner_fixture"]["domestic_realtime_fixture"]["events"]
+    domestic_replay_fixture.write_text(json.dumps({
+        "schema_version": "4.5-domestic-replay-fixture",
+        "run_id": f"domestic-replay-{result.demo_run_id}",
+        "created_at": "2026-06-17T09:04:00+09:00",
+        "replay_config": {
+            "config_id": "domestic-replay-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "report_only_mode": False,
+            "replay_ordering_mode": "PROVIDER_TIMESTAMP_THEN_RECEIVED",
+            "replay_tie_breaker_mode": "SOURCE_EVENT_ID",
+            "duplicate_event_policy": "KEEP_ALL",
+            "missing_timestamp_policy": "FAIL_CLOSED",
+            "stale_event_policy": "FAIL_CLOSED",
+            "report_only_event_policy": "FAIL_CLOSED",
+            "replay_window_size": 1,
+            "replay_metrics_policy": "EVENT_TRACE_DERIVED",
+            "promotion_readiness_policy": "OFFLINE_ONLY",
+            "replay_clock_policy": {
+                "primary_ordering_field": "PROVIDER_TIMESTAMP",
+                "secondary_ordering_field": "RECEIVED_TIMESTAMP",
+                "deterministic_tie_breaker": "SOURCE_EVENT_ID",
+                "out_of_order_handling_policy": "SORT_BY_POLICY",
+                "impossible_timestamp_handling_policy": "FAIL_CLOSED",
+                "gap_handling_policy": "TRACE_ONLY",
+                "replay_clock_advancement_mode": "EVENT_TIMESTAMP_STEP"
+            }
+        },
+        "domestic_candidate_evaluation_fixture": replay_candidate_payload,
+        "replay_event_sequence": {
+            "sequence_id": f"domestic-replay-sequence-{result.demo_run_id}",
+            "ordered_event_ids": [event["source_fixture_id"] for event in replay_events],
+            "sequence_start_timestamp": replay_events[0]["provider_timestamp"],
+            "sequence_end_timestamp": replay_events[-1]["received_timestamp"],
+            "symbol_universe_snapshot": sorted({event["symbol"] for event in replay_events}),
+            "source_fixture_markers": [replay_candidate_payload["run_id"]]
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_replay_report = run_domestic_replay_run(
+        domestic_replay_fixture,
+        output_dir / "domestic_replay_report.json",
+    )
+    domestic_replay_readiness = run_domestic_replay_promotion_readiness(
+        domestic_replay_fixture,
+        output_dir / "domestic_replay_promotion_readiness_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1145,6 +1197,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_realtime_fixture_run": domestic_realtime_quality.metadata_json["domestic_realtime_fixture_run"],
             "domestic_scanner_fixture_run": domestic_scanner_quality.metadata_json["domestic_scanner_fixture_run"],
             "domestic_candidate_evaluation_fixture_run": domestic_candidate_evaluation.metadata_json["domestic_candidate_evaluation_fixture_run"],
+            "domestic_replay_fixture_run": domestic_replay_report.metadata_json["domestic_replay_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1159,6 +1212,11 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "technical_evidence_context_checked": domestic_candidate_evaluation.metadata_json["technical_evidence_context_checked"],
             "profitability_context_checked": domestic_candidate_evaluation.metadata_json["profitability_context_checked"],
             "candidate_evaluation_report_generated": domestic_candidate_evaluation.metadata_json["candidate_evaluation_report_generated"],
+            "normalized_realtime_event_sequence_consumed": domestic_replay_report.metadata_json["normalized_realtime_event_sequence_consumed"],
+            "scanner_candidate_trace_generated": domestic_replay_report.metadata_json["scanner_candidate_trace_generated"],
+            "candidate_evaluation_trace_generated": domestic_replay_report.metadata_json["candidate_evaluation_trace_generated"],
+            "replay_metrics_report_generated": domestic_replay_report.metadata_json["replay_metrics_report_generated"],
+            "promotion_readiness_report_generated": domestic_replay_readiness.metadata_json["promotion_readiness_report_generated"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],

@@ -129,6 +129,12 @@ from stock_risk_mcp.domestic_candidate_evaluation_service import (
     run_domestic_candidate_evaluation_gap_report,
     run_domestic_candidate_evaluation_safety_report,
 )
+from stock_risk_mcp.domestic_replay_service import (
+    run_domestic_replay_config_validate,
+    run_domestic_replay_metrics_report,
+    run_domestic_replay_promotion_readiness,
+    run_domestic_replay_run,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -542,6 +548,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_candidate_eval_safety = subparsers.add_parser("domestic-candidate-evaluation-safety-report")
     domestic_candidate_eval_safety.add_argument("--fixture-file", type=Path, required=True)
     domestic_candidate_eval_safety.add_argument("--output-file", type=Path)
+    domestic_replay_validate = subparsers.add_parser("domestic-replay-config-validate")
+    domestic_replay_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_replay_validate.add_argument("--output-file", type=Path)
+    domestic_replay_run = subparsers.add_parser("domestic-replay-run")
+    domestic_replay_run.add_argument("--fixture-file", type=Path, required=True)
+    domestic_replay_run.add_argument("--output-file", type=Path)
+    domestic_replay_metrics = subparsers.add_parser("domestic-replay-metrics-report")
+    domestic_replay_metrics.add_argument("--fixture-file", type=Path, required=True)
+    domestic_replay_metrics.add_argument("--output-file", type=Path)
+    domestic_replay_readiness = subparsers.add_parser("domestic-replay-promotion-readiness")
+    domestic_replay_readiness.add_argument("--fixture-file", type=Path, required=True)
+    domestic_replay_readiness.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1489,6 +1507,10 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-candidate-evaluate",
         "domestic-candidate-evaluation-gap-report",
         "domestic-candidate-evaluation-safety-report",
+        "domestic-replay-config-validate",
+        "domestic-replay-run",
+        "domestic-replay-metrics-report",
+        "domestic-replay-promotion-readiness",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2208,6 +2230,39 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_domestic_candidate_evaluation_safety_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "decision_count": len(result.decisions)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-replay-config-validate":
+        try:
+            result = run_domestic_replay_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-replay-run":
+        try:
+            result = run_domestic_replay_run(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "step_count": len(result.step_results)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-replay-metrics-report":
+        try:
+            result = run_domestic_replay_metrics_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "total_events_processed": result.total_events_processed}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-replay-promotion-readiness":
+        try:
+            result = run_domestic_replay_promotion_readiness(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
