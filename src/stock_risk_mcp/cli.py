@@ -160,6 +160,13 @@ from stock_risk_mcp.domestic_shadow_advisory_context_service import (
     run_domestic_shadow_advisory_context_safety_report,
     run_domestic_shadow_advisory_context_validate,
 )
+from stock_risk_mcp.domestic_distillation_dataset_service import (
+    run_domestic_distillation_dataset_build,
+    run_domestic_distillation_dataset_config_validate,
+    run_domestic_distillation_dataset_gap_report,
+    run_domestic_distillation_dataset_safety_report,
+    run_domestic_distillation_dataset_validate,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -636,6 +643,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_shadow_advisory_safety = subparsers.add_parser("domestic-shadow-advisory-context-safety-report")
     domestic_shadow_advisory_safety.add_argument("--fixture-file", type=Path, required=True)
     domestic_shadow_advisory_safety.add_argument("--output-file", type=Path)
+    domestic_distillation_validate = subparsers.add_parser("domestic-distillation-dataset-config-validate")
+    domestic_distillation_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_distillation_validate.add_argument("--output-file", type=Path)
+    domestic_distillation_build = subparsers.add_parser("domestic-distillation-dataset-build")
+    domestic_distillation_build.add_argument("--fixture-file", type=Path, required=True)
+    domestic_distillation_build.add_argument("--output-file", type=Path)
+    domestic_distillation_report = subparsers.add_parser("domestic-distillation-dataset-validate")
+    domestic_distillation_report.add_argument("--fixture-file", type=Path, required=True)
+    domestic_distillation_report.add_argument("--output-file", type=Path)
+    domestic_distillation_gap = subparsers.add_parser("domestic-distillation-dataset-gap-report")
+    domestic_distillation_gap.add_argument("--fixture-file", type=Path, required=True)
+    domestic_distillation_gap.add_argument("--output-file", type=Path)
+    domestic_distillation_safety = subparsers.add_parser("domestic-distillation-dataset-safety-report")
+    domestic_distillation_safety.add_argument("--fixture-file", type=Path, required=True)
+    domestic_distillation_safety.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1604,6 +1626,11 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-shadow-advisory-context-validate",
         "domestic-shadow-advisory-context-gap-report",
         "domestic-shadow-advisory-context-safety-report",
+        "domestic-distillation-dataset-config-validate",
+        "domestic-distillation-dataset-build",
+        "domestic-distillation-dataset-validate",
+        "domestic-distillation-dataset-gap-report",
+        "domestic-distillation-dataset-safety-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2494,6 +2521,47 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "domestic-shadow-advisory-context-safety-report":
         try:
             result = run_domestic_shadow_advisory_context_safety_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-distillation-dataset-config-validate":
+        try:
+            result = run_domestic_distillation_dataset_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "valid": result.valid}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-distillation-dataset-build":
+        try:
+            result = run_domestic_distillation_dataset_build(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "pack_id": result.pack_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-distillation-dataset-validate":
+        try:
+            result = run_domestic_distillation_dataset_validate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "valid": result.valid}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-distillation-dataset-gap-report":
+        try:
+            result = run_domestic_distillation_dataset_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-distillation-dataset-safety-report":
+        try:
+            result = run_domestic_distillation_dataset_safety_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
             return result.model_dump(mode="json")
