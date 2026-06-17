@@ -29,6 +29,10 @@ from stock_risk_mcp.domestic_scanner_service import (
     run_domestic_scanner_candidates,
     run_domestic_scanner_quality_report,
 )
+from stock_risk_mcp.domestic_candidate_evaluation_service import (
+    run_domestic_candidate_evaluate,
+    run_domestic_candidate_evaluation_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -949,6 +953,60 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_scanner_fixture,
         output_dir / "domestic_scanner_quality_report.json",
     )
+    domestic_candidate_evaluation_fixture = Path(output_dir) / "domestic_candidate_evaluation_smoke_fixture.json"
+    domestic_candidate_evaluation_fixture.write_text(json.dumps({
+        "schema_version": "4.4-domestic-candidate-evaluation-fixture",
+        "run_id": f"domestic-candidate-evaluation-{result.demo_run_id}",
+        "created_at": "2026-06-17T09:03:00+09:00",
+        "evaluation_config": {
+            "config_id": "domestic-candidate-evaluation-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "report_only_mode": False,
+            "minimum_technical_score_threshold": 60,
+            "minimum_profitability_score_threshold": 60,
+            "minimum_risk_acceptance_threshold": 50,
+            "stale_evaluation_policy": "FAIL_CLOSED",
+            "missing_evidence_policy": "BLOCK_OR_WATCH",
+            "scanner_compatibility_carry_forward_policy": "PRESERVE",
+            "evaluation_compatibility_mapping_policy": "DUAL_COMPATIBILITY"
+        },
+        "domestic_scanner_fixture": json.loads(domestic_scanner_fixture.read_text(encoding="utf-8")),
+        "technical_evidence_context": {
+            "evidence_id": "tech-evidence-1",
+            "ticker": "005930",
+            "macd_evidence_summary": "MACD positive crossover",
+            "rsi_evidence_summary": "RSI above 55",
+            "moving_average_evidence_summary": "Price above MA20 and MA60",
+            "hma_evidence_summary": "HMA rising",
+            "atr_risk_evidence_summary": "ATR stable",
+            "volume_evidence_summary": "Volume expansion confirmed",
+            "divergence_evidence_summary": "No bearish divergence",
+            "setup_grade": "A",
+            "evidence_freshness": "CURRENT_FIXTURE",
+            "missing_evidence_flags": []
+        },
+        "profitability_context": {
+            "profitability_context_status": "ACTIONABLE",
+            "track_aware_profitability_check": "fixture-profitability-check",
+            "expected_net_profit": 25000.0,
+            "expected_net_return_percentage": 0.03,
+            "break_even_move": 0.01,
+            "cost_aware_minimum_target_move": 0.015
+        },
+        "advisory_context": {
+            "supported_tracks": ["DOMESTIC_KR"],
+            "prompt_pack_context_marker": "DOMESTIC_CANDIDATE_EVALUATION",
+            "supports_report_only_mode": True
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_candidate_evaluation = run_domestic_candidate_evaluate(
+        domestic_candidate_evaluation_fixture,
+        output_dir / "domestic_candidate_evaluation_report.json",
+    )
+    domestic_candidate_evaluation_safety = run_domestic_candidate_evaluation_safety_report(
+        domestic_candidate_evaluation_fixture,
+        output_dir / "domestic_candidate_evaluation_safety_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1086,6 +1144,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "market_profit_fixture_run": market_profit.metadata_json["market_profit_fixture_run"],
             "domestic_realtime_fixture_run": domestic_realtime_quality.metadata_json["domestic_realtime_fixture_run"],
             "domestic_scanner_fixture_run": domestic_scanner_quality.metadata_json["domestic_scanner_fixture_run"],
+            "domestic_candidate_evaluation_fixture_run": domestic_candidate_evaluation.metadata_json["domestic_candidate_evaluation_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1096,6 +1155,10 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_kr_only": domestic_realtime_quality.metadata_json["domestic_kr_only"],
             "normalized_realtime_event_consumed": domestic_scanner_quality.metadata_json["normalized_realtime_event_consumed"],
             "scanner_candidate_report_generated": domestic_scanner_candidates.metadata_json["scanner_candidate_report_generated"],
+            "scanner_candidate_consumed": domestic_candidate_evaluation.metadata_json["scanner_candidate_consumed"],
+            "technical_evidence_context_checked": domestic_candidate_evaluation.metadata_json["technical_evidence_context_checked"],
+            "profitability_context_checked": domestic_candidate_evaluation.metadata_json["profitability_context_checked"],
+            "candidate_evaluation_report_generated": domestic_candidate_evaluation.metadata_json["candidate_evaluation_report_generated"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],
@@ -1109,6 +1172,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "model_downloaded": False,
             "orders_created": domestic_realtime_quality.metadata_json["orders_created"],
             "live_or_prod_used": domestic_realtime_quality.metadata_json["live_or_prod_used"],
+            "model_runtime_called": domestic_candidate_evaluation_safety.metadata_json["model_runtime_called"],
             "strategy_track_comparison_count": strategy_track_compare.comparison_count,
             "domestic_realtime_plan_id": domestic_realtime_plan.plan_id,
             "domestic_realtime_validation_status": domestic_realtime_validation["status"],

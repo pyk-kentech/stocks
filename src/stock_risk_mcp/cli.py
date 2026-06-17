@@ -123,6 +123,12 @@ from stock_risk_mcp.domestic_scanner_service import (
     run_domestic_scanner_quality_report,
     run_domestic_scanner_watchlist_plan,
 )
+from stock_risk_mcp.domestic_candidate_evaluation_service import (
+    run_domestic_candidate_evaluate,
+    run_domestic_candidate_evaluation_config_validate,
+    run_domestic_candidate_evaluation_gap_report,
+    run_domestic_candidate_evaluation_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -524,6 +530,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_scanner_quality_report = subparsers.add_parser("domestic-scanner-quality-report")
     domestic_scanner_quality_report.add_argument("--fixture-file", type=Path, required=True)
     domestic_scanner_quality_report.add_argument("--output-file", type=Path)
+    domestic_candidate_eval_validate = subparsers.add_parser("domestic-candidate-evaluation-config-validate")
+    domestic_candidate_eval_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_candidate_eval_validate.add_argument("--output-file", type=Path)
+    domestic_candidate_evaluate = subparsers.add_parser("domestic-candidate-evaluate")
+    domestic_candidate_evaluate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_candidate_evaluate.add_argument("--output-file", type=Path)
+    domestic_candidate_eval_gap = subparsers.add_parser("domestic-candidate-evaluation-gap-report")
+    domestic_candidate_eval_gap.add_argument("--fixture-file", type=Path, required=True)
+    domestic_candidate_eval_gap.add_argument("--output-file", type=Path)
+    domestic_candidate_eval_safety = subparsers.add_parser("domestic-candidate-evaluation-safety-report")
+    domestic_candidate_eval_safety.add_argument("--fixture-file", type=Path, required=True)
+    domestic_candidate_eval_safety.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1467,6 +1485,10 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-scanner-candidates",
         "domestic-scanner-watchlist-plan",
         "domestic-scanner-quality-report",
+        "domestic-candidate-evaluation-config-validate",
+        "domestic-candidate-evaluate",
+        "domestic-candidate-evaluation-gap-report",
+        "domestic-candidate-evaluation-safety-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2153,6 +2175,39 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_domestic_scanner_quality_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-candidate-evaluation-config-validate":
+        try:
+            result = run_domestic_candidate_evaluation_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-candidate-evaluate":
+        try:
+            result = run_domestic_candidate_evaluate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-candidate-evaluation-gap-report":
+        try:
+            result = run_domestic_candidate_evaluation_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_reasons": len(result.gap_reasons)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-candidate-evaluation-safety-report":
+        try:
+            result = run_domestic_candidate_evaluation_safety_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision_count": len(result.decisions)}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
