@@ -51,6 +51,12 @@ from stock_risk_mcp.domestic_shadow_outcome_service import (
     run_domestic_shadow_outcome_review_report,
     run_domestic_shadow_outcome_safety_report,
 )
+from stock_risk_mcp.domestic_shadow_advisory_context_service import (
+    run_domestic_shadow_advisory_context_build,
+    run_domestic_shadow_advisory_context_gap_report,
+    run_domestic_shadow_advisory_context_safety_report,
+    run_domestic_shadow_advisory_context_validate,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1347,6 +1353,91 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_shadow_outcome_fixture,
         output_dir / "domestic_shadow_outcome_safety_report.json",
     )
+    domestic_shadow_advisory_fixture = Path(output_dir) / "domestic_shadow_advisory_context_smoke_fixture.json"
+    domestic_shadow_advisory_fixture.write_text(json.dumps({
+        "schema_version": "4.9-domestic-shadow-advisory-context-fixture",
+        "run_id": f"domestic-shadow-advisory-context-{result.demo_run_id}",
+        "created_at": "2026-06-17T12:00:00+09:00",
+        "shadow_review_advisory_context_config": {
+            "config_id": "domestic-shadow-advisory-context-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_id": "KRX",
+            "explicit_advisory_context_opt_in": True,
+            "supported_advisory_task_names": ["IDENTIFY_MISSING_DATA", "CHALLENGE_ASSUMPTIONS"],
+            "supported_tracks": ["DOMESTIC_KR"],
+            "report_level_bundle_mode": "REVIEW_REPORT_LEVEL_PRIMARY",
+            "sub_summary_inclusion_mode": "MANDATORY",
+            "wording_validation_mode": "FAIL_CLOSED",
+            "coverage_sufficiency_mode": "VALIDATE_AND_REPORT",
+            "distillation_eligible": True,
+            "training_only_context": True,
+            "llm_training_context_allowed": True,
+            "llm_runtime_allowed": False,
+            "cloud_llm_called": False,
+            "local_model_runtime_called": False,
+            "non_executable": True,
+            "no_trade_instruction": True
+        },
+        "shadow_review_advisory_input_set": {
+            "input_set_id": "domestic-shadow-advisory-context-input-set",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_summary": domestic_paper_shadow_journal.market_profile_summary,
+            "paper_shadow_journal": domestic_paper_shadow_journal.model_dump(mode="json"),
+            "source_paper_shadow_review_report_id": "domestic-paper-shadow-review-smoke",
+            "outcome_review_report": domestic_shadow_outcome_review.model_dump(mode="json"),
+            "source_promotion_gate_id": domestic_paper_shadow_journal.entries[0].source_promotion_gate_id,
+            "calibration_pack_reference": domestic_calibration_gate.calibration_pack_id,
+            "scenario_family_coverage": list(domestic_shadow_outcome_review.scenario_family_counts.keys()),
+            "symbol_coverage": list(domestic_shadow_outcome_review.symbol_counts.keys()),
+            "observation_window_coverage": list(domestic_shadow_outcome_review.observation_horizon_counts.keys()),
+            "supported_advisory_task_names": ["IDENTIFY_MISSING_DATA", "CHALLENGE_ASSUMPTIONS"],
+            "accepts_shadow_review_context": True,
+            "non_actionable_marker": True,
+            "training_only_context": True,
+            "advisory_context_markers": ["NON_EXECUTABLE_CONTEXT_ONLY"],
+            "data_quality_flags": []
+        },
+        "advisory_context_policy": {
+            "policy_id": "domestic-shadow-advisory-context-policy-smoke",
+            "allowed_evidence_item_types": [
+                "SHADOW_DECISION_SUMMARY",
+                "OUTCOME_LABEL_SUMMARY",
+                "BLOCKED_REASON_SUMMARY",
+                "REPORT_ONLY_REASON_SUMMARY",
+                "NON_ACTIONABLE_SUMMARY",
+                "SCENARIO_COVERAGE_SUMMARY",
+                "SYMBOL_COVERAGE_SUMMARY",
+                "RISK_OBSERVATION_SUMMARY",
+                "DATA_QUALITY_SUMMARY",
+                "GAP_SUMMARY",
+                "TRAINING_CONTEXT_SUMMARY"
+            ],
+            "forbidden_wording_patterns": ["BUY", "SELL", "ENTRY", "EXIT", "ORDER", "EXECUTE"],
+            "deterministic_summary_length_cap": 160,
+            "minimum_scenario_coverage_count": 1,
+            "minimum_symbol_coverage_count": 1,
+            "minimum_observation_window_coverage_count": 1,
+            "supported_advisory_task_compatibility_mode": "STRICT",
+            "non_executable_enforcement_mode": "FAIL_CLOSED",
+            "gap_preservation_mode": "PRESERVE"
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_shadow_advisory_bundle = run_domestic_shadow_advisory_context_build(
+        domestic_shadow_advisory_fixture,
+        output_dir / "domestic_shadow_advisory_context_bundle.json",
+    )
+    domestic_shadow_advisory_validation = run_domestic_shadow_advisory_context_validate(
+        domestic_shadow_advisory_fixture,
+        output_dir / "domestic_shadow_advisory_context_validation_report.json",
+    )
+    domestic_shadow_advisory_gap = run_domestic_shadow_advisory_context_gap_report(
+        domestic_shadow_advisory_fixture,
+        output_dir / "domestic_shadow_advisory_context_gap_report.json",
+    )
+    domestic_shadow_advisory_safety = run_domestic_shadow_advisory_context_safety_report(
+        domestic_shadow_advisory_fixture,
+        output_dir / "domestic_shadow_advisory_context_safety_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1489,6 +1580,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_calibration_fixture_run": domestic_calibration_run.metadata_json["domestic_calibration_fixture_run"],
             "domestic_paper_shadow_fixture_run": domestic_paper_shadow_journal.metadata_json["domestic_paper_shadow_fixture_run"],
             "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
+            "domestic_shadow_advisory_context_fixture_run": domestic_shadow_advisory_bundle.metadata_json["domestic_shadow_advisory_context_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1527,6 +1619,13 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "outcome_labels_generated": domestic_shadow_outcome_labels.metadata_json["outcome_labels_generated"],
             "outcome_review_report_generated": domestic_shadow_outcome_review.metadata_json["outcome_review_report_generated"],
             "outcome_labels_non_executable": domestic_shadow_outcome_safety.metadata_json["outcome_labels_non_executable"],
+            "promotion_gate_reference_consumed": domestic_shadow_advisory_bundle.metadata_json["promotion_gate_reference_consumed"],
+            "advisory_context_bundle_generated": domestic_shadow_advisory_bundle.metadata_json["advisory_context_bundle_generated"],
+            "advisory_context_validation_generated": domestic_shadow_advisory_validation.metadata_json["advisory_context_validation_generated"],
+            "advisory_context_gap_report_generated": domestic_shadow_advisory_gap.metadata_json["advisory_context_gap_report_generated"],
+            "advisory_context_non_executable": domestic_shadow_advisory_safety.metadata_json["advisory_context_non_executable"],
+            "training_only_context_marker_present": domestic_shadow_advisory_validation.metadata_json["training_only_context_marker_present"],
+            "llm_runtime_allowed": domestic_shadow_advisory_safety.safety_boundary.llm_runtime_allowed,
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],

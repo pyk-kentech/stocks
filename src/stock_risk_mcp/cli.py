@@ -153,6 +153,13 @@ from stock_risk_mcp.domestic_shadow_outcome_service import (
     run_domestic_shadow_outcome_review_report,
     run_domestic_shadow_outcome_safety_report,
 )
+from stock_risk_mcp.domestic_shadow_advisory_context_service import (
+    run_domestic_shadow_advisory_context_build,
+    run_domestic_shadow_advisory_context_config_validate,
+    run_domestic_shadow_advisory_context_gap_report,
+    run_domestic_shadow_advisory_context_safety_report,
+    run_domestic_shadow_advisory_context_validate,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -614,6 +621,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_shadow_outcome_safety = subparsers.add_parser("domestic-shadow-outcome-safety-report")
     domestic_shadow_outcome_safety.add_argument("--fixture-file", type=Path, required=True)
     domestic_shadow_outcome_safety.add_argument("--output-file", type=Path)
+    domestic_shadow_advisory_validate = subparsers.add_parser("domestic-shadow-advisory-context-config-validate")
+    domestic_shadow_advisory_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_shadow_advisory_validate.add_argument("--output-file", type=Path)
+    domestic_shadow_advisory_build = subparsers.add_parser("domestic-shadow-advisory-context-build")
+    domestic_shadow_advisory_build.add_argument("--fixture-file", type=Path, required=True)
+    domestic_shadow_advisory_build.add_argument("--output-file", type=Path)
+    domestic_shadow_advisory_report = subparsers.add_parser("domestic-shadow-advisory-context-validate")
+    domestic_shadow_advisory_report.add_argument("--fixture-file", type=Path, required=True)
+    domestic_shadow_advisory_report.add_argument("--output-file", type=Path)
+    domestic_shadow_advisory_gap = subparsers.add_parser("domestic-shadow-advisory-context-gap-report")
+    domestic_shadow_advisory_gap.add_argument("--fixture-file", type=Path, required=True)
+    domestic_shadow_advisory_gap.add_argument("--output-file", type=Path)
+    domestic_shadow_advisory_safety = subparsers.add_parser("domestic-shadow-advisory-context-safety-report")
+    domestic_shadow_advisory_safety.add_argument("--fixture-file", type=Path, required=True)
+    domestic_shadow_advisory_safety.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1577,6 +1599,11 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-shadow-outcome-label",
         "domestic-shadow-outcome-review-report",
         "domestic-shadow-outcome-safety-report",
+        "domestic-shadow-advisory-context-config-validate",
+        "domestic-shadow-advisory-context-build",
+        "domestic-shadow-advisory-context-validate",
+        "domestic-shadow-advisory-context-gap-report",
+        "domestic-shadow-advisory-context-safety-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2428,6 +2455,47 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_domestic_shadow_outcome_safety_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "warnings": len(result.warnings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-shadow-advisory-context-config-validate":
+        try:
+            result = run_domestic_shadow_advisory_context_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "valid": result.valid}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-shadow-advisory-context-build":
+        try:
+            result = run_domestic_shadow_advisory_context_build(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "bundle_id": result.bundle_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-shadow-advisory-context-validate":
+        try:
+            result = run_domestic_shadow_advisory_context_validate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "valid": result.valid}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-shadow-advisory-context-gap-report":
+        try:
+            result = run_domestic_shadow_advisory_context_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-shadow-advisory-context-safety-report":
+        try:
+            result = run_domestic_shadow_advisory_context_safety_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
