@@ -111,6 +111,12 @@ from stock_risk_mcp.market_profit_service import (
     run_market_profit_estimate,
     run_market_profit_profile_validation,
 )
+from stock_risk_mcp.offline_prompt_pack_service import (
+    run_prompt_pack_validate,
+    run_prompt_pack_show,
+    run_prompt_pack_coverage_report,
+    run_prompt_pack_gap_report,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -483,6 +489,17 @@ def build_command_parser() -> argparse.ArgumentParser:
     market_profit_compare_tracks.add_argument("--output-file", type=Path)
     market_profit_break_even = subparsers.add_parser("market-profit-break-even")
     market_profit_break_even.add_argument("--fixture-file", type=Path, required=True)
+    prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
+    prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
+    prompt_pack_validate.add_argument("--output-file", type=Path)
+    prompt_pack_show = subparsers.add_parser("prompt-pack-show")
+    prompt_pack_show.add_argument("--fixture-file", type=Path, required=True)
+    prompt_pack_coverage_report = subparsers.add_parser("prompt-pack-coverage-report")
+    prompt_pack_coverage_report.add_argument("--fixture-file", type=Path, required=True)
+    prompt_pack_coverage_report.add_argument("--output-file", type=Path)
+    prompt_pack_gap_report = subparsers.add_parser("prompt-pack-gap-report")
+    prompt_pack_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    prompt_pack_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1407,6 +1424,10 @@ def main(argv: list[str] | None = None) -> None:
         "market-profit-estimate",
         "market-profit-compare-tracks",
         "market-profit-break-even",
+        "prompt-pack-validate",
+        "prompt-pack-show",
+        "prompt-pack-coverage-report",
+        "prompt-pack-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -2027,6 +2048,35 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         try:
             result = run_market_profit_estimate(args.fixture_file)
             return {"break_even_estimate": result.check.break_even_estimate.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "prompt-pack-validate":
+        try:
+            result = run_prompt_pack_validate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "valid": result.valid}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "prompt-pack-show":
+        try:
+            return run_prompt_pack_show(args.fixture_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "prompt-pack-coverage-report":
+        try:
+            result = run_prompt_pack_coverage_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "task_count": result.total_task_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "prompt-pack-gap-report":
+        try:
+            result = run_prompt_pack_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "validation_passed": result.validation_passed}
+            return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
