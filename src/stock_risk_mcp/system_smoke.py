@@ -63,6 +63,12 @@ from stock_risk_mcp.domestic_distillation_dataset_service import (
     run_domestic_distillation_dataset_safety_report,
     run_domestic_distillation_dataset_validate,
 )
+from stock_risk_mcp.domestic_market_regime_service import (
+    run_domestic_market_regime_classify,
+    run_domestic_market_regime_gap_report,
+    run_domestic_market_regime_report,
+    run_domestic_market_regime_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1565,6 +1571,102 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_distillation_fixture,
         output_dir / "domestic_distillation_dataset_safety_report.json",
     )
+    domestic_market_regime_fixture = Path(output_dir) / "domestic_market_regime_smoke_fixture.json"
+    domestic_market_regime_fixture.write_text(json.dumps({
+        "schema_version": "4.11-domestic-market-regime-fixture",
+        "fixture_id": f"domestic-market-regime-{result.demo_run_id}",
+        "created_at": "2026-06-18T09:00:00+09:00",
+        "market_regime_config": {
+            "config_id": "domestic-market-regime-config-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_id": "KRX",
+            "explicit_regime_classification_opt_in": True,
+            "stale_evidence_policy": "FAIL_CLOSED",
+            "report_only_eligibility_mode": "AUXILIARY_METADATA_ONLY",
+            "threshold_profile_id": "DOMESTIC_REGIME_THRESHOLDS_V1",
+            "evidence_sufficiency_mode": "STRICT_OR_INSUFFICIENT",
+            "wording_validation_mode": "FAIL_CLOSED",
+            "non_executable_enforcement_mode": "FAIL_CLOSED",
+            "non_executable": True,
+            "signal_generation_allowed": False,
+            "cloud_llm_called": False,
+            "model_runtime_called": False,
+            "prompt_pack_executed": False,
+            "prompt_stub_executed": False,
+            "ml_model_trained": False
+        },
+        "market_regime_input_set": {
+            "input_set_id": "domestic-market-regime-input-set-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_summary": {"market_id": "KRX", "country": "KR", "base_currency": "KRW"},
+            "observation_window_metadata": {
+                "window_id": "OPENING_30M",
+                "start_timestamp": "2026-06-18T09:00:00+09:00",
+                "end_timestamp": "2026-06-18T09:30:00+09:00"
+            },
+            "index_evidence": {
+                "index_id": "KOSPI",
+                "short_return_pct": 1.4,
+                "medium_return_pct": 2.2,
+                "drawdown_proxy_pct": -0.8,
+                "stale": False,
+                "data_quality_flags": []
+            },
+            "sector_evidence": {
+                "sector_universe_id": "KRX_MAIN_SECTORS",
+                "sector_return_distribution": {"SEMICONDUCTOR": 2.1, "AUTO": 1.6, "BIO": 0.5},
+                "leadership_concentration_pct": 0.68,
+                "rotation_proxy": 0.22,
+                "stale": False,
+                "data_quality_flags": []
+            },
+            "breadth_evidence": {
+                "breadth_proxy_pct": 0.64,
+                "advancing_count_proxy": 410,
+                "declining_count_proxy": 210,
+                "stale": False,
+                "data_quality_flags": []
+            },
+            "liquidity_evidence": {
+                "turnover_proxy_ratio": 1.18,
+                "volume_expansion_proxy_ratio": 1.21,
+                "stale": False,
+                "data_quality_flags": []
+            },
+            "volatility_evidence": {
+                "volatility_proxy_pct": 1.2,
+                "volatility_expansion_proxy_ratio": 0.92,
+                "stale": False,
+                "data_quality_flags": []
+            },
+            "risk_evidence": {
+                "risk_off_warning_score": 0.18,
+                "stress_marker_count": 0,
+                "defensive_condition_markers": [],
+                "stale": False,
+                "data_quality_flags": []
+            },
+            "data_quality_flags": [],
+            "explicit_report_only": False,
+            "source_trace_references": ["fixture://domestic-market-regime-smoke"]
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_market_regime_classification = run_domestic_market_regime_classify(
+        domestic_market_regime_fixture,
+        output_dir / "domestic_market_regime_classification.json",
+    )
+    domestic_market_regime_report = run_domestic_market_regime_report(
+        domestic_market_regime_fixture,
+        output_dir / "domestic_market_regime_report.json",
+    )
+    domestic_market_regime_gap = run_domestic_market_regime_gap_report(
+        domestic_market_regime_fixture,
+        output_dir / "domestic_market_regime_gap_report.json",
+    )
+    domestic_market_regime_safety = run_domestic_market_regime_safety_report(
+        domestic_market_regime_fixture,
+        output_dir / "domestic_market_regime_safety_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1709,6 +1811,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
             "domestic_shadow_advisory_context_fixture_run": domestic_shadow_advisory_bundle.metadata_json["domestic_shadow_advisory_context_fixture_run"],
             "domestic_distillation_dataset_fixture_run": domestic_distillation_pack.metadata_json["domestic_distillation_dataset_fixture_run"],
+            "domestic_market_regime_fixture_run": domestic_market_regime_report.metadata_json["domestic_market_regime_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1762,6 +1865,11 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "auxiliary_labels_supported": domestic_distillation_pack.metadata_json["auxiliary_labels_supported"],
             "prompt_stubs_not_executed": domestic_distillation_pack.metadata_json["prompt_stubs_not_executed"],
             "llm_runtime_allowed": domestic_distillation_pack.metadata_json["llm_runtime_allowed"],
+            "market_regime_evidence_consumed": domestic_market_regime_report.metadata_json["market_regime_evidence_consumed"],
+            "market_regime_classification_generated": domestic_market_regime_classification.model_dump(mode="json")["classification_id"] is not None,
+            "market_regime_report_generated": domestic_market_regime_report.metadata_json["market_regime_report_generated"],
+            "market_regime_gap_report_generated": domestic_market_regime_gap.metadata_json["market_regime_gap_report_generated"],
+            "market_regime_non_executable": domestic_market_regime_report.metadata_json["market_regime_non_executable"],
             "advisory_context_non_executable": domestic_shadow_advisory_safety.metadata_json["advisory_context_non_executable"],
             "training_only_context_marker_present": domestic_shadow_advisory_validation.metadata_json["training_only_context_marker_present"],
             "llm_runtime_allowed": domestic_shadow_advisory_safety.safety_boundary.llm_runtime_allowed,
