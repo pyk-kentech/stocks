@@ -2,6 +2,17 @@
 
 This document summarizes the work completed so far, excluding the contents of any installed skills.
 
+## v4.13 Domestic Offline Pipeline Final Acceptance And Handoff
+
+- v4.0 through v4.12 are completed and tagged.
+- v4.13 is the final offline pipeline acceptance and handoff milestone.
+- The primary handoff document is
+  `docs/superpowers/specs/2026-06-17-domestic-offline-pipeline-final-acceptance-handoff.md`.
+- v4 remains fixture-only, offline, and non-executable.
+- v4 did not fetch real market data, did not place orders, did not train ML
+  models, and did not call cloud LLMs or local model runtimes.
+- v5 should begin with read-only historical data ingestion, not live trading.
+
 ## Project
 
 Project path:
