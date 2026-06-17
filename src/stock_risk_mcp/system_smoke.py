@@ -20,6 +20,11 @@ from stock_risk_mcp.local_model_benchmark_service import run_local_model_benchma
 from stock_risk_mcp.local_model_decision_report_service import run_local_model_decision_report_cli
 from stock_risk_mcp.strategy_track_service import run_strategy_track_compare, run_strategy_track_profile_validation
 from stock_risk_mcp.market_profit_service import run_market_profit_estimate
+from stock_risk_mcp.domestic_realtime_service import (
+    run_domestic_realtime_plan_show,
+    run_domestic_realtime_profile_validate,
+    run_domestic_realtime_quality_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -782,6 +787,118 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         }
     }, sort_keys=True), encoding="utf-8")
     market_profit = run_market_profit_estimate(market_profit_fixture, output_dir / "market_profit_report.json")
+    domestic_realtime_fixture = Path(output_dir) / "domestic_realtime_smoke_fixture.json"
+    domestic_realtime_fixture.write_text(json.dumps({
+        "schema_version": "4.2-domestic-realtime-fixture",
+        "run_id": f"domestic-realtime-{result.demo_run_id}",
+        "created_at": "2026-06-17T09:01:00+09:00",
+        "report_only_mode": False,
+        "strategy_request": {
+            "request_id": "domestic-realtime-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "strategy_track_candidates": ["DOMESTIC_KR"],
+            "market_profile": {
+                "market_id": "KRX",
+                "country": "KR",
+                "base_currency": "KRW",
+                "exchange_session_profile": "KRX_REGULAR",
+                "trading_hours": "09:00-15:30 Asia/Seoul",
+                "settlement_cash_availability": "T+2 domestic placeholder",
+                "fee_tax_profile_reference": "fee_tax/domestic_kr.json",
+                "realtime_data_profile_reference": "realtime/domestic_kr.json",
+                "provider_capability_reference": "providers/kiwoom_domestic_kr.json",
+                "fx_reference": None
+            },
+            "provider_capability": {
+                "provider_id": "KIWOOM",
+                "track": "DOMESTIC_KR",
+                "supported_markets": ["KRX"],
+                "supported_asset_types": ["STOCK"],
+                "domestic_support": True,
+                "overseas_support": False,
+                "realtime_support": True,
+                "order_support": False,
+                "account_support": False,
+                "status": "AVAILABLE_DOMESTIC_ONLY"
+            }
+        },
+        "provider_profile": {
+            "provider_id": "KIWOOM",
+            "strategy_track": "DOMESTIC_KR",
+            "market_id": "KRX",
+            "supported_asset_types": ["STOCK"],
+            "provider_mode": "SIMULATION_ONLY",
+            "max_symbol_capacity": 2,
+            "subscription_grouping": "WATCHLIST",
+            "event_types_supported": ["TRADE", "QUOTE", "ORDERBOOK"],
+            "normalized_field_availability": ["PRICE", "VOLUME", "CUMULATIVE_VOLUME"],
+            "provider_staleness_threshold_seconds": 60,
+            "received_timestamp_tolerance_seconds": 5,
+            "status": "FUTURE_PROVIDER_CANDIDATE"
+        },
+        "subscription_limit": {
+            "provider_id": "KIWOOM",
+            "max_subscribed_symbols": 2,
+            "max_groups": 2,
+            "priority_tier_policy": "PIN_HIGH_PRIORITY",
+            "overflow_policy": "DROP_LOWEST_PRIORITY",
+            "downgrade_policy": "REPORT_ONLY_OVERFLOW",
+            "limit_evidence": "fixture-limit"
+        },
+        "subscription_plan": {
+            "plan_id": "krx-smoke-plan",
+            "strategy_track": "DOMESTIC_KR",
+            "provider_id": "KIWOOM",
+            "watch_universe": "domestic-watchlist",
+            "symbols": ["005930", "000660"],
+            "subscription_groups": [
+                {"group_id": "high-priority", "symbols": ["005930"], "priority_tier": 1},
+                {"group_id": "default", "symbols": ["000660"], "priority_tier": 2}
+            ],
+            "dynamic_add_policy": "ADD_HIGH_PRIORITY_ONLY",
+            "dynamic_remove_policy": "REMOVE_LOWEST_PRIORITY_FIRST",
+            "stale_subscription_handling": "FAIL_CLOSED",
+            "fallback_mode": "REPORT_ONLY_IF_OVER_CAPACITY"
+        },
+        "staleness_policy": {
+            "default_policy": "FAIL_CLOSED",
+            "provider_timestamp_required": True,
+            "received_timestamp_required": True,
+            "maximum_provider_to_received_lag_seconds": 5,
+            "maximum_event_age_seconds": 60,
+            "impossible_timestamp_rejection": True,
+            "timestamp_mismatch_treatment": "STALE_OR_INVALID",
+            "allow_report_only_downgrade": False
+        },
+        "events": [
+            {
+                "provider_id": "KIWOOM",
+                "strategy_track": "DOMESTIC_KR",
+                "market_id": "KRX",
+                "symbol": "005930",
+                "event_type": "TRADE",
+                "provider_timestamp": "2026-06-17T09:00:01+09:00",
+                "received_timestamp": "2026-06-17T09:00:03+09:00",
+                "source_fixture_id": "fixture-event-1",
+                "price": 70000.0,
+                "volume": 100.0,
+                "cumulative_volume": 1000.0,
+                "best_bid": 69900.0,
+                "best_ask": 70100.0,
+                "bid_size": 1000.0,
+                "ask_size": 1200.0,
+                "orderbook_bid_levels": [{"price": 69900.0, "size": 1000.0}],
+                "orderbook_ask_levels": [{"price": 70100.0, "size": 1200.0}],
+                "baseline_volume": 200.0
+            }
+        ]
+    }, sort_keys=True), encoding="utf-8")
+    domestic_realtime_validation = run_domestic_realtime_profile_validate(domestic_realtime_fixture)
+    domestic_realtime_plan = run_domestic_realtime_plan_show(domestic_realtime_fixture)
+    domestic_realtime_quality = run_domestic_realtime_quality_report(
+        domestic_realtime_fixture,
+        output_dir / "domestic_realtime_quality_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -917,26 +1034,31 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "local_model_decision_report_fixture_run": local_model_decision_report.metadata_json["external_network_calls"] is False,
             "strategy_track_fixture_run": strategy_track.metadata_json["strategy_track_fixture_run"],
             "market_profit_fixture_run": market_profit.metadata_json["market_profit_fixture_run"],
+            "domestic_realtime_fixture_run": domestic_realtime_quality.metadata_json["domestic_realtime_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
             "llm_called": False,
             "real_model_called": False,
-            "strategy_track_required": market_profit.metadata_json["strategy_track_required"],
-            "market_profile_resolved": market_profit.metadata_json["market_profile_resolved"],
+            "strategy_track_required": domestic_realtime_quality.metadata_json["strategy_track_required"],
+            "market_profile_resolved": domestic_realtime_quality.metadata_json["market_profile_resolved"],
+            "domestic_kr_only": domestic_realtime_quality.metadata_json["domestic_kr_only"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],
             "model_runtime_called": prompt_pack_validation.metadata_json["model_runtime_called"],
             "cloud_llm_called": prompt_pack_validation.metadata_json["cloud_llm_called"],
-            "broker_api_called": strategy_track.metadata_json["broker_api_called"],
-            "credentials_accessed": strategy_track.metadata_json["credentials_accessed"],
-            "external_network_calls": False,
+            "broker_api_called": domestic_realtime_quality.metadata_json["broker_api_called"],
+            "credentials_accessed": domestic_realtime_quality.metadata_json["credentials_accessed"],
+            "kiwoom_api_called": domestic_realtime_quality.metadata_json["kiwoom_api_called"],
+            "external_network_calls": domestic_realtime_quality.metadata_json["external_network_calls"],
             "cloud_backend_used": False,
             "model_downloaded": False,
-            "orders_created": strategy_track.metadata_json["orders_created"],
-            "live_or_prod_used": strategy_track.metadata_json["live_or_prod_used"],
+            "orders_created": domestic_realtime_quality.metadata_json["orders_created"],
+            "live_or_prod_used": domestic_realtime_quality.metadata_json["live_or_prod_used"],
             "strategy_track_comparison_count": strategy_track_compare.comparison_count,
+            "domestic_realtime_plan_id": domestic_realtime_plan.plan_id,
+            "domestic_realtime_validation_status": domestic_realtime_validation["status"],
         },
         "key_outputs": result.key_outputs,
         "warnings": result.warnings,

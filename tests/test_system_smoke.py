@@ -26,6 +26,7 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["local_model_decision_report_fixture_run"] is True
     assert result["checks"]["strategy_track_fixture_run"] is True
     assert result["checks"]["market_profit_fixture_run"] is True
+    assert result["checks"]["domestic_realtime_fixture_run"] is True
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True
@@ -33,11 +34,13 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["real_model_called"] is False
     assert result["checks"]["strategy_track_required"] is True
     assert result["checks"]["market_profile_resolved"] is True
+    assert result["checks"]["domestic_kr_only"] is True
     assert result["checks"]["strategy_track_required_for_trading_advisory"] is True
     assert result["checks"]["market_profile_required_for_trading_advisory"] is True
     assert result["checks"]["profitability_context_checked"] is True
     assert result["checks"]["model_runtime_called"] is False
     assert result["checks"]["cloud_llm_called"] is False
+    assert result["checks"]["kiwoom_api_called"] is False
     assert result["checks"]["broker_api_called"] is False
     assert result["checks"]["credentials_accessed"] is False
     assert result["checks"]["cloud_backend_used"] is False

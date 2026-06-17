@@ -111,6 +111,12 @@ from stock_risk_mcp.market_profit_service import (
     run_market_profit_estimate,
     run_market_profit_profile_validation,
 )
+from stock_risk_mcp.domestic_realtime_service import (
+    run_domestic_realtime_event_normalize,
+    run_domestic_realtime_plan_show,
+    run_domestic_realtime_profile_validate,
+    run_domestic_realtime_quality_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -489,6 +495,17 @@ def build_command_parser() -> argparse.ArgumentParser:
     market_profit_compare_tracks.add_argument("--output-file", type=Path)
     market_profit_break_even = subparsers.add_parser("market-profit-break-even")
     market_profit_break_even.add_argument("--fixture-file", type=Path, required=True)
+    domestic_realtime_profile_validate = subparsers.add_parser("domestic-realtime-profile-validate")
+    domestic_realtime_profile_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_realtime_profile_validate.add_argument("--output-file", type=Path)
+    domestic_realtime_plan_show = subparsers.add_parser("domestic-realtime-plan-show")
+    domestic_realtime_plan_show.add_argument("--fixture-file", type=Path, required=True)
+    domestic_realtime_event_normalize = subparsers.add_parser("domestic-realtime-event-normalize")
+    domestic_realtime_event_normalize.add_argument("--fixture-file", type=Path, required=True)
+    domestic_realtime_event_normalize.add_argument("--output-file", type=Path)
+    domestic_realtime_quality_report = subparsers.add_parser("domestic-realtime-quality-report")
+    domestic_realtime_quality_report.add_argument("--fixture-file", type=Path, required=True)
+    domestic_realtime_quality_report.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1424,6 +1441,10 @@ def main(argv: list[str] | None = None) -> None:
         "market-profit-estimate",
         "market-profit-compare-tracks",
         "market-profit-break-even",
+        "domestic-realtime-profile-validate",
+        "domestic-realtime-plan-show",
+        "domestic-realtime-event-normalize",
+        "domestic-realtime-quality-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2048,6 +2069,36 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         try:
             result = run_market_profit_estimate(args.fixture_file)
             return {"break_even_estimate": result.check.break_even_estimate.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-realtime-profile-validate":
+        try:
+            result = run_domestic_realtime_profile_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "strategy_track": result["strategy_track"]}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-realtime-plan-show":
+        try:
+            return run_domestic_realtime_plan_show(args.fixture_file).model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-realtime-event-normalize":
+        try:
+            result = run_domestic_realtime_event_normalize(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "event_count": len(result["events"])}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-realtime-quality-report":
+        try:
+            result = run_domestic_realtime_quality_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "quality_status": result.quality_status.value}
+            return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "prompt-pack-validate":
