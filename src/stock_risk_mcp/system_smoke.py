@@ -46,6 +46,11 @@ from stock_risk_mcp.domestic_paper_shadow_service import (
     run_domestic_paper_shadow_review_report,
     run_domestic_paper_shadow_safety_report,
 )
+from stock_risk_mcp.domestic_shadow_outcome_service import (
+    run_domestic_shadow_outcome_label,
+    run_domestic_shadow_outcome_review_report,
+    run_domestic_shadow_outcome_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1260,6 +1265,88 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_paper_shadow_fixture,
         output_dir / "domestic_paper_shadow_safety_report.json",
     )
+    domestic_shadow_outcome_fixture = Path(output_dir) / "domestic_shadow_outcome_smoke_fixture.json"
+    first_entry = domestic_paper_shadow_journal.entries[0]
+    domestic_shadow_outcome_fixture.write_text(json.dumps({
+        "schema_version": "4.8-domestic-shadow-outcome-fixture",
+        "run_id": f"domestic-shadow-outcome-{result.demo_run_id}",
+        "created_at": "2026-06-17T11:30:00+09:00",
+        "shadow_outcome_config": {
+            "config_id": "domestic-shadow-outcome-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_id": "KRX",
+            "explicit_shadow_outcome_opt_in": True,
+            "report_only_preservation_mode": "PRESERVE",
+            "blocked_context_preservation_mode": "PRESERVE",
+            "inconclusive_labeling_mode": "FAIL_CLOSED_OR_LABEL",
+            "aggregation_mode": "DERIVED_FROM_CANDIDATE_LABELS"
+        },
+        "shadow_outcome_input_set": {
+            "input_set_id": "domestic-shadow-outcome-input-set",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_summary": domestic_paper_shadow_journal.market_profile_summary,
+            "paper_shadow_journal": domestic_paper_shadow_journal.model_dump(mode="json"),
+            "promotion_gate_context_reference": first_entry.source_promotion_gate_id,
+            "replay_window_references": ["REPLAY_WINDOW_SMOKE"],
+            "scenario_family_markers": ["BASELINE"],
+            "advisory_context_markers": ["NON_EXECUTABLE_CONTEXT_ONLY"]
+        },
+        "outcome_label_policy": {
+            "policy_id": "domestic-shadow-outcome-policy-smoke",
+            "favorable_threshold_pct": 0.03,
+            "adverse_threshold_pct": 0.02,
+            "neutral_band_pct": 0.01,
+            "minimum_point_count": 2,
+            "allow_report_only_observation_label": False,
+            "stale_data_policy": "FAIL_CLOSED",
+            "threshold_precedence_rule": "HYBRID_TOUCH_AND_FINAL_STATE",
+            "insufficient_data_rule": "LABEL_INSUFFICIENT_DATA",
+            "safety_rejection_rule": "FAIL_OR_REJECT"
+        },
+        "outcome_fixtures": [
+            {
+                "fixture_id": "domestic-shadow-outcome-fixture-1",
+                "strategy_track": "DOMESTIC_KR",
+                "market_profile_id": "KRX",
+                "source_paper_shadow_journal_id": domestic_paper_shadow_journal.journal_id,
+                "source_paper_shadow_decision_id": first_entry.journal_entry_id,
+                "candidate_id": first_entry.candidate_id,
+                "symbol": "005930",
+                "fixture_timestamp": "2026-06-17T11:01:00+09:00",
+                "observation_window": {
+                    "window_id": "smoke-window-1",
+                    "start_timestamp": "2026-06-17T11:01:00+09:00",
+                    "end_timestamp": "2026-06-17T11:20:00+09:00",
+                    "horizon_label": "15M",
+                    "minimum_point_count": 2,
+                    "expected_cadence": "1M",
+                    "stale_tolerance_seconds": 120
+                },
+                "reference_price": 100.0,
+                "future_points": [
+                    {"timestamp": "2026-06-17T11:05:00+09:00", "price": 103.5, "volume": 1000.0},
+                    {"timestamp": "2026-06-17T11:10:00+09:00", "price": 102.0, "volume": 1200.0}
+                ],
+                "benchmark_points": [],
+                "data_quality_flags": [],
+                "scenario_family": "BASELINE",
+                "replay_window_id": "REPLAY_WINDOW_SMOKE",
+                "promotion_gate_status": "PROMOTION_READY_FOR_PAPER_SHADOW"
+            }
+        ]
+    }, sort_keys=True), encoding="utf-8")
+    domestic_shadow_outcome_labels = run_domestic_shadow_outcome_label(
+        domestic_shadow_outcome_fixture,
+        output_dir / "domestic_shadow_outcome_labels.json",
+    )
+    domestic_shadow_outcome_review = run_domestic_shadow_outcome_review_report(
+        domestic_shadow_outcome_fixture,
+        output_dir / "domestic_shadow_outcome_review_report.json",
+    )
+    domestic_shadow_outcome_safety = run_domestic_shadow_outcome_safety_report(
+        domestic_shadow_outcome_fixture,
+        output_dir / "domestic_shadow_outcome_safety_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1401,6 +1488,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_replay_fixture_run": domestic_replay_report.metadata_json["domestic_replay_fixture_run"],
             "domestic_calibration_fixture_run": domestic_calibration_run.metadata_json["domestic_calibration_fixture_run"],
             "domestic_paper_shadow_fixture_run": domestic_paper_shadow_journal.metadata_json["domestic_paper_shadow_fixture_run"],
+            "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1434,6 +1522,11 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "paper_shadow_review_report_generated": domestic_paper_shadow_review.metadata_json["paper_shadow_review_report_generated"],
             "paper_shadow_review_summary_derived_from_entries": domestic_paper_shadow_review.metadata_json["paper_shadow_review_summary_derived_from_entries"],
             "paper_shadow_non_executable": domestic_paper_shadow_safety.metadata_json["paper_shadow_non_executable"],
+            "paper_shadow_journal_consumed": domestic_shadow_outcome_labels.metadata_json["paper_shadow_journal_consumed"],
+            "outcome_fixture_consumed": domestic_shadow_outcome_labels.metadata_json["outcome_fixture_consumed"],
+            "outcome_labels_generated": domestic_shadow_outcome_labels.metadata_json["outcome_labels_generated"],
+            "outcome_review_report_generated": domestic_shadow_outcome_review.metadata_json["outcome_review_report_generated"],
+            "outcome_labels_non_executable": domestic_shadow_outcome_safety.metadata_json["outcome_labels_non_executable"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],
