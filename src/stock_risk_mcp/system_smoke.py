@@ -25,6 +25,10 @@ from stock_risk_mcp.domestic_realtime_service import (
     run_domestic_realtime_profile_validate,
     run_domestic_realtime_quality_report,
 )
+from stock_risk_mcp.domestic_scanner_service import (
+    run_domestic_scanner_candidates,
+    run_domestic_scanner_quality_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -899,6 +903,52 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_realtime_fixture,
         output_dir / "domestic_realtime_quality_report.json",
     )
+    domestic_scanner_fixture = Path(output_dir) / "domestic_scanner_smoke_fixture.json"
+    domestic_scanner_fixture.write_text(json.dumps({
+        "schema_version": "4.3-domestic-scanner-fixture",
+        "run_id": f"domestic-scanner-{result.demo_run_id}",
+        "created_at": "2026-06-17T09:02:00+09:00",
+        "scanner_config": {
+            "config_id": "domestic-scanner-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "report_only_mode": False,
+            "volume_spike_ratio_threshold": 2.0,
+            "price_momentum_pct_threshold": 1.0,
+            "max_spread_pct": 0.02,
+            "min_bid_ask_size": 100.0,
+            "watchlist_add_score_threshold": 70,
+            "watchlist_remove_score_threshold": 25,
+            "candidate_mapping_policy": "HYBRID_V43_V33",
+            "compatibility_mapping_policy": "DISCOVER_WATCH_EXCLUDE"
+        },
+        "domestic_realtime_fixture": json.loads(domestic_realtime_fixture.read_text(encoding="utf-8")),
+        "technical_context": {
+            "technical_setup_summary": "MACD turn with RSI support",
+            "indicator_markers": ["MACD", "RSI", "MA", "ATR", "VOLUME"],
+            "setup_grade": "B",
+            "evidence_freshness": "CURRENT_FIXTURE"
+        },
+        "profitability_context": {
+            "profitability_context_status": "NON_ACTIONABLE",
+            "track_aware_profitability_check": "placeholder-report",
+            "expected_net_profit_pct": 0.03,
+            "break_even_move_pct": 0.01,
+            "cost_aware_minimum_target_move_pct": 0.015
+        },
+        "advisory_context": {
+            "supported_tracks": ["DOMESTIC_KR"],
+            "prompt_pack_context_marker": "DOMESTIC_SCANNER_REPORT",
+            "supports_report_only_mode": True
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_scanner_candidates = run_domestic_scanner_candidates(
+        domestic_scanner_fixture,
+        output_dir / "domestic_scanner_candidates_report.json",
+    )
+    domestic_scanner_quality = run_domestic_scanner_quality_report(
+        domestic_scanner_fixture,
+        output_dir / "domestic_scanner_quality_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1035,6 +1085,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "strategy_track_fixture_run": strategy_track.metadata_json["strategy_track_fixture_run"],
             "market_profit_fixture_run": market_profit.metadata_json["market_profit_fixture_run"],
             "domestic_realtime_fixture_run": domestic_realtime_quality.metadata_json["domestic_realtime_fixture_run"],
+            "domestic_scanner_fixture_run": domestic_scanner_quality.metadata_json["domestic_scanner_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1043,6 +1094,8 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "strategy_track_required": domestic_realtime_quality.metadata_json["strategy_track_required"],
             "market_profile_resolved": domestic_realtime_quality.metadata_json["market_profile_resolved"],
             "domestic_kr_only": domestic_realtime_quality.metadata_json["domestic_kr_only"],
+            "normalized_realtime_event_consumed": domestic_scanner_quality.metadata_json["normalized_realtime_event_consumed"],
+            "scanner_candidate_report_generated": domestic_scanner_candidates.metadata_json["scanner_candidate_report_generated"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],

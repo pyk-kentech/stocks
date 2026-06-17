@@ -117,6 +117,12 @@ from stock_risk_mcp.domestic_realtime_service import (
     run_domestic_realtime_profile_validate,
     run_domestic_realtime_quality_report,
 )
+from stock_risk_mcp.domestic_scanner_service import (
+    run_domestic_scanner_candidates,
+    run_domestic_scanner_config_validate,
+    run_domestic_scanner_quality_report,
+    run_domestic_scanner_watchlist_plan,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -506,6 +512,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_realtime_quality_report = subparsers.add_parser("domestic-realtime-quality-report")
     domestic_realtime_quality_report.add_argument("--fixture-file", type=Path, required=True)
     domestic_realtime_quality_report.add_argument("--output-file", type=Path)
+    domestic_scanner_config_validate = subparsers.add_parser("domestic-scanner-config-validate")
+    domestic_scanner_config_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_scanner_config_validate.add_argument("--output-file", type=Path)
+    domestic_scanner_candidates = subparsers.add_parser("domestic-scanner-candidates")
+    domestic_scanner_candidates.add_argument("--fixture-file", type=Path, required=True)
+    domestic_scanner_candidates.add_argument("--output-file", type=Path)
+    domestic_scanner_watchlist_plan = subparsers.add_parser("domestic-scanner-watchlist-plan")
+    domestic_scanner_watchlist_plan.add_argument("--fixture-file", type=Path, required=True)
+    domestic_scanner_watchlist_plan.add_argument("--output-file", type=Path)
+    domestic_scanner_quality_report = subparsers.add_parser("domestic-scanner-quality-report")
+    domestic_scanner_quality_report.add_argument("--fixture-file", type=Path, required=True)
+    domestic_scanner_quality_report.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1445,6 +1463,10 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-realtime-plan-show",
         "domestic-realtime-event-normalize",
         "domestic-realtime-quality-report",
+        "domestic-scanner-config-validate",
+        "domestic-scanner-candidates",
+        "domestic-scanner-watchlist-plan",
+        "domestic-scanner-quality-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2098,6 +2120,39 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_domestic_realtime_quality_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "quality_status": result.quality_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-scanner-config-validate":
+        try:
+            result = run_domestic_scanner_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-scanner-candidates":
+        try:
+            result = run_domestic_scanner_candidates(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-scanner-watchlist-plan":
+        try:
+            result = run_domestic_scanner_watchlist_plan(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "additions": len(result.additions), "removals": len(result.removals)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-scanner-quality-report":
+        try:
+            result = run_domestic_scanner_quality_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
