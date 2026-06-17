@@ -41,6 +41,11 @@ from stock_risk_mcp.domestic_calibration_service import (
     run_domestic_calibration_run,
     run_domestic_promotion_gate_report,
 )
+from stock_risk_mcp.domestic_paper_shadow_service import (
+    run_domestic_paper_shadow_journal_build,
+    run_domestic_paper_shadow_review_report,
+    run_domestic_paper_shadow_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1200,6 +1205,61 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_calibration_fixture,
         output_dir / "domestic_calibration_promotion_gate_report.json",
     )
+    domestic_paper_shadow_fixture = Path(output_dir) / "domestic_paper_shadow_smoke_fixture.json"
+    domestic_candidate_eval_payload = json.loads(domestic_candidate_evaluation_fixture.read_text(encoding="utf-8"))
+    domestic_paper_shadow_fixture.write_text(json.dumps({
+        "schema_version": "4.7-domestic-paper-shadow-fixture",
+        "run_id": f"domestic-paper-shadow-{result.demo_run_id}",
+        "created_at": "2026-06-17T11:00:00+09:00",
+        "paper_shadow_config": {
+            "config_id": "domestic-paper-shadow-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "explicit_paper_shadow_opt_in": True,
+            "allowed_promotion_gate_statuses": ["PROMOTION_READY_FOR_PAPER_SHADOW"],
+            "blocked_promotion_gate_statuses": [
+                "PROMOTION_REJECTED",
+                "PROMOTION_REPORT_ONLY",
+                "PROMOTION_BLOCKED_SAFETY",
+                "PROMOTION_BLOCKED_COVERAGE",
+                "PROMOTION_BLOCKED_REGRESSION"
+            ],
+            "journal_generation_mode": "CANDIDATE_LEVEL_ONLY",
+            "review_aggregation_mode": "DERIVED_SUMMARY_ONLY",
+            "report_only_preservation_mode": "PRESERVE",
+            "non_actionable_preservation_mode": "PRESERVE"
+        },
+        "paper_shadow_input_set": {
+            "input_set_id": "domestic-paper-shadow-input-set",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_summary": domestic_replay_report.market_profile_summary,
+            "promotion_gate_report": domestic_calibration_gate.model_dump(mode="json"),
+            "promotion_gate_criteria_reference": "domestic-calibration-criteria-1",
+            "calibration_pack_reference": domestic_calibration_gate.calibration_pack_id,
+            "coverage_report_reference": "coverage-report-1",
+            "regression_report_reference": "regression-report-1",
+            "candidate_evaluation_reports": [
+                run_domestic_candidate_evaluate(
+                    domestic_candidate_evaluation_fixture,
+                    output_dir / "domestic_candidate_evaluation_report_for_paper_shadow.json",
+                ).model_dump(mode="json")
+            ],
+            "replay_provenance_markers": ["V4.5_SMOKE_FIXTURE"],
+            "scenario_family_markers": ["BASELINE", "STALE_REPORT_ONLY"],
+            "advisory_context_markers": ["NON_EXECUTABLE_CONTEXT_ONLY"]
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_paper_shadow_journal = run_domestic_paper_shadow_journal_build(
+        domestic_paper_shadow_fixture,
+        output_dir / "domestic_paper_shadow_journal.json",
+    )
+    domestic_paper_shadow_review = run_domestic_paper_shadow_review_report(
+        domestic_paper_shadow_fixture,
+        output_dir / "domestic_paper_shadow_review_report.json",
+    )
+    domestic_paper_shadow_safety = run_domestic_paper_shadow_safety_report(
+        domestic_paper_shadow_fixture,
+        output_dir / "domestic_paper_shadow_safety_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1340,6 +1400,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_candidate_evaluation_fixture_run": domestic_candidate_evaluation.metadata_json["domestic_candidate_evaluation_fixture_run"],
             "domestic_replay_fixture_run": domestic_replay_report.metadata_json["domestic_replay_fixture_run"],
             "domestic_calibration_fixture_run": domestic_calibration_run.metadata_json["domestic_calibration_fixture_run"],
+            "domestic_paper_shadow_fixture_run": domestic_paper_shadow_journal.metadata_json["domestic_paper_shadow_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1365,6 +1426,14 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "policy_candidate_comparison_generated": domestic_calibration_run.metadata_json["policy_candidate_comparison_generated"],
             "promotion_gate_report_generated": domestic_calibration_gate.metadata_json["promotion_gate_report_generated"],
             "promotion_gate_pack_level_only": domestic_calibration_gate.metadata_json["promotion_gate_pack_level_only"],
+            "promotion_gate_report_consumed": domestic_paper_shadow_journal.metadata_json["promotion_gate_report_consumed"],
+            "candidate_evaluation_report_consumed": domestic_paper_shadow_journal.metadata_json["candidate_evaluation_report_consumed"],
+            "paper_shadow_explicit_opt_in_required": domestic_paper_shadow_journal.metadata_json["paper_shadow_explicit_opt_in_required"],
+            "paper_shadow_journal_generated": domestic_paper_shadow_journal.metadata_json["paper_shadow_journal_generated"],
+            "paper_shadow_candidate_level_entries": domestic_paper_shadow_journal.metadata_json["paper_shadow_candidate_level_entries"],
+            "paper_shadow_review_report_generated": domestic_paper_shadow_review.metadata_json["paper_shadow_review_report_generated"],
+            "paper_shadow_review_summary_derived_from_entries": domestic_paper_shadow_review.metadata_json["paper_shadow_review_summary_derived_from_entries"],
+            "paper_shadow_non_executable": domestic_paper_shadow_safety.metadata_json["paper_shadow_non_executable"],
             "strategy_track_required_for_trading_advisory": prompt_pack_validation.metadata_json["strategy_track_required_for_trading_advisory"],
             "market_profile_required_for_trading_advisory": prompt_pack_validation.metadata_json["market_profile_required_for_trading_advisory"],
             "profitability_context_checked": prompt_pack_validation.metadata_json["profitability_context_checked"],
@@ -1377,6 +1446,9 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "cloud_backend_used": False,
             "model_downloaded": False,
             "orders_created": domestic_realtime_quality.metadata_json["orders_created"],
+            "order_intent_created": domestic_paper_shadow_journal.metadata_json["order_intent_created"],
+            "order_drafts_created": domestic_paper_shadow_journal.metadata_json["order_drafts_created"],
+            "execution_approval_enabled": domestic_paper_shadow_journal.metadata_json["execution_approval_enabled"],
             "live_or_prod_used": domestic_realtime_quality.metadata_json["live_or_prod_used"],
             "model_runtime_called": domestic_candidate_evaluation_safety.metadata_json["model_runtime_called"],
             "strategy_track_comparison_count": strategy_track_compare.comparison_count,

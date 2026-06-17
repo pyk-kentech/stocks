@@ -141,6 +141,12 @@ from stock_risk_mcp.domestic_calibration_service import (
     run_domestic_policy_compare,
     run_domestic_promotion_gate_report,
 )
+from stock_risk_mcp.domestic_paper_shadow_service import (
+    run_domestic_paper_shadow_config_validate,
+    run_domestic_paper_shadow_journal_build,
+    run_domestic_paper_shadow_review_report,
+    run_domestic_paper_shadow_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -578,6 +584,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_promotion_gate = subparsers.add_parser("domestic-promotion-gate-report")
     domestic_promotion_gate.add_argument("--fixture-file", type=Path, required=True)
     domestic_promotion_gate.add_argument("--output-file", type=Path)
+    domestic_paper_shadow_validate = subparsers.add_parser("domestic-paper-shadow-config-validate")
+    domestic_paper_shadow_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_paper_shadow_validate.add_argument("--output-file", type=Path)
+    domestic_paper_shadow_journal = subparsers.add_parser("domestic-paper-shadow-journal-build")
+    domestic_paper_shadow_journal.add_argument("--fixture-file", type=Path, required=True)
+    domestic_paper_shadow_journal.add_argument("--output-file", type=Path)
+    domestic_paper_shadow_review = subparsers.add_parser("domestic-paper-shadow-review-report")
+    domestic_paper_shadow_review.add_argument("--fixture-file", type=Path, required=True)
+    domestic_paper_shadow_review.add_argument("--output-file", type=Path)
+    domestic_paper_shadow_safety = subparsers.add_parser("domestic-paper-shadow-safety-report")
+    domestic_paper_shadow_safety.add_argument("--fixture-file", type=Path, required=True)
+    domestic_paper_shadow_safety.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1533,6 +1551,10 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-calibration-run",
         "domestic-policy-compare",
         "domestic-promotion-gate-report",
+        "domestic-paper-shadow-config-validate",
+        "domestic-paper-shadow-journal-build",
+        "domestic-paper-shadow-review-report",
+        "domestic-paper-shadow-safety-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2318,6 +2340,39 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_domestic_promotion_gate_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "gate_status": result.gate_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-paper-shadow-config-validate":
+        try:
+            result = run_domestic_paper_shadow_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-paper-shadow-journal-build":
+        try:
+            result = run_domestic_paper_shadow_journal_build(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "entry_count": result.entry_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-paper-shadow-review-report":
+        try:
+            result = run_domestic_paper_shadow_review_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "entry_count": result.total_journal_entries}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-paper-shadow-safety-report":
+        try:
+            result = run_domestic_paper_shadow_safety_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}

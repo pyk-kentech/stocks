@@ -31,6 +31,7 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["domestic_candidate_evaluation_fixture_run"] is True
     assert result["checks"]["domestic_replay_fixture_run"] is True
     assert result["checks"]["domestic_calibration_fixture_run"] is True
+    assert result["checks"]["domestic_paper_shadow_fixture_run"] is True
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True
@@ -56,6 +57,14 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["policy_candidate_comparison_generated"] is True
     assert result["checks"]["promotion_gate_report_generated"] is True
     assert result["checks"]["promotion_gate_pack_level_only"] is True
+    assert result["checks"]["promotion_gate_report_consumed"] is True
+    assert result["checks"]["candidate_evaluation_report_consumed"] is True
+    assert result["checks"]["paper_shadow_explicit_opt_in_required"] is True
+    assert result["checks"]["paper_shadow_journal_generated"] is True
+    assert result["checks"]["paper_shadow_candidate_level_entries"] is True
+    assert result["checks"]["paper_shadow_review_report_generated"] is True
+    assert result["checks"]["paper_shadow_review_summary_derived_from_entries"] is True
+    assert result["checks"]["paper_shadow_non_executable"] is True
     assert result["checks"]["strategy_track_required_for_trading_advisory"] is True
     assert result["checks"]["market_profile_required_for_trading_advisory"] is True
     assert result["checks"]["profitability_context_checked"] is True
@@ -67,5 +76,8 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["cloud_backend_used"] is False
     assert result["checks"]["model_downloaded"] is False
     assert result["checks"]["orders_created"] is False
+    assert result["checks"]["order_intent_created"] is False
+    assert result["checks"]["order_drafts_created"] is False
+    assert result["checks"]["execution_approval_enabled"] is False
     assert result["checks"]["live_or_prod_used"] is False
     assert result["checks"]["strategy_track_comparison_count"] == 1
