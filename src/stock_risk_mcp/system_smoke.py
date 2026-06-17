@@ -69,6 +69,12 @@ from stock_risk_mcp.domestic_market_regime_service import (
     run_domestic_market_regime_report,
     run_domestic_market_regime_safety_report,
 )
+from stock_risk_mcp.domestic_regime_aware_integration_service import (
+    run_domestic_regime_aware_gap_report,
+    run_domestic_regime_aware_integration_build,
+    run_domestic_regime_aware_integration_report,
+    run_domestic_regime_aware_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
@@ -1667,6 +1673,140 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         domestic_market_regime_fixture,
         output_dir / "domestic_market_regime_safety_report.json",
     )
+    domestic_regime_aware_fixture = Path(output_dir) / "domestic_regime_aware_integration_smoke_fixture.json"
+    domestic_regime_aware_fixture.write_text(json.dumps({
+        "schema_version": "4.12-domestic-regime-aware-integration-fixture",
+        "fixture_id": f"domestic-regime-aware-integration-{result.demo_run_id}",
+        "created_at": "2026-06-18T11:00:00+09:00",
+        "regime_aware_integration_config": {
+            "config_id": "domestic-regime-aware-integration-config-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_id": "KRX",
+            "explicit_regime_aware_integration_opt_in": True,
+            "report_only_integration_mode": False,
+            "stale_regime_context_policy": "FAIL_CLOSED",
+            "missing_regime_report_policy": "FAIL_CLOSED",
+            "coverage_sufficiency_mode": "STRICT_SECTION_COVERAGE",
+            "wording_validation_mode": "FAIL_CLOSED",
+            "non_executable_enforcement_mode": "FAIL_CLOSED",
+            "non_executable": True,
+            "orders_created": False,
+            "order_intent_created": False,
+            "order_drafts_created": False,
+            "execution_approval_enabled": False,
+            "cloud_llm_called": False,
+            "model_runtime_called": False,
+            "ml_training_run": False,
+            "real_market_data_fetched": False,
+            "prompt_pack_executed": False,
+            "prompt_stub_executed": False
+        },
+        "regime_aware_input_set": {
+            "input_set_id": "domestic-regime-aware-input-set-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_summary": {"market_id": "KRX", "country": "KR", "base_currency": "KRW"},
+            "market_regime_report": domestic_market_regime_report.model_dump(mode="json"),
+            "market_regime_classification": domestic_market_regime_classification.model_dump(mode="json"),
+            "primary_regime_label": domestic_market_regime_report.primary_regime_label.value,
+            "secondary_regime_labels": [label.value for label in domestic_market_regime_report.secondary_regime_labels],
+            "evidence_strength_bucket": domestic_market_regime_report.evidence_strength_bucket.value,
+            "data_quality_flags": domestic_market_regime_report.data_quality_flags,
+            "missing_evidence_summary": domestic_market_regime_report.missing_evidence_summary,
+            "stale_evidence_summary": domestic_market_regime_report.stale_evidence_summary,
+            "report_only": domestic_market_regime_report.report_only,
+            "source_trace_references": domestic_market_regime_report.source_trace_references,
+            "candidate_evaluation_context": {
+                "section_id": "candidate-evaluation-context-smoke",
+                "source_artifact_ids": ["candidate-evaluation-report-smoke"],
+                "has_regime_attachment": True,
+                "watch_only_reason_count": 1,
+                "blocked_reason_count": 0,
+                "report_only_reason_count": 0,
+                "non_actionable": True
+            },
+            "replay_context": {
+                "section_id": "replay-context-smoke",
+                "source_artifact_ids": ["replay-window-smoke"],
+                "has_regime_attachment": True,
+                "replay_window_ids": ["REPLAY_OPENING_30M"],
+                "grouped_metric_counts": {"REGIME_RISK_ON": 3},
+                "non_actionable": True
+            },
+            "calibration_context": {
+                "section_id": "calibration-context-smoke",
+                "source_artifact_ids": ["calibration-pack-smoke"],
+                "has_regime_attachment": True,
+                "candidates_generated_by_regime": {"REGIME_RISK_ON": 5},
+                "blocked_candidates_by_regime": {"REGIME_RISK_OFF": 2},
+                "report_only_candidates_by_regime": {},
+                "coverage_by_regime": {"REGIME_RISK_ON": 1.0},
+                "non_actionable": True
+            },
+            "paper_shadow_context": {
+                "section_id": "paper-shadow-context-smoke",
+                "source_artifact_ids": ["paper-shadow-journal-smoke"],
+                "has_regime_attachment": True,
+                "journal_entry_ids": ["paper-shadow-entry-smoke"],
+                "candidate_ids": ["candidate-smoke"],
+                "regime_context_marker": "PRESERVED",
+                "non_actionable": True
+            },
+            "outcome_review_context": {
+                "section_id": "outcome-review-context-smoke",
+                "source_artifact_ids": ["outcome-review-report-smoke"],
+                "has_regime_attachment": True,
+                "favorable_count_by_regime": {"REGIME_RISK_ON": 2},
+                "adverse_count_by_regime": {"REGIME_RISK_OFF": 1},
+                "neutral_count_by_regime": {},
+                "inconclusive_count_by_regime": {},
+                "report_only_count_by_regime": {},
+                "blocked_confirmed_count_by_regime": {},
+                "insufficient_data_count_by_regime": {},
+                "non_actionable": True
+            },
+            "advisory_context": {
+                "section_id": "advisory-context-smoke",
+                "source_artifact_ids": ["advisory-context-bundle-smoke"],
+                "has_regime_attachment": True,
+                "regime_distribution_summary": {"REGIME_RISK_ON": 1},
+                "outcome_label_summary_by_regime": {"REGIME_RISK_ON": {"OUTCOME_FAVORABLE": 2}},
+                "blocked_report_only_non_actionable_summary_by_regime": {},
+                "data_quality_summary_by_regime": {},
+                "deterministic_regime_summary": "Risk-on context preserved for advisory explanation only.",
+                "non_actionable": True
+            },
+            "distillation_context": {
+                "section_id": "distillation-context-smoke",
+                "source_artifact_ids": ["distillation-dataset-pack-smoke"],
+                "has_regime_attachment": True,
+                "primary_regime_label_feature": domestic_market_regime_report.primary_regime_label.value,
+                "secondary_regime_label_features": [label.value for label in domestic_market_regime_report.secondary_regime_labels],
+                "regime_evidence_strength_feature": domestic_market_regime_report.evidence_strength_bucket.value,
+                "regime_data_quality_feature": domestic_market_regime_report.data_quality_flags,
+                "regime_report_only_marker": domestic_market_regime_report.report_only,
+                "regime_stale_marker": False,
+                "regime_conditioned_label_distribution_metadata": {"LABEL_FAVORABLE_OBSERVATION": 3},
+                "training_only": True,
+                "non_actionable": True
+            }
+        }
+    }, sort_keys=True), encoding="utf-8")
+    domestic_regime_aware_build = run_domestic_regime_aware_integration_build(
+        domestic_regime_aware_fixture,
+        output_dir / "domestic_regime_aware_integration_build.json",
+    )
+    domestic_regime_aware_report = run_domestic_regime_aware_integration_report(
+        domestic_regime_aware_fixture,
+        output_dir / "domestic_regime_aware_integration_report.json",
+    )
+    domestic_regime_aware_gap = run_domestic_regime_aware_gap_report(
+        domestic_regime_aware_fixture,
+        output_dir / "domestic_regime_aware_gap_report.json",
+    )
+    domestic_regime_aware_safety = run_domestic_regime_aware_safety_report(
+        domestic_regime_aware_fixture,
+        output_dir / "domestic_regime_aware_safety_report.json",
+    )
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -1812,6 +1952,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "domestic_shadow_advisory_context_fixture_run": domestic_shadow_advisory_bundle.metadata_json["domestic_shadow_advisory_context_fixture_run"],
             "domestic_distillation_dataset_fixture_run": domestic_distillation_pack.metadata_json["domestic_distillation_dataset_fixture_run"],
             "domestic_market_regime_fixture_run": domestic_market_regime_report.metadata_json["domestic_market_regime_fixture_run"],
+            "domestic_regime_aware_integration_fixture_run": domestic_regime_aware_report.metadata_json["domestic_regime_aware_integration_fixture_run"],
             "prompt_pack_fixture_run": True,
             "prompt_pack_validation_run": prompt_pack_validation.metadata_json["prompt_pack_validation_run"],
             "prompt_pack_gap_report_run": prompt_pack_gap.metadata_json["prompt_pack_gap_report_run"],
@@ -1870,6 +2011,14 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "market_regime_report_generated": domestic_market_regime_report.metadata_json["market_regime_report_generated"],
             "market_regime_gap_report_generated": domestic_market_regime_gap.metadata_json["market_regime_gap_report_generated"],
             "market_regime_non_executable": domestic_market_regime_report.metadata_json["market_regime_non_executable"],
+            "market_regime_report_consumed": domestic_regime_aware_report.metadata_json["market_regime_report_consumed"],
+            "regime_aware_context_reference_generated": domestic_regime_aware_report.metadata_json["regime_aware_context_reference_generated"],
+            "regime_aware_integration_report_generated": domestic_regime_aware_report.metadata_json["regime_aware_integration_report_generated"],
+            "regime_aware_gap_report_generated": domestic_regime_aware_gap.metadata_json["regime_aware_gap_report_generated"],
+            "regime_context_non_executable": domestic_regime_aware_report.metadata_json["regime_context_non_executable"],
+            "report_only_integration_mode_supported": domestic_regime_aware_report.metadata_json["report_only_integration_mode_supported"],
+            "missing_regime_report_fails_closed_by_default": domestic_regime_aware_report.metadata_json["missing_regime_report_fails_closed_by_default"],
+            "downstream_sub_context_sections_required": domestic_regime_aware_report.metadata_json["downstream_sub_context_sections_required"],
             "advisory_context_non_executable": domestic_shadow_advisory_safety.metadata_json["advisory_context_non_executable"],
             "training_only_context_marker_present": domestic_shadow_advisory_validation.metadata_json["training_only_context_marker_present"],
             "llm_runtime_allowed": domestic_shadow_advisory_safety.safety_boundary.llm_runtime_allowed,

@@ -174,6 +174,13 @@ from stock_risk_mcp.domestic_market_regime_service import (
     run_domestic_market_regime_report,
     run_domestic_market_regime_safety_report,
 )
+from stock_risk_mcp.domestic_regime_aware_integration_service import (
+    run_domestic_regime_aware_gap_report,
+    run_domestic_regime_aware_integration_build,
+    run_domestic_regime_aware_integration_config_validate,
+    run_domestic_regime_aware_integration_report,
+    run_domestic_regime_aware_safety_report,
+)
 from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_validate,
     run_prompt_pack_show,
@@ -680,6 +687,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_market_regime_safety = subparsers.add_parser("domestic-market-regime-safety-report")
     domestic_market_regime_safety.add_argument("--fixture-file", type=Path, required=True)
     domestic_market_regime_safety.add_argument("--output-file", type=Path)
+    domestic_regime_aware_validate = subparsers.add_parser("domestic-regime-aware-integration-config-validate")
+    domestic_regime_aware_validate.add_argument("--fixture-file", type=Path, required=True)
+    domestic_regime_aware_validate.add_argument("--output-file", type=Path)
+    domestic_regime_aware_build = subparsers.add_parser("domestic-regime-aware-integration-build")
+    domestic_regime_aware_build.add_argument("--fixture-file", type=Path, required=True)
+    domestic_regime_aware_build.add_argument("--output-file", type=Path)
+    domestic_regime_aware_report = subparsers.add_parser("domestic-regime-aware-integration-report")
+    domestic_regime_aware_report.add_argument("--fixture-file", type=Path, required=True)
+    domestic_regime_aware_report.add_argument("--output-file", type=Path)
+    domestic_regime_aware_gap = subparsers.add_parser("domestic-regime-aware-gap-report")
+    domestic_regime_aware_gap.add_argument("--fixture-file", type=Path, required=True)
+    domestic_regime_aware_gap.add_argument("--output-file", type=Path)
+    domestic_regime_aware_safety = subparsers.add_parser("domestic-regime-aware-safety-report")
+    domestic_regime_aware_safety.add_argument("--fixture-file", type=Path, required=True)
+    domestic_regime_aware_safety.add_argument("--output-file", type=Path)
     prompt_pack_validate = subparsers.add_parser("prompt-pack-validate")
     prompt_pack_validate.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_validate.add_argument("--output-file", type=Path)
@@ -1658,6 +1680,11 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-market-regime-report",
         "domestic-market-regime-gap-report",
         "domestic-market-regime-safety-report",
+        "domestic-regime-aware-integration-config-validate",
+        "domestic-regime-aware-integration-build",
+        "domestic-regime-aware-integration-report",
+        "domestic-regime-aware-gap-report",
+        "domestic-regime-aware-safety-report",
         "prompt-pack-validate",
         "prompt-pack-show",
         "prompt-pack-coverage-report",
@@ -2630,6 +2657,47 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "domestic-market-regime-safety-report":
         try:
             result = run_domestic_market_regime_safety_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-regime-aware-integration-config-validate":
+        try:
+            result = run_domestic_regime_aware_integration_config_validate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
+            return {"status": "COMPLETED", **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-regime-aware-integration-build":
+        try:
+            result = run_domestic_regime_aware_integration_build(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "integration_report_id": result.integration_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-regime-aware-integration-report":
+        try:
+            result = run_domestic_regime_aware_integration_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "integration_report_id": result.integration_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-regime-aware-gap-report":
+        try:
+            result = run_domestic_regime_aware_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "domestic-regime-aware-safety-report":
+        try:
+            result = run_domestic_regime_aware_safety_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
             return result.model_dump(mode="json")
