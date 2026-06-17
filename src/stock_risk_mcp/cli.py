@@ -104,6 +104,13 @@ from stock_risk_mcp.strategy_track_service import (
     run_strategy_track_compare,
     run_strategy_track_profile_validation,
 )
+from stock_risk_mcp.market_profit_service import (
+    load_market_profit_report,
+    load_market_profit_validation_report,
+    run_market_profit_compare_tracks,
+    run_market_profit_estimate,
+    run_market_profit_profile_validation,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -465,6 +472,17 @@ def build_command_parser() -> argparse.ArgumentParser:
     strategy_track_compare = subparsers.add_parser("strategy-track-compare")
     strategy_track_compare.add_argument("--fixture-file", type=Path, required=True)
     strategy_track_compare.add_argument("--output-file", type=Path)
+    market_profit_profile_validate = subparsers.add_parser("market-profit-profile-validate")
+    market_profit_profile_validate.add_argument("--fixture-file", type=Path, required=True)
+    market_profit_profile_validate.add_argument("--output-file", type=Path)
+    market_profit_estimate = subparsers.add_parser("market-profit-estimate")
+    market_profit_estimate.add_argument("--fixture-file", type=Path, required=True)
+    market_profit_estimate.add_argument("--output-file", type=Path)
+    market_profit_compare_tracks = subparsers.add_parser("market-profit-compare-tracks")
+    market_profit_compare_tracks.add_argument("--fixture-file", type=Path, required=True)
+    market_profit_compare_tracks.add_argument("--output-file", type=Path)
+    market_profit_break_even = subparsers.add_parser("market-profit-break-even")
+    market_profit_break_even.add_argument("--fixture-file", type=Path, required=True)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1385,6 +1403,10 @@ def main(argv: list[str] | None = None) -> None:
         "strategy-track-profile-validate",
         "strategy-track-profile-show",
         "strategy-track-compare",
+        "market-profit-profile-validate",
+        "market-profit-estimate",
+        "market-profit-compare-tracks",
+        "market-profit-break-even",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -1975,6 +1997,36 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "comparison_count": result.comparison_count}
             return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-profit-profile-validate":
+        try:
+            result = run_market_profit_profile_validation(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "strategy_track": result.summary["strategy_track"]}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-profit-estimate":
+        try:
+            result = run_market_profit_estimate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "eligibility_status": result.check.eligibility_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-profit-compare-tracks":
+        try:
+            result = run_market_profit_compare_tracks(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "comparison_count": result.comparison_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-profit-break-even":
+        try:
+            result = run_market_profit_estimate(args.fixture_file)
+            return {"break_even_estimate": result.check.break_even_estimate.model_dump(mode="json")}
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":

@@ -19,6 +19,7 @@ from stock_risk_mcp.local_model_runtime_service import run_local_model_advisory_
 from stock_risk_mcp.local_model_benchmark_service import run_local_model_benchmark_cli
 from stock_risk_mcp.local_model_decision_report_service import run_local_model_decision_report_cli
 from stock_risk_mcp.strategy_track_service import run_strategy_track_compare, run_strategy_track_profile_validation
+from stock_risk_mcp.market_profit_service import run_market_profit_estimate
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -696,6 +697,86 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     }, sort_keys=True), encoding="utf-8")
     strategy_track = run_strategy_track_profile_validation(strategy_track_fixture, output_dir / "strategy_track_report.json")
     strategy_track_compare = run_strategy_track_compare(strategy_track_fixture, output_dir / "strategy_track_compare.json")
+    market_profit_fixture = Path(output_dir) / "market_profit_smoke_fixture.json"
+    market_profit_fixture.write_text(json.dumps({
+        "schema_version": "4.1-market-profit-fixture",
+        "run_id": f"market-profit-{result.demo_run_id}",
+        "created_at": "2026-06-17T12:00:00+00:00",
+        "strategy_request": {
+            "request_id": "market-profit-overseas-smoke",
+            "strategy_track": "OVERSEAS_US",
+            "strategy_track_candidates": ["OVERSEAS_US"],
+            "market_profile": {
+                "market_id": "US_EQUITY",
+                "country": "US",
+                "base_currency": "USD",
+                "exchange_session_profile": "US_EXTENDED_HOURS",
+                "trading_hours": "PRE+REGULAR+AFTER_HOURS",
+                "settlement_cash_availability": "T+1 overseas placeholder",
+                "fee_tax_profile_reference": "fee_tax/overseas_us.json",
+                "realtime_data_profile_reference": "realtime/overseas_us.json",
+                "provider_capability_reference": "providers/overseas_us_simulation_only.json",
+                "fx_reference": "USD/KRW"
+            },
+            "provider_capability": {
+                "provider_id": "UNRESOLVED",
+                "track": "OVERSEAS_US",
+                "supported_markets": ["NYSE", "NASDAQ"],
+                "supported_asset_types": ["STOCK"],
+                "domestic_support": False,
+                "overseas_support": True,
+                "realtime_support": False,
+                "order_support": False,
+                "account_support": False,
+                "status": "SIMULATION_ONLY"
+            }
+        },
+        "fee_tax_profile": {
+            "track": "OVERSEAS_US",
+            "market_id": "US_EQUITY",
+            "asset_type": "STOCK",
+            "buy_commission_rate": 0.001,
+            "sell_commission_rate": 0.001,
+            "transaction_tax_rate": 0.0,
+            "regulatory_fee_rate": 0.00003,
+            "annual_tax_treatment": "placeholder",
+            "tax_estimate_mode": "EXCLUDED",
+            "effective_date": "2026-06-17",
+            "evidence_source": "local fixture",
+            "status": "ACTIVE",
+            "simulation_only": False,
+            "estimated_tax_rate": 0.0
+        },
+        "currency_profile": {
+            "base_currency": "USD",
+            "settlement_currency": "USD",
+            "reporting_currency": "KRW",
+            "fx_reference_pair": "USD/KRW",
+            "fx_rate_source": "fixture",
+            "fx_timestamp": "2026-06-17T11:00:00+00:00",
+            "fx_rate": 1350.0,
+            "stale_fx_after_hours": 24,
+            "missing_fx_policy": "FAIL_CLOSED"
+        },
+        "fx_cost_profile": {
+            "fx_spread_rate": 0.001,
+            "conversion_fee_rate": 0.0005,
+            "buy_side_conversion": True,
+            "sell_side_conversion": True,
+            "realized_fx_only": True,
+            "status": "ACTIVE"
+        },
+        "trade_input": {
+            "entry_price": 10.0,
+            "exit_price": 12.0,
+            "quantity": 10,
+            "min_expected_net_return_pct": 0.01,
+            "max_break_even_move_pct": 0.2,
+            "target_price": 12.0,
+            "risk_reference_price": 9.0
+        }
+    }, sort_keys=True), encoding="utf-8")
+    market_profit = run_market_profit_estimate(market_profit_fixture, output_dir / "market_profit_report.json")
     steps = {item.step_name: item for item in result.step_results}
     complete = lambda name: steps.get(name) is not None and steps[name].status == DemoStepStatus.COMPLETED
     connector = steps.get(DemoStepName.CONNECTORS)
@@ -726,8 +807,11 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "local_model_benchmark_fixture_run": local_model_benchmark.metadata_json["external_network_calls"] is False,
             "local_model_decision_report_fixture_run": local_model_decision_report.metadata_json["external_network_calls"] is False,
             "strategy_track_fixture_run": strategy_track.metadata_json["strategy_track_fixture_run"],
+            "market_profit_fixture_run": market_profit.metadata_json["market_profit_fixture_run"],
             "llm_called": False,
             "real_model_called": False,
+            "strategy_track_required": market_profit.metadata_json["strategy_track_required"],
+            "market_profile_resolved": market_profit.metadata_json["market_profile_resolved"],
             "broker_api_called": strategy_track.metadata_json["broker_api_called"],
             "credentials_accessed": strategy_track.metadata_json["credentials_accessed"],
             "external_network_calls": False,
