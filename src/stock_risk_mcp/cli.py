@@ -199,6 +199,16 @@ from stock_risk_mcp.historical_calendar_service import (
     run_historical_calendar_gap_report,
     run_historical_calendar_validate,
 )
+from stock_risk_mcp.historical_replay_bridge_engine import (
+    build_historical_replay_event_stream,
+    build_historical_replay_windows,
+    build_historical_scanner_replay_input,
+)
+from stock_risk_mcp.historical_replay_bridge_fixture import load_historical_replay_bridge_fixture
+from stock_risk_mcp.historical_replay_bridge_models import (
+    HistoricalReplayBridgeReport,
+    HistoricalReplayBridgeSafetyReport,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -747,6 +757,24 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_calendar_gap_report = subparsers.add_parser("historical-calendar-gap-report")
     historical_calendar_gap_report.add_argument("--fixture-file", type=Path, required=True)
     historical_calendar_gap_report.add_argument("--output-file", type=Path)
+    historical_replay_bridge_build = subparsers.add_parser("historical-replay-bridge-build")
+    historical_replay_bridge_build.add_argument("--fixture-file", type=Path, required=True)
+    historical_replay_bridge_build.add_argument("--output-file", type=Path)
+    historical_replay_event_stream = subparsers.add_parser("historical-replay-event-stream")
+    historical_replay_event_stream.add_argument("--fixture-file", type=Path, required=True)
+    historical_replay_event_stream.add_argument("--output-file", type=Path)
+    historical_replay_window_report = subparsers.add_parser("historical-replay-window-report")
+    historical_replay_window_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_replay_window_report.add_argument("--output-file", type=Path)
+    historical_scanner_replay_input = subparsers.add_parser("historical-scanner-replay-input")
+    historical_scanner_replay_input.add_argument("--fixture-file", type=Path, required=True)
+    historical_scanner_replay_input.add_argument("--output-file", type=Path)
+    historical_replay_gap_report = subparsers.add_parser("historical-replay-gap-report")
+    historical_replay_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_replay_gap_report.add_argument("--output-file", type=Path)
+    historical_replay_safety_report = subparsers.add_parser("historical-replay-safety-report")
+    historical_replay_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_replay_safety_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1731,6 +1759,12 @@ def main(argv: list[str] | None = None) -> None:
         "historical-calendar-config-validate",
         "historical-calendar-validate",
         "historical-calendar-gap-report",
+        "historical-replay-bridge-build",
+        "historical-replay-event-stream",
+        "historical-replay-window-report",
+        "historical-scanner-replay-input",
+        "historical-replay-gap-report",
+        "historical-replay-safety-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -2834,6 +2868,64 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-replay-bridge-build":
+        try:
+            result = _build_historical_replay_bridge_report(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "window_count": result.window_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-replay-event-stream":
+        try:
+            result = _build_historical_replay_event_stream_payload(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "event_count": len(result.events)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-replay-window-report":
+        try:
+            result = _build_historical_replay_window_bundle(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "window_count": len(result.windows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-scanner-replay-input":
+        try:
+            result = _build_historical_scanner_replay_input_payload(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "candidate_seed_count": len(result.candidate_seeds),
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-replay-gap-report":
+        try:
+            result = _build_historical_replay_window_bundle(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-replay-safety-report":
+        try:
+            result = _build_historical_replay_safety_report(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -3408,6 +3500,61 @@ def run_evaluate(args: argparse.Namespace) -> dict[str, object]:
         else None,
     ).evaluate(proposal)
     return result.model_dump(mode="json")
+
+
+def _load_historical_replay_bridge_fixture_or_raise(fixture_file: Path):
+    return load_historical_replay_bridge_fixture(fixture_file)
+
+
+def _build_historical_replay_event_stream_payload(fixture_file: Path):
+    fixture = _load_historical_replay_bridge_fixture_or_raise(fixture_file)
+    return build_historical_replay_event_stream(fixture)
+
+
+def _build_historical_replay_window_bundle(fixture_file: Path):
+    fixture = _load_historical_replay_bridge_fixture_or_raise(fixture_file)
+    stream = build_historical_replay_event_stream(fixture)
+    return build_historical_replay_windows(stream, fixture)
+
+
+def _build_historical_scanner_replay_input_payload(fixture_file: Path):
+    fixture = _load_historical_replay_bridge_fixture_or_raise(fixture_file)
+    stream = build_historical_replay_event_stream(fixture)
+    window_bundle = build_historical_replay_windows(stream, fixture)
+    scanner_input, _scanner_report, gap_report = build_historical_scanner_replay_input(stream, window_bundle)
+    if scanner_input is None:
+        categories = ", ".join(gap_report.gap_categories) if gap_report.gap_categories else "unknown gap"
+        raise ValueError(f"historical scanner replay input unavailable: {categories}")
+    return scanner_input
+
+
+def _build_historical_replay_safety_report(fixture_file: Path):
+    _load_historical_replay_bridge_fixture_or_raise(fixture_file)
+    return HistoricalReplayBridgeSafetyReport()
+
+
+def _build_historical_replay_bridge_report(fixture_file: Path):
+    fixture = _load_historical_replay_bridge_fixture_or_raise(fixture_file)
+    stream = build_historical_replay_event_stream(fixture)
+    window_bundle = build_historical_replay_windows(stream, fixture)
+    warnings = sorted({warning for window in window_bundle.windows for warning in window.warnings})
+    return HistoricalReplayBridgeReport.model_validate(
+        {
+            "report_id": f"{stream.stream_id}-REPORT",
+            "bridge_input_id": stream.bridge_input_id,
+            "strategy_track": stream.strategy_track,
+            "market_profile_id": stream.market_profile_id,
+            "historical_market_snapshot_id": stream.historical_market_snapshot_id,
+            "historical_calendar_snapshot_id": stream.historical_calendar_snapshot_id,
+            "source_manifest_ids": stream.source_manifest_ids,
+            "source_audit_record_ids": stream.source_audit_record_ids,
+            "provider_provenance_ids": stream.provider_provenance_ids,
+            "event_count": len(stream.events),
+            "window_count": len(window_bundle.windows),
+            "safety_report": _build_historical_replay_safety_report(fixture_file).model_dump(mode="json"),
+            "warnings": warnings,
+        }
+    )
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

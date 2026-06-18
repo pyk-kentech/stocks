@@ -36,6 +36,32 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_manifest_generated"] is True
     assert result["checks"]["historical_calendar_fixture_run"] is True
     assert result["checks"]["historical_calendar_manifest_generated"] is True
+    assert result["checks"]["historical_replay_bridge_fixture_run"] is True
+    assert result["checks"]["historical_replay_event_stream_generated"] is True
+    assert result["checks"]["historical_replay_windows_generated"] is True
+    assert result["checks"]["historical_replay_event_context_attached"] is True
+    assert result["checks"]["historical_scanner_replay_input_generated"] is True
+    assert result["checks"]["calendar_aware_windowing_enabled"] is True
+    assert result["checks"]["holiday_sessions_not_counted_as_data_gaps"] is True
+    assert result["checks"]["early_close_sessions_flagged"] is True
+    assert result["checks"]["event_context_attached_report_only"] is True
+    assert result["checks"]["scanner_replay_report_only"] is True
+    assert result["checks"]["scanner_replay_non_order_candidate"] is True
+    assert result["checks"]["historical_replay_read_only"] is True
+    assert result["checks"]["historical_replay_non_executable"] is True
+    assert result["checks"]["historical_replay_local_files_only"] is True
+    assert result["checks"]["historical_replay_remote_fetch_allowed"] is False
+    assert result["checks"]["historical_replay_api_provider_called"] is False
+    assert result["checks"]["historical_replay_order_intent_created"] is False
+    assert result["checks"]["historical_replay_live_or_prod_used"] is False
+    assert result["checks"]["historical_replay_cloud_llm_called"] is False
+    assert result["checks"]["historical_replay_model_runtime_called"] is False
+    assert result["checks"]["historical_replay_ml_training_run"] is False
+    assert result["checks"]["investing_crawler_called"] is False
+    assert result["checks"]["finviz_scraper_called"] is False
+    assert result["checks"]["news_ingestion_called"] is False
+    assert result["checks"]["gemini_called"] is False
+    assert result["checks"]["ls_api_called"] is False
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True

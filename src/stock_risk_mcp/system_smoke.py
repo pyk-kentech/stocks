@@ -86,6 +86,15 @@ from stock_risk_mcp.historical_data_service import (
     run_historical_data_quality_report,
     run_historical_data_validate,
 )
+from stock_risk_mcp.historical_data_engine import (
+    build_historical_data_gap_report,
+    build_historical_data_manifest,
+    build_historical_data_quality_report,
+    build_historical_data_validation_report,
+    parse_historical_data_records,
+)
+from stock_risk_mcp.historical_data_fixture import load_historical_data_fixture
+from stock_risk_mcp.historical_data_models import HistoricalDataAuditRecord, HistoricalMarketDataSnapshot
 from stock_risk_mcp.historical_calendar_service import (
     run_historical_calendar_gap_report,
     run_historical_calendar_validate,
@@ -93,10 +102,20 @@ from stock_risk_mcp.historical_calendar_service import (
 from stock_risk_mcp.historical_calendar_fixture import load_historical_calendar_fixture
 from stock_risk_mcp.historical_calendar_engine import (
     build_historical_calendar_manifest,
+    build_historical_calendar_gap_report,
+    build_historical_calendar_validation_report,
     parse_corporate_event_records,
     parse_market_event_records,
     parse_trading_session_records,
 )
+from stock_risk_mcp.historical_calendar_models import HistoricalCalendarEventSnapshot
+from stock_risk_mcp.historical_replay_bridge_engine import (
+    build_historical_replay_event_stream,
+    build_historical_replay_windows,
+    build_historical_scanner_replay_input,
+)
+from stock_risk_mcp.historical_replay_bridge_fixture import HistoricalReplayBridgeFixture
+from stock_risk_mcp.historical_replay_bridge_models import HistoricalReplayBridgeConfig
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2014,6 +2033,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         calendar_batch_id=historical_calendar_fixture_loaded.calendar_batch_id,
         source_descriptor_ids=historical_calendar_fixture_loaded.source_descriptor_ids,
     )
+    historical_replay = _run_historical_replay_bridge_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2159,6 +2179,32 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_manifest_generated": historical_data_manifest.record_count == 1 and historical_data_quality.record_count == 1 and historical_data_gap.gap_status.value == "NO_GAPS",
             "historical_calendar_fixture_run": historical_calendar_validation.validation_status.value == "VALID",
             "historical_calendar_manifest_generated": historical_calendar_manifest.session_record_count == 1 and historical_calendar_gap.gap_status.value == "NO_GAPS",
+            "historical_replay_bridge_fixture_run": historical_replay["fixture_run"],
+            "historical_replay_event_stream_generated": historical_replay["event_stream_generated"],
+            "historical_replay_windows_generated": historical_replay["windows_generated"],
+            "historical_replay_event_context_attached": historical_replay["event_context_attached"],
+            "historical_scanner_replay_input_generated": historical_replay["scanner_replay_input_generated"],
+            "calendar_aware_windowing_enabled": historical_replay["calendar_aware_windowing_enabled"],
+            "holiday_sessions_not_counted_as_data_gaps": historical_replay["holiday_sessions_not_counted_as_data_gaps"],
+            "early_close_sessions_flagged": historical_replay["early_close_sessions_flagged"],
+            "event_context_attached_report_only": historical_replay["event_context_attached_report_only"],
+            "scanner_replay_report_only": historical_replay["scanner_replay_report_only"],
+            "scanner_replay_non_order_candidate": historical_replay["scanner_replay_non_order_candidate"],
+            "historical_replay_read_only": historical_replay["read_only"],
+            "historical_replay_non_executable": historical_replay["non_executable"],
+            "historical_replay_local_files_only": historical_replay["local_files_only"],
+            "historical_replay_remote_fetch_allowed": False,
+            "historical_replay_api_provider_called": False,
+            "historical_replay_order_intent_created": False,
+            "historical_replay_live_or_prod_used": False,
+            "historical_replay_cloud_llm_called": False,
+            "historical_replay_model_runtime_called": False,
+            "historical_replay_ml_training_run": False,
+            "investing_crawler_called": False,
+            "finviz_scraper_called": False,
+            "news_ingestion_called": False,
+            "gemini_called": False,
+            "ls_api_called": False,
             "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
             "domestic_shadow_advisory_context_fixture_run": domestic_shadow_advisory_bundle.metadata_json["domestic_shadow_advisory_context_fixture_run"],
             "domestic_distillation_dataset_fixture_run": domestic_distillation_pack.metadata_json["domestic_distillation_dataset_fixture_run"],
@@ -2258,4 +2304,477 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         "warnings": result.warnings,
         "errors": result.errors,
         "disclaimer": "Local deterministic system smoke only; no external network calls or orders.",
+    }
+
+
+def _build_historical_replay_market_snapshot(output_dir: Path) -> HistoricalMarketDataSnapshot:
+    historical_data_csv = output_dir / "historical_replay_data_smoke.csv"
+    historical_data_csv.write_text(
+        "symbol,timestamp,open,high,low,close,volume\n"
+        "005930,2026-06-19T09:00:00+09:00,70000,71000,69900,70500,1000\n"
+        "005930,2026-06-22T09:00:00+09:00,70600,71200,70400,71100,1100\n"
+        "005930,2026-06-24T09:00:00+09:00,71100,71600,70900,71400,1200\n",
+        encoding="utf-8",
+    )
+    historical_data_fixture = output_dir / "historical_replay_data_smoke_fixture.json"
+    historical_data_fixture.write_text(json.dumps({
+        "schema_version": "5.1-historical-data-ingestion-fixture",
+        "fixture_id": "historical-replay-data-smoke",
+        "created_at": "2026-06-24T09:00:00+09:00",
+        "ingestion_config": {
+            "config_id": "historical-replay-config-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile": {
+                "market_id": "KRX",
+                "country": "KR",
+                "base_currency": "KRW",
+                "exchange_session_profile": "KRX_CASH",
+                "trading_hours": "09:00-15:30",
+                "settlement_cash_availability": "T+2",
+                "fee_tax_profile_reference": "profiles/domestic_kr_fee_tax.json",
+                "realtime_data_profile_reference": "profiles/domestic_kr_realtime.json",
+                "provider_capability_reference": "profiles/domestic_kr_local_file_only.json",
+            },
+            "source_type": "local_csv",
+            "strict_validation_mode": True,
+            "allow_report_only_downgrade": False,
+            "currency_mismatch_policy": "FAIL_CLOSED",
+            "duplicate_record_policy": "FAIL_CLOSED",
+            "missing_session_policy": "FAIL_CLOSED",
+            "stale_batch_policy": "FAIL_CLOSED",
+            "unsupported_track_policy": "FAIL_CLOSED",
+            "unsafe_source_policy": "FAIL_CLOSED",
+        },
+        "source_descriptor": {
+            "source_descriptor_id": "historical-replay-source-desc-smoke",
+            "source_type": "local_csv",
+            "local_file_path": str(historical_data_csv),
+            "declared_format": "CSV",
+            "declared_content_type": "text/csv",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile_id": "KRX",
+            "source_id": "KRX_MANUAL_EXPORT",
+            "source_vendor_name": "KRX Manual Export",
+            "source_reliability_tier": "OFFICIAL",
+            "path_safety_class": "LOCAL_TMP",
+            "timezone": "Asia/Seoul",
+            "currency": "KRW",
+            "source_symbol_namespace": "KRX",
+            "contains_adjusted_prices": False,
+            "contains_unadjusted_prices": True,
+            "contains_turnover": False,
+            "contains_trade_value": False,
+        },
+        "provider_provenance": {
+            "provenance_id": "historical-replay-provenance-smoke",
+            "source_family": "KRX_MANUAL_EXPORT",
+            "source_name": "KRX Manual Export",
+            "source_tier": "OFFICIAL",
+            "acquisition_mode": "LOCAL_FILE",
+            "requires_reconciliation": False,
+            "notes": "Local offline fixture",
+        },
+        "adjustment_policy": {
+            "policy_id": "historical-replay-adjustment-policy-smoke",
+            "price_adjustment_mode": "UNADJUSTED",
+            "split_adjustment_expected": False,
+            "dividend_adjustment_expected": False,
+            "corporate_action_backfill_expected": False,
+            "adjusted_close_required": False,
+            "mixed_adjustment_state_allowed": False,
+            "report_only_if_uncertain": True,
+        },
+        "ingestion_batch_id": "historical-replay-batch-smoke",
+        "audit_record_ids": ["historical-replay-audit-smoke"],
+    }, sort_keys=True), encoding="utf-8")
+    fixture = load_historical_data_fixture(historical_data_fixture)
+    records, parse_issues = parse_historical_data_records(
+        fixture.source_descriptor,
+        ingestion_batch_id=fixture.ingestion_batch_id,
+    )
+    validation = build_historical_data_validation_report(
+        ingestion_config=fixture.ingestion_config,
+        source_descriptor=fixture.source_descriptor,
+        records=records,
+        parse_issues=parse_issues,
+        ingestion_batch_id=fixture.ingestion_batch_id,
+    )
+    quality = build_historical_data_quality_report(
+        ingestion_batch_id=fixture.ingestion_batch_id,
+        records=records,
+        validation_report=validation,
+        adjustment_policy=fixture.adjustment_policy,
+    )
+    gap = build_historical_data_gap_report(
+        ingestion_config=fixture.ingestion_config,
+        validation_report=validation,
+        quality_report=quality,
+        ingestion_batch_id=fixture.ingestion_batch_id,
+    )
+    manifest = build_historical_data_manifest(
+        ingestion_config=fixture.ingestion_config,
+        source_descriptor=fixture.source_descriptor,
+        provider_provenance=fixture.provider_provenance,
+        adjustment_policy=fixture.adjustment_policy,
+        records=records,
+        validation_report=validation,
+        quality_report=quality,
+        gap_report=gap,
+        audit_record_ids=fixture.audit_record_ids,
+    )
+    audit_record = HistoricalDataAuditRecord.model_validate(
+        {
+            "audit_record_id": fixture.audit_record_ids[0],
+            "ingestion_batch_id": fixture.ingestion_batch_id,
+            "source_descriptor_id": fixture.source_descriptor.source_descriptor_id,
+            "created_at": "2026-06-24T09:01:00+09:00",
+            "operator_context": "SYSTEM_SMOKE",
+            "local_file_path": fixture.source_descriptor.local_file_path,
+            "local_file_hash": "sha256:historical-replay-smoke",
+            "parser_version": "FIXTURE_ONLY",
+            "validation_report_id": validation.validation_report_id,
+            "quality_report_id": quality.quality_report_id,
+            "gap_report_id": gap.gap_report_id,
+        }
+    )
+    return HistoricalMarketDataSnapshot.model_validate(
+        {
+            "schema_version": "5.1-historical-market-data-snapshot",
+            "snapshot_id": "historical-replay-market-smoke",
+            "created_at": "2026-06-24T09:02:00+09:00",
+            "ingestion_config": fixture.ingestion_config.model_dump(mode="json"),
+            "source_descriptor": fixture.source_descriptor.model_dump(mode="json"),
+            "provider_provenance": fixture.provider_provenance.model_dump(mode="json"),
+            "adjustment_policy": fixture.adjustment_policy.model_dump(mode="json"),
+            "records": [record.model_dump(mode="json") for record in records],
+            "validation_report": validation.model_dump(mode="json"),
+            "gap_report": gap.model_dump(mode="json"),
+            "quality_report": quality.model_dump(mode="json"),
+            "manifest": manifest.model_dump(mode="json"),
+            "audit_records": [audit_record.model_dump(mode="json")],
+        }
+    )
+
+
+def _build_historical_replay_calendar_snapshot(output_dir: Path) -> HistoricalCalendarEventSnapshot:
+    session_file = output_dir / "historical_replay_calendar_sessions.jsonl"
+    session_file.write_text(
+        "\n".join(
+            json.dumps(item)
+            for item in [
+                {
+                    "market": "KRX",
+                    "date": "2026-06-19",
+                    "timezone": "Asia/Seoul",
+                    "is_trading_day": True,
+                    "is_holiday": False,
+                    "is_early_close": False,
+                    "regular_open_time": "09:00:00",
+                    "regular_close_time": "15:30:00",
+                    "actual_open_time": "09:00:00",
+                    "actual_close_time": "15:30:00",
+                    "session_type": "REGULAR_SESSION",
+                    "source_id": "KRX_LOCAL_CALENDAR",
+                    "calendar_batch_id": "historical-replay-calendar-batch-smoke",
+                },
+                {
+                    "market": "KRX",
+                    "date": "2026-06-22",
+                    "timezone": "Asia/Seoul",
+                    "is_trading_day": True,
+                    "is_holiday": False,
+                    "is_early_close": True,
+                    "regular_open_time": "09:00:00",
+                    "regular_close_time": "15:30:00",
+                    "actual_open_time": "09:00:00",
+                    "actual_close_time": "12:00:00",
+                    "session_type": "EARLY_CLOSE",
+                    "source_id": "KRX_LOCAL_CALENDAR",
+                    "calendar_batch_id": "historical-replay-calendar-batch-smoke",
+                },
+                {
+                    "market": "KRX",
+                    "date": "2026-06-23",
+                    "timezone": "Asia/Seoul",
+                    "is_trading_day": False,
+                    "is_holiday": True,
+                    "is_early_close": False,
+                    "regular_open_time": "09:00:00",
+                    "regular_close_time": "15:30:00",
+                    "actual_open_time": None,
+                    "actual_close_time": None,
+                    "session_type": "MARKET_HOLIDAY",
+                    "source_id": "KRX_LOCAL_CALENDAR",
+                    "calendar_batch_id": "historical-replay-calendar-batch-smoke",
+                },
+                {
+                    "market": "KRX",
+                    "date": "2026-06-24",
+                    "timezone": "Asia/Seoul",
+                    "is_trading_day": True,
+                    "is_holiday": False,
+                    "is_early_close": False,
+                    "regular_open_time": "09:00:00",
+                    "regular_close_time": "15:30:00",
+                    "actual_open_time": "09:00:00",
+                    "actual_close_time": "15:30:00",
+                    "session_type": "REGULAR_SESSION",
+                    "source_id": "KRX_LOCAL_CALENDAR",
+                    "calendar_batch_id": "historical-replay-calendar-batch-smoke",
+                },
+            ]
+        ) + "\n",
+        encoding="utf-8",
+    )
+    market_event_file = output_dir / "historical_replay_market_events.jsonl"
+    market_event_file.write_text(
+        "\n".join(
+            json.dumps(item)
+            for item in [
+                {
+                    "event_id": "macro-1",
+                    "market": "KRX",
+                    "event_date": "2026-06-19",
+                    "event_time": "2026-06-19T08:30:00+09:00",
+                    "timezone": "Asia/Seoul",
+                    "event_type": "CPI_RELEASE",
+                    "event_scope": "MARKET_WIDE",
+                    "affected_symbols": [],
+                    "affected_market": "KRX",
+                    "source_id": "LOCAL_MACRO_EVENTS",
+                    "event_batch_id": "historical-replay-calendar-batch-smoke",
+                },
+                {
+                    "event_id": "derivatives-1",
+                    "market": "KRX",
+                    "event_date": "2026-06-24",
+                    "event_time": "2026-06-24T15:30:00+09:00",
+                    "timezone": "Asia/Seoul",
+                    "event_type": "OPTIONS_EXPIRATION",
+                    "event_scope": "MARKET_WIDE",
+                    "affected_symbols": [],
+                    "affected_market": "KRX",
+                    "source_id": "LOCAL_DERIVATIVES_EVENTS",
+                    "event_batch_id": "historical-replay-calendar-batch-smoke",
+                },
+            ]
+        ) + "\n",
+        encoding="utf-8",
+    )
+    corporate_event_file = output_dir / "historical_replay_corporate_events.jsonl"
+    corporate_event_file.write_text(
+        "\n".join(
+            json.dumps(item)
+            for item in [
+                {
+                    "symbol": "005930",
+                    "market": "KRX",
+                    "event_date": "2026-06-19",
+                    "event_type": "EARNINGS_BEFORE_OPEN",
+                    "earnings_before_open_flag": True,
+                    "source_id": "LOCAL_CORPORATE_EVENTS",
+                },
+                {
+                    "symbol": "005930",
+                    "market": "KRX",
+                    "event_date": "2026-06-22",
+                    "event_type": "EARNINGS_AFTER_CLOSE",
+                    "earnings_after_close_flag": True,
+                    "source_id": "LOCAL_CORPORATE_EVENTS",
+                },
+                {
+                    "symbol": "005930",
+                    "market": "KRX",
+                    "event_date": "2026-06-24",
+                    "event_type": "DIVIDEND_EX_DATE",
+                    "dividend_ex_date_flag": True,
+                    "source_id": "LOCAL_CORPORATE_EVENTS",
+                },
+                {
+                    "symbol": "005930",
+                    "market": "KRX",
+                    "event_date": "2026-06-24",
+                    "event_type": "SPLIT_EFFECTIVE_DATE",
+                    "split_effective_date_flag": True,
+                    "source_id": "LOCAL_CORPORATE_EVENTS",
+                },
+                {
+                    "symbol": "005930",
+                    "market": "KRX",
+                    "event_date": "2026-06-24",
+                    "event_type": "CORPORATE_ACTION",
+                    "corporate_action_adjustment_flag": True,
+                    "source_id": "LOCAL_CORPORATE_EVENTS",
+                },
+            ]
+        ) + "\n",
+        encoding="utf-8",
+    )
+    calendar_fixture = output_dir / "historical_replay_calendar_smoke_fixture.json"
+    calendar_fixture.write_text(json.dumps({
+        "schema_version": "5.1-historical-calendar-ingestion-fixture",
+        "fixture_id": "historical-replay-calendar-smoke",
+        "created_at": "2026-06-24T09:00:00+09:00",
+        "calendar_config": {
+            "calendar_config_id": "historical-replay-calendar-config-smoke",
+            "strategy_track": "DOMESTIC_KR",
+            "market_profile": {
+                "market_id": "KRX",
+                "country": "KR",
+                "base_currency": "KRW",
+                "exchange_session_profile": "KRX_CASH",
+                "trading_hours": "09:00-15:30",
+                "settlement_cash_availability": "T+2",
+                "fee_tax_profile_reference": "profiles/domestic_kr_fee_tax.json",
+                "realtime_data_profile_reference": "profiles/domestic_kr_realtime.json",
+                "provider_capability_reference": "profiles/domestic_kr_local_file_only.json",
+            },
+            "source_type": "local_jsonl",
+            "session_validation_mode": "STRICT",
+            "unexpected_closure_policy": "FAIL_CLOSED",
+            "early_close_policy": "FAIL_CLOSED",
+            "event_type_policy": "STRICT",
+            "timezone_mismatch_policy": "FAIL_CLOSED",
+        },
+        "session_file_path": str(session_file),
+        "market_event_file_path": str(market_event_file),
+        "corporate_event_file_path": str(corporate_event_file),
+        "calendar_batch_id": "historical-replay-calendar-batch-smoke",
+        "source_descriptor_ids": ["SESSIONS_JSONL", "MARKET_EVENTS_JSONL", "CORPORATE_EVENTS_JSONL"],
+    }, sort_keys=True), encoding="utf-8")
+    fixture = load_historical_calendar_fixture(calendar_fixture)
+    session_records, session_issues = parse_trading_session_records(
+        local_file_path=fixture.session_file_path,
+        source_type=fixture.calendar_config.source_type,
+    )
+    market_events, market_event_issues = parse_market_event_records(
+        local_file_path=fixture.market_event_file_path,
+        source_type=fixture.calendar_config.source_type,
+    )
+    corporate_events, corporate_event_issues = parse_corporate_event_records(
+        local_file_path=fixture.corporate_event_file_path,
+        source_type=fixture.calendar_config.source_type,
+    )
+    validation = build_historical_calendar_validation_report(
+        calendar_config=fixture.calendar_config,
+        session_records=session_records,
+        market_events=market_events,
+        corporate_events=corporate_events,
+        parse_issues=[*session_issues, *market_event_issues, *corporate_event_issues],
+        calendar_batch_id=fixture.calendar_batch_id,
+    )
+    gap = build_historical_calendar_gap_report(
+        calendar_config=fixture.calendar_config,
+        validation_report=validation,
+        calendar_batch_id=fixture.calendar_batch_id,
+    )
+    manifest = build_historical_calendar_manifest(
+        calendar_config=fixture.calendar_config,
+        session_records=session_records,
+        market_events=market_events,
+        corporate_events=corporate_events,
+        validation_report=validation,
+        gap_report=gap,
+        calendar_batch_id=fixture.calendar_batch_id,
+        source_descriptor_ids=fixture.source_descriptor_ids,
+    )
+    return HistoricalCalendarEventSnapshot.model_validate(
+        {
+            "schema_version": "5.1-historical-calendar-event-snapshot",
+            "snapshot_id": "historical-replay-calendar-smoke",
+            "created_at": "2026-06-24T09:02:00+09:00",
+            "calendar_config": fixture.calendar_config.model_dump(mode="json"),
+            "session_records": [record.model_dump(mode="json") for record in session_records],
+            "market_events": [record.model_dump(mode="json") for record in market_events],
+            "corporate_events": [record.model_dump(mode="json") for record in corporate_events],
+            "manifest": manifest.model_dump(mode="json"),
+            "validation_report": validation.model_dump(mode="json"),
+            "gap_report": gap.model_dump(mode="json"),
+        }
+    )
+
+
+def _run_historical_replay_bridge_smoke(output_dir: Path) -> dict[str, bool]:
+    market_snapshot = _build_historical_replay_market_snapshot(output_dir)
+    calendar_snapshot = _build_historical_replay_calendar_snapshot(output_dir)
+    bridge_fixture = HistoricalReplayBridgeFixture.model_validate(
+        {
+            "schema_version": "5.2-historical-replay-bridge-fixture",
+            "fixture_id": "historical-replay-bridge-smoke",
+            "created_at": "2026-06-24T09:03:00+09:00",
+            "bridge_config": HistoricalReplayBridgeConfig(
+                config_id="historical-replay-bridge-config-smoke",
+                strategy_track="DOMESTIC_KR",
+            ).model_dump(mode="json"),
+            "historical_market_data_snapshot": market_snapshot.model_dump(mode="json"),
+            "historical_calendar_event_snapshot": calendar_snapshot.model_dump(mode="json"),
+            "scanner_replay_hints": [],
+        }
+    )
+    (output_dir / "historical_replay_bridge_fixture.json").write_text(
+        bridge_fixture.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    stream = build_historical_replay_event_stream(bridge_fixture)
+    (output_dir / "historical_replay_event_stream.json").write_text(stream.model_dump_json(indent=2), encoding="utf-8")
+    window_bundle = build_historical_replay_windows(stream, bridge_fixture, session_window_sizes=(1, 3))
+    (output_dir / "historical_replay_window_bundle.json").write_text(
+        window_bundle.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    scanner_input, scanner_report, scanner_gap = build_historical_scanner_replay_input(stream, window_bundle)
+    if scanner_input is None:
+        raise ValueError("historical replay smoke expected scanner replay input")
+    (output_dir / "historical_scanner_replay_input.json").write_text(
+        scanner_input.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_scanner_replay_report.json").write_text(
+        scanner_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_scanner_replay_gap_report.json").write_text(
+        scanner_gap.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    gap_categories = {gap.gap_category.value for gap in window_bundle.gap_report.gaps}
+    attached_contexts = [
+        *[context for window in window_bundle.windows for context in window.market_event_contexts],
+        *[context for window in window_bundle.windows for context in window.corporate_event_contexts],
+    ]
+    return {
+        "fixture_run": True,
+        "event_stream_generated": len(stream.events) == 3,
+        "windows_generated": len(window_bundle.windows) == 4,
+        "event_context_attached": (
+            window_bundle.event_context_report.attached_market_event_count == 2
+            and window_bundle.event_context_report.attached_corporate_event_count == 5
+        ),
+        "scanner_replay_input_generated": len(scanner_input.candidate_seeds) == len(window_bundle.windows),
+        "calendar_aware_windowing_enabled": window_bundle.degraded_report_only is False and window_bundle.requested_window_sizes == [1, 3],
+        "holiday_sessions_not_counted_as_data_gaps": (
+            "REPLAY_HOLIDAY_SESSION_RECOGNIZED" in gap_categories
+            and "REPLAY_MISSING_TRADING_SESSION" not in gap_categories
+        ),
+        "early_close_sessions_flagged": (
+            "REPLAY_EARLY_CLOSE_SESSION_FLAGGED" in gap_categories and any(window.early_close for window in window_bundle.windows)
+        ),
+        "event_context_attached_report_only": bool(attached_contexts) and all(context.report_only for context in attached_contexts),
+        "scanner_replay_report_only": (
+            scanner_input.report_only is True
+            and scanner_report.report_only is True
+            and "SCANNER_REPLAY_REPORT_ONLY" in scanner_gap.gap_categories
+        ),
+        "scanner_replay_non_order_candidate": (
+            scanner_input.no_order is True
+            and all(seed.is_order_candidate is False and seed.no_order is True for seed in scanner_input.candidate_seeds)
+        ),
+        "read_only": stream.read_only is True and window_bundle.read_only is True and scanner_input.read_only is True,
+        "non_executable": (
+            stream.non_executable is True and window_bundle.non_executable is True and scanner_input.non_executable is True
+        ),
+        "local_files_only": (
+            stream.local_file_only is True and window_bundle.local_file_only is True and scanner_input.local_file_only is True
+        ),
     }
