@@ -187,6 +187,18 @@ from stock_risk_mcp.offline_prompt_pack_service import (
     run_prompt_pack_coverage_report,
     run_prompt_pack_gap_report,
 )
+from stock_risk_mcp.historical_data_service import (
+    run_historical_data_config_validate,
+    run_historical_data_gap_report,
+    run_historical_data_manifest_build,
+    run_historical_data_quality_report,
+    run_historical_data_validate,
+)
+from stock_risk_mcp.historical_calendar_service import (
+    run_historical_calendar_config_validate,
+    run_historical_calendar_gap_report,
+    run_historical_calendar_validate,
+)
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -713,6 +725,28 @@ def build_command_parser() -> argparse.ArgumentParser:
     prompt_pack_gap_report = subparsers.add_parser("prompt-pack-gap-report")
     prompt_pack_gap_report.add_argument("--fixture-file", type=Path, required=True)
     prompt_pack_gap_report.add_argument("--output-file", type=Path)
+    historical_data_config_validate = subparsers.add_parser("historical-data-config-validate")
+    historical_data_config_validate.add_argument("--fixture-file", type=Path, required=True)
+    historical_data_manifest_build = subparsers.add_parser("historical-data-manifest-build")
+    historical_data_manifest_build.add_argument("--fixture-file", type=Path, required=True)
+    historical_data_manifest_build.add_argument("--output-file", type=Path)
+    historical_data_validate = subparsers.add_parser("historical-data-validate")
+    historical_data_validate.add_argument("--fixture-file", type=Path, required=True)
+    historical_data_validate.add_argument("--output-file", type=Path)
+    historical_data_quality_report = subparsers.add_parser("historical-data-quality-report")
+    historical_data_quality_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_data_quality_report.add_argument("--output-file", type=Path)
+    historical_data_gap_report = subparsers.add_parser("historical-data-gap-report")
+    historical_data_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_data_gap_report.add_argument("--output-file", type=Path)
+    historical_calendar_config_validate = subparsers.add_parser("historical-calendar-config-validate")
+    historical_calendar_config_validate.add_argument("--fixture-file", type=Path, required=True)
+    historical_calendar_validate = subparsers.add_parser("historical-calendar-validate")
+    historical_calendar_validate.add_argument("--fixture-file", type=Path, required=True)
+    historical_calendar_validate.add_argument("--output-file", type=Path)
+    historical_calendar_gap_report = subparsers.add_parser("historical-calendar-gap-report")
+    historical_calendar_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_calendar_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1689,6 +1723,14 @@ def main(argv: list[str] | None = None) -> None:
         "prompt-pack-show",
         "prompt-pack-coverage-report",
         "prompt-pack-gap-report",
+        "historical-data-config-validate",
+        "historical-data-manifest-build",
+        "historical-data-validate",
+        "historical-data-quality-report",
+        "historical-data-gap-report",
+        "historical-calendar-config-validate",
+        "historical-calendar-validate",
+        "historical-calendar-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -2729,6 +2771,66 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             result = run_prompt_pack_gap_report(args.fixture_file, args.output_file)
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "validation_passed": result.validation_passed}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-data-config-validate":
+        try:
+            result = run_historical_data_config_validate(args.fixture_file)
+            return {"status": "COMPLETED", "fixture_id": result.fixture_id}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-data-manifest-build":
+        try:
+            result = run_historical_data_manifest_build(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "record_count": result.record_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-data-validate":
+        try:
+            result = run_historical_data_validate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "validation_status": result.validation_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-data-quality-report":
+        try:
+            result = run_historical_data_quality_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "quality_bucket": result.quality_bucket.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-data-gap-report":
+        try:
+            result = run_historical_data_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-calendar-config-validate":
+        try:
+            result = run_historical_calendar_config_validate(args.fixture_file)
+            return {"status": "COMPLETED", "fixture_id": result.fixture_id}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-calendar-validate":
+        try:
+            result = run_historical_calendar_validate(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "validation_status": result.validation_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-calendar-gap-report":
+        try:
+            result = run_historical_calendar_gap_report(args.fixture_file, args.output_file)
+            if args.output_file:
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_categories)}
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}

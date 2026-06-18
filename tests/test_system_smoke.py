@@ -32,6 +32,10 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["domestic_replay_fixture_run"] is True
     assert result["checks"]["domestic_calibration_fixture_run"] is True
     assert result["checks"]["domestic_paper_shadow_fixture_run"] is True
+    assert result["checks"]["historical_data_fixture_run"] is True
+    assert result["checks"]["historical_manifest_generated"] is True
+    assert result["checks"]["historical_calendar_fixture_run"] is True
+    assert result["checks"]["historical_calendar_manifest_generated"] is True
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True
