@@ -116,6 +116,11 @@ from stock_risk_mcp.historical_replay_bridge_engine import (
 )
 from stock_risk_mcp.historical_replay_bridge_fixture import HistoricalReplayBridgeFixture
 from stock_risk_mcp.historical_replay_bridge_models import HistoricalReplayBridgeConfig
+from stock_risk_mcp.historical_outcome_engine import (
+    build_historical_outcome_label_report,
+    build_historical_outcome_windows,
+)
+from stock_risk_mcp.historical_outcome_models import HistoricalOutcomeObservationInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2034,6 +2039,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
         source_descriptor_ids=historical_calendar_fixture_loaded.source_descriptor_ids,
     )
     historical_replay = _run_historical_replay_bridge_smoke(output_dir)
+    historical_outcome = _run_historical_outcome_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2200,11 +2206,31 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_replay_cloud_llm_called": False,
             "historical_replay_model_runtime_called": False,
             "historical_replay_ml_training_run": False,
+            "historical_outcome_observation_fixture_run": historical_outcome["fixture_run"],
+            "historical_outcome_windows_generated": historical_outcome["windows_generated"],
+            "historical_outcome_metrics_generated": historical_outcome["metrics_generated"],
+            "historical_outcome_labels_report_only": historical_outcome["labels_report_only"],
+            "historical_outcome_no_lookahead_guard_enabled": historical_outcome["no_lookahead_guard_enabled"],
+            "historical_outcome_scanner_input_not_mutated": historical_outcome["scanner_input_not_mutated"],
+            "historical_outcome_read_only": historical_outcome["read_only"],
+            "historical_outcome_non_executable": historical_outcome["non_executable"],
+            "historical_outcome_local_files_only": historical_outcome["local_files_only"],
+            "historical_outcome_remote_fetch_allowed": historical_outcome["remote_fetch_allowed"],
+            "historical_outcome_api_provider_called": historical_outcome["api_provider_called"],
+            "historical_outcome_order_intent_created": historical_outcome["order_intent_created"],
+            "historical_outcome_live_or_prod_used": historical_outcome["live_or_prod_used"],
+            "historical_outcome_cloud_llm_called": historical_outcome["cloud_llm_called"],
+            "historical_outcome_model_runtime_called": historical_outcome["model_runtime_called"],
+            "historical_outcome_ml_training_run": historical_outcome["ml_training_run"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
             "gemini_called": False,
+            "kiwoom_api_called": False,
             "ls_api_called": False,
+            "broker_api_called": False,
+            "credentials_accessed": False,
+            "external_network_calls": False,
             "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
             "domestic_shadow_advisory_context_fixture_run": domestic_shadow_advisory_bundle.metadata_json["domestic_shadow_advisory_context_fixture_run"],
             "domestic_distillation_dataset_fixture_run": domestic_distillation_pack.metadata_json["domestic_distillation_dataset_fixture_run"],
@@ -2777,4 +2803,149 @@ def _run_historical_replay_bridge_smoke(output_dir: Path) -> dict[str, bool]:
         "local_files_only": (
             stream.local_file_only is True and window_bundle.local_file_only is True and scanner_input.local_file_only is True
         ),
+    }
+
+
+def _run_historical_outcome_smoke(output_dir: Path) -> dict[str, bool]:
+    market_snapshot = _build_historical_replay_market_snapshot(output_dir)
+    calendar_snapshot = _build_historical_replay_calendar_snapshot(output_dir)
+    bridge_fixture = HistoricalReplayBridgeFixture.model_validate(
+        {
+            "schema_version": "5.2-historical-replay-bridge-fixture",
+            "fixture_id": "historical-outcome-bridge-smoke",
+            "created_at": "2026-06-24T09:04:00+09:00",
+            "bridge_config": HistoricalReplayBridgeConfig(
+                config_id="historical-outcome-bridge-config-smoke",
+                strategy_track="DOMESTIC_KR",
+            ).model_dump(mode="json"),
+            "historical_market_data_snapshot": market_snapshot.model_dump(mode="json"),
+            "historical_calendar_event_snapshot": calendar_snapshot.model_dump(mode="json"),
+            "scanner_replay_hints": [],
+        }
+    )
+    stream = build_historical_replay_event_stream(bridge_fixture)
+    window_bundle = build_historical_replay_windows(stream, bridge_fixture, session_window_sizes=(1, 2))
+    scanner_input, _scanner_report, scanner_gap = build_historical_scanner_replay_input(stream, window_bundle)
+    if scanner_input is None:
+        raise ValueError("historical outcome smoke expected scanner replay input")
+
+    outcome_fixture = HistoricalOutcomeObservationInput.model_validate(
+        {
+            "schema_version": "5.3-historical-outcome-observation-input",
+            "observation_input_id": "historical-outcome-observation-smoke",
+            "observation_config": {
+                "config_id": "historical-outcome-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "forward_window_sizes": [1, 2],
+                "favorable_return_threshold_pct": 0.01,
+                "adverse_return_threshold_pct": 0.02,
+                "volatile_mfe_threshold_pct": 0.03,
+                "volatile_mae_threshold_pct": 0.02,
+            },
+            "replay_event_stream": stream.model_dump(mode="json"),
+            "replay_window_bundle": window_bundle.model_dump(mode="json"),
+            "scanner_replay_input": scanner_input.model_dump(mode="json"),
+            "historical_market_data_snapshot": market_snapshot.model_dump(mode="json"),
+            "historical_calendar_event_snapshot": calendar_snapshot.model_dump(mode="json"),
+            "observation_windows": [],
+            "observation_records": [],
+            "metric_sets": [],
+            "label_report": {
+                "label_report_id": "historical-outcome-label-report-smoke",
+                "observation_input_id": "historical-outcome-observation-smoke",
+                "labels": [],
+                "warning_count": 0,
+                "warnings": [],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "gap_report": {
+                "gap_report_id": "historical-outcome-gap-report-smoke",
+                "observation_input_id": "historical-outcome-observation-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "safety_report": {
+                "safety_report_id": "historical-outcome-safety-report-smoke",
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-outcome-audit-record-smoke",
+                    "observation_input_id": "historical-outcome-observation-smoke",
+                    "created_at": "2026-06-24T09:05:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_outcome_smoke_fixture.json"),
+                    "label_report_id": "historical-outcome-label-report-smoke",
+                    "gap_report_id": "historical-outcome-gap-report-smoke",
+                    "safety_report_id": "historical-outcome-safety-report-smoke",
+                }
+            ],
+        }
+    )
+    scanner_before = outcome_fixture.scanner_replay_input.model_dump(mode="json")
+    observed = build_historical_outcome_windows(outcome_fixture, forward_window_sizes=(1, 2))
+    labeled = build_historical_outcome_label_report(observed)
+    scanner_after = labeled.scanner_replay_input.model_dump(mode="json")
+
+    (output_dir / "historical_outcome_observation_input.json").write_text(
+        labeled.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_outcome_label_report.json").write_text(
+        labeled.label_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_outcome_gap_report.json").write_text(
+        labeled.gap_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_outcome_safety_report.json").write_text(
+        labeled.safety_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    return {
+        "fixture_run": True,
+        "windows_generated": len(labeled.observation_windows) >= 1,
+        "metrics_generated": len(labeled.metric_sets) >= 1,
+        "labels_report_only": bool(labeled.label_report.labels) and all(label.report_only for label in labeled.label_report.labels),
+        "no_lookahead_guard_enabled": (
+            all(label.outcome_observed_after_anchor for label in labeled.label_report.labels)
+            and "outcome_label" not in json.dumps(scanner_after).lower()
+        ),
+        "scanner_input_not_mutated": scanner_before == scanner_after,
+        "read_only": labeled.observation_config.read_only is True and labeled.safety_report.read_only is True,
+        "non_executable": (
+            labeled.observation_config.non_executable is True and labeled.safety_report.non_executable is True
+        ),
+        "local_files_only": (
+            labeled.observation_config.local_file_only is True and labeled.safety_report.local_file_only is True
+        ),
+        "remote_fetch_allowed": False,
+        "api_provider_called": False,
+        "order_intent_created": False,
+        "live_or_prod_used": False,
+        "cloud_llm_called": False,
+        "model_runtime_called": False,
+        "ml_training_run": False,
+        "investing_crawler_called": False,
+        "finviz_scraper_called": False,
+        "news_ingestion_called": False,
+        "gemini_called": False,
+        "kiwoom_api_called": False,
+        "ls_api_called": False,
+        "broker_api_called": False,
+        "credentials_accessed": False,
+        "external_network_calls": False,
+        "outcome_labels_runtime_signals": False,
+        "scanner_input_pre_outcome_report_only": scanner_input.report_only is True and scanner_input.no_order is True,
+        "parquet_supported": False,
+        "report_only_gap_present": "OUTCOME_REPORT_ONLY" in scanner_gap.gap_categories or bool(labeled.label_report.warnings),
     }

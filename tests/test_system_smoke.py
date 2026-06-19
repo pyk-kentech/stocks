@@ -57,6 +57,22 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_replay_cloud_llm_called"] is False
     assert result["checks"]["historical_replay_model_runtime_called"] is False
     assert result["checks"]["historical_replay_ml_training_run"] is False
+    assert result["checks"]["historical_outcome_observation_fixture_run"] is True
+    assert result["checks"]["historical_outcome_windows_generated"] is True
+    assert result["checks"]["historical_outcome_metrics_generated"] is True
+    assert result["checks"]["historical_outcome_labels_report_only"] is True
+    assert result["checks"]["historical_outcome_no_lookahead_guard_enabled"] is True
+    assert result["checks"]["historical_outcome_scanner_input_not_mutated"] is True
+    assert result["checks"]["historical_outcome_read_only"] is True
+    assert result["checks"]["historical_outcome_non_executable"] is True
+    assert result["checks"]["historical_outcome_local_files_only"] is True
+    assert result["checks"]["historical_outcome_remote_fetch_allowed"] is False
+    assert result["checks"]["historical_outcome_api_provider_called"] is False
+    assert result["checks"]["historical_outcome_order_intent_created"] is False
+    assert result["checks"]["historical_outcome_live_or_prod_used"] is False
+    assert result["checks"]["historical_outcome_cloud_llm_called"] is False
+    assert result["checks"]["historical_outcome_model_runtime_called"] is False
+    assert result["checks"]["historical_outcome_ml_training_run"] is False
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

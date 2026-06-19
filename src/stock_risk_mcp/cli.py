@@ -209,6 +209,11 @@ from stock_risk_mcp.historical_replay_bridge_models import (
     HistoricalReplayBridgeReport,
     HistoricalReplayBridgeSafetyReport,
 )
+from stock_risk_mcp.historical_outcome_engine import (
+    build_historical_outcome_label_report,
+    build_historical_outcome_windows,
+)
+from stock_risk_mcp.historical_outcome_fixture import load_historical_outcome_fixture
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -775,6 +780,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_replay_safety_report = subparsers.add_parser("historical-replay-safety-report")
     historical_replay_safety_report.add_argument("--fixture-file", type=Path, required=True)
     historical_replay_safety_report.add_argument("--output-file", type=Path)
+    historical_outcome_observe = subparsers.add_parser("historical-outcome-observe")
+    historical_outcome_observe.add_argument("--fixture-file", type=Path, required=True)
+    historical_outcome_observe.add_argument("--output-file", type=Path)
+    historical_outcome_label_report = subparsers.add_parser("historical-outcome-label-report")
+    historical_outcome_label_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_outcome_label_report.add_argument("--output-file", type=Path)
+    historical_outcome_gap_report = subparsers.add_parser("historical-outcome-gap-report")
+    historical_outcome_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_outcome_gap_report.add_argument("--output-file", type=Path)
+    historical_outcome_safety_report = subparsers.add_parser("historical-outcome-safety-report")
+    historical_outcome_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_outcome_safety_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1765,6 +1782,10 @@ def main(argv: list[str] | None = None) -> None:
         "historical-scanner-replay-input",
         "historical-replay-gap-report",
         "historical-replay-safety-report",
+        "historical-outcome-observe",
+        "historical-outcome-label-report",
+        "historical-outcome-gap-report",
+        "historical-outcome-safety-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -2926,6 +2947,47 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-outcome-observe":
+        try:
+            result = _build_historical_outcome_observation_input(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "window_count": len(result.observation_windows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-outcome-label-report":
+        try:
+            result = _build_historical_outcome_label_observation(args.fixture_file)
+            scanner_replay_input = result.scanner_replay_input.model_dump(mode="json")
+            if args.output_file:
+                args.output_file.write_text(result.label_report.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "label_count": len(result.label_report.labels)}
+            return {
+                **result.label_report.model_dump(mode="json"),
+                "scanner_replay_input": scanner_replay_input,
+                "replay_input_unchanged": True,
+            }
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-outcome-gap-report":
+        try:
+            result = _build_historical_outcome_label_observation(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gaps)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-outcome-safety-report":
+        try:
+            result = _build_historical_outcome_label_observation(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -3555,6 +3617,20 @@ def _build_historical_replay_bridge_report(fixture_file: Path):
             "warnings": warnings,
         }
     )
+
+
+def _load_historical_outcome_fixture_or_raise(fixture_file: Path):
+    return load_historical_outcome_fixture(fixture_file)
+
+
+def _build_historical_outcome_observation_input(fixture_file: Path):
+    fixture = _load_historical_outcome_fixture_or_raise(fixture_file)
+    return build_historical_outcome_windows(fixture)
+
+
+def _build_historical_outcome_label_observation(fixture_file: Path):
+    observed = _build_historical_outcome_observation_input(fixture_file)
+    return build_historical_outcome_label_report(observed)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
