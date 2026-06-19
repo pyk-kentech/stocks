@@ -218,6 +218,8 @@ from stock_risk_mcp.historical_dataset_engine import build_historical_dataset_as
 from stock_risk_mcp.historical_dataset_fixture import load_historical_dataset_fixture
 from stock_risk_mcp.historical_dataset_validation_engine import build_historical_dataset_validation
 from stock_risk_mcp.historical_dataset_validation_fixture import load_historical_dataset_validation_fixture
+from stock_risk_mcp.historical_dataset_readiness_engine import build_historical_dataset_readiness
+from stock_risk_mcp.historical_dataset_readiness_fixture import load_historical_dataset_readiness_fixture
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -826,6 +828,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_dataset_label_distribution = subparsers.add_parser("historical-dataset-label-distribution")
     historical_dataset_label_distribution.add_argument("--fixture-file", type=Path, required=True)
     historical_dataset_label_distribution.add_argument("--output-file", type=Path)
+    historical_dataset_readiness_report = subparsers.add_parser("historical-dataset-readiness-report")
+    historical_dataset_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_dataset_readiness_report.add_argument("--output-file", type=Path)
+    historical_dataset_split_quality_report = subparsers.add_parser("historical-dataset-split-quality-report")
+    historical_dataset_split_quality_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_dataset_split_quality_report.add_argument("--output-file", type=Path)
+    historical_dataset_imbalance_report = subparsers.add_parser("historical-dataset-imbalance-report")
+    historical_dataset_imbalance_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_dataset_imbalance_report.add_argument("--output-file", type=Path)
+    historical_dataset_baseline_evaluation = subparsers.add_parser("historical-dataset-baseline-evaluation")
+    historical_dataset_baseline_evaluation.add_argument("--fixture-file", type=Path, required=True)
+    historical_dataset_baseline_evaluation.add_argument("--output-file", type=Path)
+    historical_dataset_readiness_safety_report = subparsers.add_parser("historical-dataset-readiness-safety-report")
+    historical_dataset_readiness_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_dataset_readiness_safety_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1830,6 +1847,11 @@ def main(argv: list[str] | None = None) -> None:
         "historical-dataset-split-manifest",
         "historical-dataset-coverage-report",
         "historical-dataset-label-distribution",
+        "historical-dataset-readiness-report",
+        "historical-dataset-split-quality-report",
+        "historical-dataset-imbalance-report",
+        "historical-dataset-baseline-evaluation",
+        "historical-dataset-readiness-safety-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3127,6 +3149,51 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-dataset-readiness-report":
+        try:
+            result = _build_historical_dataset_readiness(args.fixture_file).readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "record_count": result.record_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-dataset-split-quality-report":
+        try:
+            result = _build_historical_dataset_readiness(args.fixture_file).split_quality_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "record_count": result.train_record_count + result.validation_record_count + result.test_record_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-dataset-imbalance-report":
+        try:
+            result = _build_historical_dataset_readiness(args.fixture_file).imbalance_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "label_count": len(result.label_counts)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-dataset-baseline-evaluation":
+        try:
+            result = _build_historical_dataset_readiness(args.fixture_file).baseline_evaluation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "baseline_count": len(result.baseline_names)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-dataset-readiness-safety-report":
+        try:
+            result = _build_historical_dataset_readiness(args.fixture_file).readiness_safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -3788,6 +3855,15 @@ def _load_historical_dataset_validation_fixture_or_raise(fixture_file: Path):
 def _build_historical_dataset_validation(fixture_file: Path):
     fixture = _load_historical_dataset_validation_fixture_or_raise(fixture_file)
     return build_historical_dataset_validation(fixture)
+
+
+def _load_historical_dataset_readiness_fixture_or_raise(fixture_file: Path):
+    return load_historical_dataset_readiness_fixture(fixture_file)
+
+
+def _build_historical_dataset_readiness(fixture_file: Path):
+    fixture = _load_historical_dataset_readiness_fixture_or_raise(fixture_file)
+    return build_historical_dataset_readiness(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

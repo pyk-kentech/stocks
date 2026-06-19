@@ -111,6 +111,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_dataset_validation_cloud_llm_called"] is False
     assert result["checks"]["historical_dataset_validation_model_runtime_called"] is False
     assert result["checks"]["historical_dataset_validation_ml_training_run"] is False
+    assert result["checks"]["historical_dataset_readiness_fixture_run"] is True
+    assert result["checks"]["historical_dataset_readiness_report_generated"] is True
+    assert result["checks"]["historical_dataset_split_quality_report_generated"] is True
+    assert result["checks"]["historical_dataset_imbalance_report_generated"] is True
+    assert result["checks"]["historical_dataset_baseline_evaluation_generated"] is True
+    assert result["checks"]["historical_dataset_baseline_non_learning"] is True
+    assert result["checks"]["historical_dataset_readiness_report_only"] is True
+    assert result["checks"]["historical_dataset_readiness_read_only"] is True
+    assert result["checks"]["historical_dataset_readiness_non_executable"] is True
+    assert result["checks"]["historical_dataset_readiness_local_files_only"] is True
+    assert result["checks"]["historical_dataset_readiness_remote_fetch_allowed"] is False
+    assert result["checks"]["historical_dataset_readiness_api_provider_called"] is False
+    assert result["checks"]["historical_dataset_readiness_order_intent_created"] is False
+    assert result["checks"]["historical_dataset_readiness_live_or_prod_used"] is False
+    assert result["checks"]["historical_dataset_readiness_cloud_llm_called"] is False
+    assert result["checks"]["historical_dataset_readiness_model_runtime_called"] is False
+    assert result["checks"]["historical_dataset_readiness_ml_training_run"] is False
+    assert result["checks"]["historical_dataset_readiness_learned_model_evaluation_run"] is False
+    assert result["checks"]["historical_dataset_readiness_ml_ready_tensor_export_created"] is False
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
