@@ -123,6 +123,8 @@ from stock_risk_mcp.historical_outcome_engine import (
 from stock_risk_mcp.historical_outcome_models import HistoricalOutcomeObservationInput
 from stock_risk_mcp.historical_dataset_engine import build_historical_dataset_assembly
 from stock_risk_mcp.historical_dataset_models import HistoricalDatasetAssemblyInput
+from stock_risk_mcp.historical_dataset_validation_engine import build_historical_dataset_validation
+from stock_risk_mcp.historical_dataset_validation_models import HistoricalDatasetValidationInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2043,6 +2045,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_replay = _run_historical_replay_bridge_smoke(output_dir)
     historical_outcome = _run_historical_outcome_smoke(output_dir)
     historical_dataset = _run_historical_dataset_smoke(output_dir)
+    historical_dataset_validation = _run_historical_dataset_validation_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2241,6 +2244,28 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_dataset_cloud_llm_called": historical_dataset["cloud_llm_called"],
             "historical_dataset_model_runtime_called": historical_dataset["model_runtime_called"],
             "historical_dataset_ml_training_run": historical_dataset["ml_training_run"],
+            "historical_dataset_validation_fixture_run": historical_dataset_validation["fixture_run"],
+            "historical_dataset_validation_report_generated": historical_dataset_validation["validation_report_generated"],
+            "historical_dataset_leakage_audit_generated": historical_dataset_validation["leakage_audit_generated"],
+            "historical_dataset_chronological_split_manifest_generated": historical_dataset_validation["split_manifest_generated"],
+            "historical_dataset_feature_outcome_leakage_absent": historical_dataset_validation["feature_outcome_leakage_absent"],
+            "historical_dataset_split_is_chronological": historical_dataset_validation["split_is_chronological"],
+            "historical_dataset_split_no_random_shuffle": historical_dataset_validation["split_no_random_shuffle"],
+            "historical_dataset_split_no_partition_overlap": historical_dataset_validation["split_no_partition_overlap"],
+            "historical_dataset_split_no_duplicate_record_ids": historical_dataset_validation["split_no_duplicate_record_ids"],
+            "historical_dataset_coverage_report_generated": historical_dataset_validation["coverage_report_generated"],
+            "historical_dataset_label_distribution_generated": historical_dataset_validation["label_distribution_generated"],
+            "historical_dataset_validation_report_only": historical_dataset_validation["report_only"],
+            "historical_dataset_validation_read_only": historical_dataset_validation["read_only"],
+            "historical_dataset_validation_non_executable": historical_dataset_validation["non_executable"],
+            "historical_dataset_validation_local_files_only": historical_dataset_validation["local_files_only"],
+            "historical_dataset_validation_remote_fetch_allowed": historical_dataset_validation["remote_fetch_allowed"],
+            "historical_dataset_validation_api_provider_called": historical_dataset_validation["api_provider_called"],
+            "historical_dataset_validation_order_intent_created": historical_dataset_validation["order_intent_created"],
+            "historical_dataset_validation_live_or_prod_used": historical_dataset_validation["live_or_prod_used"],
+            "historical_dataset_validation_cloud_llm_called": historical_dataset_validation["cloud_llm_called"],
+            "historical_dataset_validation_model_runtime_called": historical_dataset_validation["model_runtime_called"],
+            "historical_dataset_validation_ml_training_run": historical_dataset_validation["ml_training_run"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -3199,6 +3224,401 @@ def _run_historical_dataset_smoke(output_dir: Path) -> dict[str, bool]:
             and assembled.export_manifest.local_file_only is True
             and assembled.safety_report.local_file_only is True
         ),
+        "remote_fetch_allowed": False,
+        "api_provider_called": False,
+        "order_intent_created": False,
+        "live_or_prod_used": False,
+        "cloud_llm_called": False,
+        "model_runtime_called": False,
+        "ml_training_run": False,
+    }
+
+
+def _run_historical_dataset_validation_smoke(output_dir: Path) -> dict[str, bool]:
+    market_snapshot = _build_historical_replay_market_snapshot(output_dir)
+    calendar_snapshot = _build_historical_replay_calendar_snapshot(output_dir)
+    bridge_fixture = HistoricalReplayBridgeFixture.model_validate(
+        {
+            "schema_version": "5.2-historical-replay-bridge-fixture",
+            "fixture_id": "historical-dataset-validation-bridge-smoke",
+            "created_at": "2026-06-24T09:09:00+09:00",
+            "bridge_config": HistoricalReplayBridgeConfig(
+                config_id="historical-dataset-validation-bridge-config-smoke",
+                strategy_track="DOMESTIC_KR",
+            ).model_dump(mode="json"),
+            "historical_market_data_snapshot": market_snapshot.model_dump(mode="json"),
+            "historical_calendar_event_snapshot": calendar_snapshot.model_dump(mode="json"),
+            "scanner_replay_hints": [],
+        }
+    )
+    stream = build_historical_replay_event_stream(bridge_fixture)
+    window_bundle = build_historical_replay_windows(stream, bridge_fixture, session_window_sizes=(1, 2))
+    scanner_input, _scanner_report, _scanner_gap = build_historical_scanner_replay_input(stream, window_bundle)
+    if scanner_input is None:
+        raise ValueError("historical dataset validation smoke expected scanner replay input")
+
+    outcome_fixture = HistoricalOutcomeObservationInput.model_validate(
+        {
+            "schema_version": "5.3-historical-outcome-observation-input",
+            "observation_input_id": "historical-dataset-validation-outcome-observation-smoke",
+            "observation_config": {
+                "config_id": "historical-dataset-validation-outcome-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "forward_window_sizes": [1, 2],
+                "favorable_return_threshold_pct": 0.01,
+                "adverse_return_threshold_pct": 0.02,
+                "volatile_mfe_threshold_pct": 0.03,
+                "volatile_mae_threshold_pct": 0.02,
+            },
+            "replay_event_stream": stream.model_dump(mode="json"),
+            "replay_window_bundle": window_bundle.model_dump(mode="json"),
+            "scanner_replay_input": scanner_input.model_dump(mode="json"),
+            "historical_market_data_snapshot": market_snapshot.model_dump(mode="json"),
+            "historical_calendar_event_snapshot": calendar_snapshot.model_dump(mode="json"),
+            "observation_windows": [],
+            "observation_records": [],
+            "metric_sets": [],
+            "label_report": {
+                "label_report_id": "historical-dataset-validation-label-report-smoke",
+                "observation_input_id": "historical-dataset-validation-outcome-observation-smoke",
+                "labels": [],
+                "warning_count": 0,
+                "warnings": [],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "gap_report": {
+                "gap_report_id": "historical-dataset-validation-gap-report-smoke",
+                "observation_input_id": "historical-dataset-validation-outcome-observation-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "safety_report": {
+                "safety_report_id": "historical-dataset-validation-outcome-safety-report-smoke",
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-dataset-validation-outcome-audit-record-smoke",
+                    "observation_input_id": "historical-dataset-validation-outcome-observation-smoke",
+                    "created_at": "2026-06-24T09:10:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_dataset_validation_outcome_smoke_fixture.json"),
+                    "label_report_id": "historical-dataset-validation-label-report-smoke",
+                    "gap_report_id": "historical-dataset-validation-gap-report-smoke",
+                    "safety_report_id": "historical-dataset-validation-outcome-safety-report-smoke",
+                }
+            ],
+        }
+    )
+    observed = build_historical_outcome_windows(outcome_fixture, forward_window_sizes=(1, 2))
+    labeled = build_historical_outcome_label_report(observed)
+
+    dataset_fixture = HistoricalDatasetAssemblyInput.model_validate(
+        {
+            "schema_version": "5.4-historical-dataset-assembly-input",
+            "assembly_input_id": "historical-dataset-validation-assembly-smoke",
+            "assembly_config": {
+                "config_id": "historical-dataset-validation-assembly-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "export_formats": ["json", "jsonl", "csv"],
+            },
+            "historical_market_data_snapshot": market_snapshot.model_dump(mode="json"),
+            "historical_calendar_event_snapshot": calendar_snapshot.model_dump(mode="json"),
+            "replay_event_stream": stream.model_dump(mode="json"),
+            "replay_window_bundle": window_bundle.model_dump(mode="json"),
+            "scanner_replay_input": scanner_input.model_dump(mode="json"),
+            "historical_outcome_observation_input": labeled.model_dump(mode="json"),
+            "records": [],
+            "export_manifest": {
+                "manifest_id": "historical-dataset-validation-export-manifest-smoke",
+                "export_format": "json",
+                "local_output_path": str(output_dir / "historical_dataset_validation_smoke_export.json"),
+                "record_count": 0,
+                "symbol_count": 0,
+                "market_count": 0,
+                "date_range_start": None,
+                "date_range_end": None,
+                "feature_schema_version": "5.4-HISTORICAL-DATASET-FEATURE-BLOCK",
+                "outcome_schema_version": "5.4-HISTORICAL-DATASET-OUTCOME-BLOCK",
+                "quality_report_id": "historical-dataset-validation-quality-report-smoke",
+                "gap_report_id": "historical-dataset-validation-dataset-gap-report-smoke",
+                "safety_report_id": "historical-dataset-validation-dataset-safety-report-smoke",
+                "export_formats": ["json", "jsonl", "csv"],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "quality_report": {
+                "quality_report_id": "historical-dataset-validation-quality-report-smoke",
+                "record_count": 0,
+                "valid_record_count": 0,
+                "symbol_count": 0,
+                "market_count": 0,
+                "missing_lineage_count": 0,
+                "missing_feature_count": 0,
+                "missing_outcome_count": 0,
+                "leakage_risk_count": 0,
+                "safety_blocked_count": 0,
+                "warning_count": 0,
+                "warnings": [],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "gap_report": {
+                "gap_report_id": "historical-dataset-validation-dataset-gap-report-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": stream.source_manifest_ids,
+                "source_audit_record_ids": stream.source_audit_record_ids,
+                "provider_provenance_ids": stream.provider_provenance_ids,
+            },
+            "safety_report": {
+                "safety_report_id": "historical-dataset-validation-dataset-safety-report-smoke",
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-dataset-validation-dataset-audit-record-smoke",
+                    "assembly_input_id": "historical-dataset-validation-assembly-smoke",
+                    "created_at": "2026-06-24T09:11:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_dataset_validation_dataset_smoke_fixture.json"),
+                    "source_manifest_ids": stream.source_manifest_ids,
+                    "source_audit_record_ids": stream.source_audit_record_ids,
+                    "provider_provenance_ids": stream.provider_provenance_ids,
+                }
+            ],
+        }
+    )
+    assembled = build_historical_dataset_assembly(dataset_fixture)
+
+    records = []
+    base_record = assembled.records[0].model_dump(mode="json")
+    for index in range(10):
+        record_payload = json.loads(json.dumps(base_record))
+        record_payload["record_id"] = f"DATASET-RECORD-{index + 1}"
+        record_payload["replay_session_date"] = f"2026-06-{18 + index:02d}"
+        record_payload["replay_window_id"] = f"WINDOW-{index + 1}"
+        record_payload["replay_event_ids"] = [f"EVENT-{index + 1}"]
+        record_payload["source_manifest_ids"] = [f"MANIFEST-{index + 1}"]
+        record_payload["source_audit_record_ids"] = [f"AUDIT-{index + 1}"]
+        record_payload["provider_provenance_ids"] = [f"PROVENANCE-{index + 1}"]
+        record_payload["feature_block"]["block_id"] = f"FEATURE-BLOCK-{index + 1}"
+        record_payload["outcome_block"]["block_id"] = f"OUTCOME-BLOCK-{index + 1}"
+        if index == 1:
+            record_payload["outcome_block"]["outcome_label"] = "OUTCOME_FAVORABLE"
+        elif index == 2:
+            record_payload["outcome_block"]["outcome_label"] = "OUTCOME_ADVERSE"
+        records.append(record_payload)
+
+    validation_fixture = HistoricalDatasetValidationInput.model_validate(
+        {
+            "schema_version": "5.5-historical-dataset-validation-input",
+            "validation_input_id": "historical-dataset-validation-input-smoke",
+            "validation_config": {
+                "config_id": "historical-dataset-validation-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "require_chronological_split": True,
+                "allow_random_shuffle": False,
+                "default_train_ratio": 0.7,
+                "default_validation_ratio": 0.15,
+                "default_test_ratio": 0.15,
+            },
+            "split_config": {
+                "split_config_id": "historical-dataset-validation-split-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "split_policy": "CHRONOLOGICAL",
+                "allow_random_shuffle": False,
+                "train_ratio": 0.7,
+                "validation_ratio": 0.15,
+                "test_ratio": 0.15,
+            },
+            "dataset_records": records,
+            "dataset_export_manifest": assembled.export_manifest.model_dump(mode="json"),
+            "dataset_quality_report": assembled.quality_report.model_dump(mode="json"),
+            "dataset_gap_report": assembled.gap_report.model_dump(mode="json"),
+            "dataset_safety_report": assembled.safety_report.model_dump(mode="json"),
+            "validation_report": {
+                "validation_report_id": "historical-dataset-validation-report-smoke",
+                "validation_input_id": "historical-dataset-validation-input-smoke",
+                "record_count": 0,
+                "valid_record_count": 0,
+                "missing_lineage_count": 0,
+                "missing_feature_count": 0,
+                "missing_outcome_count": 0,
+                "blocked_count": 0,
+                "warning_count": 0,
+                "warnings": [],
+                "training_ready_approved": False,
+                "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+            },
+            "leakage_audit_report": {
+                "leakage_audit_report_id": "historical-dataset-leakage-audit-report-smoke",
+                "validation_input_id": "historical-dataset-validation-input-smoke",
+                "audited_record_count": 0,
+                "clean_record_count": 0,
+                "blocked_record_count": 0,
+                "warning_count": 0,
+                "warnings": [],
+                "outcome_label_in_features_count": 0,
+                "forward_return_in_features_count": 0,
+                "max_excursion_in_features_count": 0,
+                "post_anchor_actual_value_in_features_count": 0,
+                "scanner_input_mutation_risk_count": 0,
+                "feature_outcome_leakage_absent": True,
+                "affected_record_ids": [],
+                "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+            },
+            "split_manifest": {
+                "split_manifest_id": "historical-dataset-split-manifest-smoke",
+                "validation_input_id": "historical-dataset-validation-input-smoke",
+                "split_config_id": "historical-dataset-validation-split-config-smoke",
+                "split_policy": "CHRONOLOGICAL",
+                "chronological": True,
+                "random_shuffle_used": False,
+                "train_record_count": 0,
+                "validation_record_count": 0,
+                "test_record_count": 0,
+                "train_symbol_count": 0,
+                "validation_symbol_count": 0,
+                "test_symbol_count": 0,
+                "train_record_refs": [],
+                "validation_record_refs": [],
+                "test_record_refs": [],
+                "record_refs": [],
+                "train_label_distribution": {},
+                "validation_label_distribution": {},
+                "test_label_distribution": {},
+                "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+            },
+            "coverage_report": {
+                "coverage_report_id": "historical-dataset-coverage-report-smoke",
+                "validation_input_id": "historical-dataset-validation-input-smoke",
+                "record_count": 0,
+                "symbol_count": 0,
+                "market_count": 0,
+                "strategy_track_count": 0,
+                "symbols": [],
+                "markets": [],
+                "strategy_tracks": [],
+                "records_by_symbol": {},
+                "records_by_market": {},
+                "records_by_strategy_track": {},
+                "missing_feature_count": 0,
+                "missing_outcome_count": 0,
+                "missing_lineage_count": 0,
+                "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+            },
+            "label_distribution_report": {
+                "label_distribution_report_id": "historical-dataset-label-distribution-report-smoke",
+                "validation_input_id": "historical-dataset-validation-input-smoke",
+                "record_count": 0,
+                "label_counts": {},
+                "label_percentages": {},
+                "split_label_counts": {},
+                "split_label_percentages": {},
+                "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+            },
+            "validation_gap_report": {
+                "gap_report_id": "historical-dataset-validation-gap-report-smoke",
+                "validation_input_id": "historical-dataset-validation-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+            },
+            "validation_safety_report": {
+                "safety_report_id": "historical-dataset-validation-safety-report-smoke",
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-dataset-validation-audit-record-smoke",
+                    "validation_input_id": "historical-dataset-validation-input-smoke",
+                    "created_at": "2026-06-24T09:12:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_dataset_validation_smoke_fixture.json"),
+                    "source_manifest_ids": assembled.export_manifest.source_manifest_ids,
+                    "source_audit_record_ids": assembled.export_manifest.source_audit_record_ids,
+                    "provider_provenance_ids": assembled.export_manifest.provider_provenance_ids,
+                }
+            ],
+        }
+    )
+    validated = build_historical_dataset_validation(validation_fixture)
+
+    (output_dir / "historical_dataset_validation_input.json").write_text(
+        validated.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_dataset_validation_report.json").write_text(
+        validated.validation_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_dataset_leakage_audit_report.json").write_text(
+        validated.leakage_audit_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_dataset_split_manifest.json").write_text(
+        validated.split_manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_dataset_coverage_report.json").write_text(
+        validated.coverage_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_dataset_label_distribution_report.json").write_text(
+        validated.label_distribution_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    split_record_ids = [ref.dataset_record_id for ref in validated.split_manifest.record_refs]
+    train_ids = {ref.dataset_record_id for ref in validated.split_manifest.train_record_refs}
+    validation_ids = {ref.dataset_record_id for ref in validated.split_manifest.validation_record_refs}
+    test_ids = {ref.dataset_record_id for ref in validated.split_manifest.test_record_refs}
+    return {
+        "fixture_run": True,
+        "validation_report_generated": validated.validation_report.record_count == 10,
+        "leakage_audit_generated": validated.leakage_audit_report.audited_record_count == 10,
+        "split_manifest_generated": len(validated.split_manifest.record_refs) == 10,
+        "feature_outcome_leakage_absent": validated.leakage_audit_report.feature_outcome_leakage_absent is True,
+        "split_is_chronological": (
+            validated.split_manifest.chronological is True
+            and validated.split_manifest.train_date_range_end <= validated.split_manifest.validation_date_range_start
+            and validated.split_manifest.validation_date_range_end <= validated.split_manifest.test_date_range_start
+        ),
+        "split_no_random_shuffle": validated.split_manifest.random_shuffle_used is False,
+        "split_no_partition_overlap": not (train_ids & validation_ids or train_ids & test_ids or validation_ids & test_ids),
+        "split_no_duplicate_record_ids": len(split_record_ids) == len(set(split_record_ids)),
+        "coverage_report_generated": validated.coverage_report.record_count == 10,
+        "label_distribution_generated": validated.label_distribution_report.record_count == 10,
+        "report_only": validated.validation_report.report_only is True and validated.validation_safety_report.report_only is True,
+        "read_only": validated.validation_report.read_only is True and validated.validation_safety_report.read_only is True,
+        "non_executable": validated.validation_report.non_executable is True and validated.validation_safety_report.non_executable is True,
+        "local_files_only": validated.validation_report.local_file_only is True and validated.validation_safety_report.local_file_only is True,
         "remote_fetch_allowed": False,
         "api_provider_called": False,
         "order_intent_created": False,

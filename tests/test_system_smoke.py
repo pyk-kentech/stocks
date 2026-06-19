@@ -89,6 +89,28 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_dataset_cloud_llm_called"] is False
     assert result["checks"]["historical_dataset_model_runtime_called"] is False
     assert result["checks"]["historical_dataset_ml_training_run"] is False
+    assert result["checks"]["historical_dataset_validation_fixture_run"] is True
+    assert result["checks"]["historical_dataset_validation_report_generated"] is True
+    assert result["checks"]["historical_dataset_leakage_audit_generated"] is True
+    assert result["checks"]["historical_dataset_chronological_split_manifest_generated"] is True
+    assert result["checks"]["historical_dataset_feature_outcome_leakage_absent"] is True
+    assert result["checks"]["historical_dataset_split_is_chronological"] is True
+    assert result["checks"]["historical_dataset_split_no_random_shuffle"] is True
+    assert result["checks"]["historical_dataset_split_no_partition_overlap"] is True
+    assert result["checks"]["historical_dataset_split_no_duplicate_record_ids"] is True
+    assert result["checks"]["historical_dataset_coverage_report_generated"] is True
+    assert result["checks"]["historical_dataset_label_distribution_generated"] is True
+    assert result["checks"]["historical_dataset_validation_report_only"] is True
+    assert result["checks"]["historical_dataset_validation_read_only"] is True
+    assert result["checks"]["historical_dataset_validation_non_executable"] is True
+    assert result["checks"]["historical_dataset_validation_local_files_only"] is True
+    assert result["checks"]["historical_dataset_validation_remote_fetch_allowed"] is False
+    assert result["checks"]["historical_dataset_validation_api_provider_called"] is False
+    assert result["checks"]["historical_dataset_validation_order_intent_created"] is False
+    assert result["checks"]["historical_dataset_validation_live_or_prod_used"] is False
+    assert result["checks"]["historical_dataset_validation_cloud_llm_called"] is False
+    assert result["checks"]["historical_dataset_validation_model_runtime_called"] is False
+    assert result["checks"]["historical_dataset_validation_ml_training_run"] is False
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
