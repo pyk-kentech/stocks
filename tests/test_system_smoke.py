@@ -73,6 +73,22 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_outcome_cloud_llm_called"] is False
     assert result["checks"]["historical_outcome_model_runtime_called"] is False
     assert result["checks"]["historical_outcome_ml_training_run"] is False
+    assert result["checks"]["historical_dataset_assembly_fixture_run"] is True
+    assert result["checks"]["historical_dataset_records_generated"] is True
+    assert result["checks"]["historical_dataset_feature_outcome_separated"] is True
+    assert result["checks"]["historical_dataset_no_lookahead_guard_enabled"] is True
+    assert result["checks"]["historical_dataset_scanner_input_not_mutated"] is True
+    assert result["checks"]["historical_dataset_report_only"] is True
+    assert result["checks"]["historical_dataset_read_only"] is True
+    assert result["checks"]["historical_dataset_non_executable"] is True
+    assert result["checks"]["historical_dataset_local_files_only"] is True
+    assert result["checks"]["historical_dataset_remote_fetch_allowed"] is False
+    assert result["checks"]["historical_dataset_api_provider_called"] is False
+    assert result["checks"]["historical_dataset_order_intent_created"] is False
+    assert result["checks"]["historical_dataset_live_or_prod_used"] is False
+    assert result["checks"]["historical_dataset_cloud_llm_called"] is False
+    assert result["checks"]["historical_dataset_model_runtime_called"] is False
+    assert result["checks"]["historical_dataset_ml_training_run"] is False
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
