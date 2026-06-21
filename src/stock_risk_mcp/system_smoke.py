@@ -127,6 +127,12 @@ from stock_risk_mcp.historical_dataset_validation_engine import build_historical
 from stock_risk_mcp.historical_dataset_validation_models import HistoricalDatasetValidationInput
 from stock_risk_mcp.historical_dataset_readiness_engine import build_historical_dataset_readiness
 from stock_risk_mcp.historical_dataset_readiness_models import HistoricalDatasetReadinessInput
+from stock_risk_mcp.historical_model_training_engine import (
+    build_historical_model_training_plan_check,
+    run_historical_model_training_sandbox,
+)
+from stock_risk_mcp.historical_model_training_models import HistoricalModelTrainingInput
+from stock_risk_mcp.historical_model_training_models import HistoricalModelTrainingModelType
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2049,6 +2055,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_dataset = _run_historical_dataset_smoke(output_dir)
     historical_dataset_validation = _run_historical_dataset_validation_smoke(output_dir)
     historical_dataset_readiness = _run_historical_dataset_readiness_smoke(output_dir)
+    historical_model_training = _run_historical_model_training_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2288,6 +2295,28 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_dataset_readiness_ml_training_run": historical_dataset_readiness["ml_training_run"],
             "historical_dataset_readiness_learned_model_evaluation_run": historical_dataset_readiness["learned_model_evaluation_run"],
             "historical_dataset_readiness_ml_ready_tensor_export_created": historical_dataset_readiness["ml_ready_tensor_export_created"],
+            "historical_model_training_sandbox_fixture_run": historical_model_training["fixture_run"],
+            "historical_model_training_plan_check_generated": historical_model_training["plan_check_generated"],
+            "historical_model_training_run_report_generated": historical_model_training["run_report_generated"],
+            "historical_model_evaluation_report_generated": historical_model_training["evaluation_report_generated"],
+            "historical_model_metrics_report_generated": historical_model_training["metrics_report_generated"],
+            "historical_model_artifact_manifest_generated": historical_model_training["artifact_manifest_generated"],
+            "historical_model_training_local_only": historical_model_training["local_only"],
+            "historical_model_training_offline_only": historical_model_training["offline_only"],
+            "historical_model_training_chronological_split_used": historical_model_training["chronological_split_used"],
+            "historical_model_training_no_random_shuffle": historical_model_training["no_random_shuffle"],
+            "historical_model_training_dummy_models_available": historical_model_training["dummy_models_available"],
+            "historical_model_training_optional_sklearn_fail_closed": historical_model_training["optional_sklearn_fail_closed"],
+            "historical_model_training_report_only": historical_model_training["report_only"],
+            "historical_model_training_non_executable": historical_model_training["non_executable"],
+            "historical_model_training_no_runtime_signal": historical_model_training["no_runtime_signal"],
+            "historical_model_training_no_order_candidate": historical_model_training["no_order_candidate"],
+            "historical_model_training_no_live_inference": historical_model_training["no_live_inference"],
+            "historical_model_training_no_broker_path": historical_model_training["no_broker_path"],
+            "historical_model_training_no_live_prod": historical_model_training["no_live_prod"],
+            "historical_model_training_no_network": historical_model_training["no_network"],
+            "historical_model_training_no_cloud_llm": historical_model_training["no_cloud_llm"],
+            "historical_model_training_no_local_llm_runtime": historical_model_training["no_local_llm_runtime"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -3851,4 +3880,268 @@ def _run_historical_dataset_readiness_smoke(output_dir: Path) -> dict[str, bool]
         "ml_training_run": False,
         "learned_model_evaluation_run": False,
         "ml_ready_tensor_export_created": False,
+    }
+
+
+def _run_historical_model_training_smoke(output_dir: Path) -> dict[str, bool]:
+    readiness_input = HistoricalDatasetReadinessInput.model_validate_json(
+        (output_dir / "historical_dataset_readiness_input.json").read_text(encoding="utf-8")
+    )
+
+    training_fixture = HistoricalModelTrainingInput.model_validate(
+        {
+            "schema_version": "5.7-historical-model-training-input",
+            "training_input_id": "historical-model-training-input-smoke",
+            "training_config": {
+                "config_id": "historical-model-training-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "sandbox_mode": "RESEARCH_ONLY",
+            },
+            "dataset_ref": {
+                "dataset_ref_id": "historical-model-dataset-ref-smoke",
+                "dataset_manifest_id": "DATASET-EXPORT-MANIFEST-1",
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "split_ref": {
+                "split_ref_id": "historical-model-split-ref-smoke",
+                "split_manifest_id": readiness_input.split_manifest.split_manifest_id,
+                "split_policy": "CHRONOLOGICAL",
+                "chronological": True,
+                "random_shuffle_used": False,
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "feature_schema": {
+                "feature_schema_id": "historical-model-feature-schema-smoke",
+                "feature_schema_version": "5.4-HISTORICAL-DATASET-FEATURE-BLOCK",
+                "feature_fields": [
+                    "REPLAY_CONTEXT_ID",
+                    "SCANNER_REPLAY_INPUT_ID",
+                    "KNOWN_EVENT_CONTEXT_SUMMARY",
+                    "ATTACHED_MARKET_EVENT_COUNT",
+                    "ATTACHED_CORPORATE_EVENT_COUNT",
+                ],
+            },
+            "label_schema": {
+                "label_schema_id": "historical-model-label-schema-smoke",
+                "label_schema_version": "5.4-HISTORICAL-DATASET-OUTCOME-BLOCK",
+                "label_source": "OUTCOME_BLOCK_ONLY",
+                "label_field": "OUTCOME_LABEL",
+            },
+            "run_config": {
+                "run_config_id": "historical-model-run-config-smoke",
+                "requested_model_type": "DUMMY_MAJORITY",
+                "random_shuffle_enabled": False,
+            },
+            "dataset_records": [record.model_dump(mode="json") for record in readiness_input.dataset_records],
+            "dataset_export_manifest": {
+                "manifest_id": "DATASET-EXPORT-MANIFEST-1",
+                "export_format": "JSON",
+                "local_output_path": str(output_dir / "historical_model_training_dataset_export.json"),
+                "record_count": len(readiness_input.dataset_records),
+                "symbol_count": len({record.symbol for record in readiness_input.dataset_records}),
+                "market_count": len({record.market for record in readiness_input.dataset_records}),
+                "date_range_start": min(record.replay_session_date for record in readiness_input.dataset_records).isoformat(),
+                "date_range_end": max(record.replay_session_date for record in readiness_input.dataset_records).isoformat(),
+                "feature_schema_version": "5.4-HISTORICAL-DATASET-FEATURE-BLOCK",
+                "outcome_schema_version": "5.4-HISTORICAL-DATASET-OUTCOME-BLOCK",
+                "quality_report_id": "DATASET-QUALITY-REPORT-1",
+                "gap_report_id": "DATASET-GAP-REPORT-1",
+                "safety_report_id": "DATASET-SAFETY-REPORT-1",
+                "export_formats": ["JSON", "JSONL", "CSV"],
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "validation_report": readiness_input.validation_report.model_dump(mode="json"),
+            "leakage_audit_report": readiness_input.leakage_audit_report.model_dump(mode="json"),
+            "split_manifest": readiness_input.split_manifest.model_dump(mode="json"),
+            "coverage_report": readiness_input.coverage_report.model_dump(mode="json"),
+            "label_distribution_report": readiness_input.label_distribution_report.model_dump(mode="json"),
+            "readiness_report": readiness_input.readiness_report.model_dump(mode="json"),
+            "split_quality_report": readiness_input.split_quality_report.model_dump(mode="json"),
+            "imbalance_report": readiness_input.imbalance_report.model_dump(mode="json"),
+            "baseline_evaluation_report": readiness_input.baseline_evaluation_report.model_dump(mode="json"),
+            "plan_check_report": {
+                "plan_check_report_id": "historical-model-plan-check-report-smoke",
+                "training_input_id": "historical-model-training-input-smoke",
+                "eligible_for_sandbox_training": False,
+                "warning_count": 0,
+                "warnings": [],
+                "blocking_issue_count": 0,
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "run_report": {
+                "run_report_id": "historical-model-run-report-smoke",
+                "training_input_id": "historical-model-training-input-smoke",
+                "model_type": "DUMMY_MAJORITY",
+                "sandbox_mode": "RESEARCH_ONLY",
+                "report_only_prediction_count": 0,
+                "training_executed": False,
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "evaluation_report": {
+                "evaluation_report_id": "historical-model-evaluation-report-smoke",
+                "training_input_id": "historical-model-training-input-smoke",
+                "model_type": "DUMMY_MAJORITY",
+                "report_only_prediction_count": 0,
+                "runtime_trading_signal_present": False,
+                "order_candidate_present": False,
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "metrics_report": {
+                "metrics_report_id": "historical-model-metrics-report-smoke",
+                "training_input_id": "historical-model-training-input-smoke",
+                "model_type": "DUMMY_MAJORITY",
+                "train_accuracy": 0.0,
+                "validation_accuracy": 0.0,
+                "test_accuracy": 0.0,
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "artifact_manifest": {
+                "artifact_manifest_id": "historical-model-artifact-manifest-smoke",
+                "model_id": "historical-model-smoke",
+                "model_type": "DUMMY_MAJORITY",
+                "training_dataset_manifest_id": "DATASET-EXPORT-MANIFEST-1",
+                "split_manifest_id": readiness_input.split_manifest.split_manifest_id,
+                "feature_schema_version": "5.4-HISTORICAL-DATASET-FEATURE-BLOCK",
+                "label_schema_version": "5.4-HISTORICAL-DATASET-OUTCOME-BLOCK",
+                "training_timestamp": "2026-06-24T09:18:00+09:00",
+                "metrics_report_id": "historical-model-metrics-report-smoke",
+                "local_artifact_path": str(output_dir / "historical_model_smoke_artifact.json"),
+            },
+            "safety_report": {
+                "safety_report_id": "historical-model-safety-report-smoke",
+            },
+            "gap_report": {
+                "gap_report_id": "historical-model-gap-report-smoke",
+                "training_input_id": "historical-model-training-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-model-audit-record-smoke",
+                    "training_input_id": "historical-model-training-input-smoke",
+                    "created_at": "2026-06-24T09:20:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_model_training_smoke_fixture.json"),
+                    "source_manifest_ids": readiness_input.validation_report.source_manifest_ids,
+                    "source_audit_record_ids": readiness_input.validation_report.source_audit_record_ids,
+                    "provider_provenance_ids": readiness_input.validation_report.provider_provenance_ids,
+                }
+            ],
+        }
+    )
+    plan_checked = build_historical_model_training_plan_check(training_fixture)
+    trained = run_historical_model_training_sandbox(training_fixture)
+    sklearn_probe_fixture = training_fixture.model_copy(
+        update={
+            "run_config": training_fixture.run_config.model_copy(
+                update={"requested_model_type": HistoricalModelTrainingModelType.LOGISTIC_REGRESSION_OPTIONAL_SKLEARN}
+            ),
+            "run_report": training_fixture.run_report.model_copy(update={"model_type": HistoricalModelTrainingModelType.LOGISTIC_REGRESSION_OPTIONAL_SKLEARN}),
+            "evaluation_report": training_fixture.evaluation_report.model_copy(update={"model_type": HistoricalModelTrainingModelType.LOGISTIC_REGRESSION_OPTIONAL_SKLEARN}),
+            "metrics_report": training_fixture.metrics_report.model_copy(update={"model_type": HistoricalModelTrainingModelType.LOGISTIC_REGRESSION_OPTIONAL_SKLEARN}),
+            "artifact_manifest": training_fixture.artifact_manifest.model_copy(update={"model_type": HistoricalModelTrainingModelType.LOGISTIC_REGRESSION_OPTIONAL_SKLEARN}),
+        }
+    )
+    sklearn_probe = run_historical_model_training_sandbox(sklearn_probe_fixture)
+
+    (output_dir / "historical_model_training_input.json").write_text(
+        trained.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_training_plan_check_report.json").write_text(
+        plan_checked.plan_check_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_training_run_report.json").write_text(
+        trained.run_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_evaluation_report.json").write_text(
+        trained.evaluation_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_metrics_report.json").write_text(
+        trained.metrics_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_artifact_manifest.json").write_text(
+        trained.artifact_manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_training_safety_report.json").write_text(
+        trained.safety_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_training_gap_report.json").write_text(
+        trained.gap_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    return {
+        "fixture_run": True,
+        "plan_check_generated": plan_checked.plan_check_report.eligible_for_sandbox_training is True,
+        "run_report_generated": trained.run_report.training_executed is True,
+        "evaluation_report_generated": trained.evaluation_report.report_only_prediction_count == len(trained.dataset_records),
+        "metrics_report_generated": trained.metrics_report.test_accuracy is not None,
+        "artifact_manifest_generated": trained.artifact_manifest.metrics_report_id == trained.metrics_report.metrics_report_id,
+        "local_only": trained.run_report.local_file_only is True and trained.artifact_manifest.local_file_only is True,
+        "offline_only": trained.run_report.offline_only is True and trained.artifact_manifest.offline_only is True,
+        "chronological_split_used": trained.split_ref.chronological is True and trained.split_manifest.chronological is True,
+        "no_random_shuffle": trained.run_config.random_shuffle_enabled is False and trained.split_manifest.random_shuffle_used is False,
+        "dummy_models_available": trained.run_report.model_type == "DUMMY_MAJORITY" and trained.run_report.training_executed is True,
+        "optional_sklearn_fail_closed": any(
+            gap["gap_category"] == "TRAINING_SKLEARN_UNAVAILABLE" for gap in sklearn_probe.gap_report.gaps
+        ),
+        "report_only": (
+            trained.run_report.report_only is True
+            and trained.evaluation_report.report_only is True
+            and trained.metrics_report.report_only is True
+            and trained.artifact_manifest.report_only is True
+        ),
+        "non_executable": (
+            trained.run_report.non_executable is True
+            and trained.evaluation_report.non_executable is True
+            and trained.metrics_report.non_executable is True
+            and trained.artifact_manifest.non_executable is True
+        ),
+        "no_runtime_signal": (
+            trained.evaluation_report.runtime_trading_signal_present is False
+            and trained.run_report.no_runtime_trading_signal is True
+            and trained.artifact_manifest.no_runtime_trading_signal is True
+        ),
+        "no_order_candidate": (
+            trained.evaluation_report.order_candidate_present is False
+            and trained.run_report.no_order_candidate is True
+            and trained.artifact_manifest.no_order_candidate is True
+        ),
+        "no_live_inference": trained.run_report.no_live_prod is True and trained.artifact_manifest.no_live_prod is True,
+        "no_broker_path": trained.run_report.no_broker_path is True and trained.artifact_manifest.no_broker_path is True,
+        "no_live_prod": trained.training_config.no_live_prod is True and trained.artifact_manifest.no_live_prod is True,
+        "no_network": trained.training_config.no_network is True and trained.artifact_manifest.no_network is True,
+        "no_cloud_llm": trained.training_config.no_cloud_llm is True and trained.artifact_manifest.no_cloud_llm is True,
+        "no_local_llm_runtime": (
+            trained.training_config.no_local_llm_runtime is True
+            and trained.artifact_manifest.no_local_llm_runtime is True
+        ),
     }

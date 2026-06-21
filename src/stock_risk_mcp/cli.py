@@ -220,6 +220,11 @@ from stock_risk_mcp.historical_dataset_validation_engine import build_historical
 from stock_risk_mcp.historical_dataset_validation_fixture import load_historical_dataset_validation_fixture
 from stock_risk_mcp.historical_dataset_readiness_engine import build_historical_dataset_readiness
 from stock_risk_mcp.historical_dataset_readiness_fixture import load_historical_dataset_readiness_fixture
+from stock_risk_mcp.historical_model_training_engine import (
+    build_historical_model_training_plan_check,
+    run_historical_model_training_sandbox,
+)
+from stock_risk_mcp.historical_model_training_fixture import load_historical_model_training_fixture
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
 from stock_risk_mcp.notification_outbox import deliver_notifications
@@ -843,6 +848,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_dataset_readiness_safety_report = subparsers.add_parser("historical-dataset-readiness-safety-report")
     historical_dataset_readiness_safety_report.add_argument("--fixture-file", type=Path, required=True)
     historical_dataset_readiness_safety_report.add_argument("--output-file", type=Path)
+    historical_model_training_plan_check = subparsers.add_parser("historical-model-training-plan-check")
+    historical_model_training_plan_check.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_training_plan_check.add_argument("--output-file", type=Path)
+    historical_model_train_sandbox = subparsers.add_parser("historical-model-train-sandbox")
+    historical_model_train_sandbox.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_train_sandbox.add_argument("--output-file", type=Path)
+    historical_model_evaluation_report = subparsers.add_parser("historical-model-evaluation-report")
+    historical_model_evaluation_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_evaluation_report.add_argument("--output-file", type=Path)
+    historical_model_artifact_manifest = subparsers.add_parser("historical-model-artifact-manifest")
+    historical_model_artifact_manifest.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_artifact_manifest.add_argument("--output-file", type=Path)
+    historical_model_training_safety_report = subparsers.add_parser("historical-model-training-safety-report")
+    historical_model_training_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_training_safety_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1852,6 +1872,11 @@ def main(argv: list[str] | None = None) -> None:
         "historical-dataset-imbalance-report",
         "historical-dataset-baseline-evaluation",
         "historical-dataset-readiness-safety-report",
+        "historical-model-training-plan-check",
+        "historical-model-train-sandbox",
+        "historical-model-evaluation-report",
+        "historical-model-artifact-manifest",
+        "historical-model-training-safety-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3194,6 +3219,51 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-training-plan-check":
+        try:
+            result = _build_historical_model_training_plan_check(args.fixture_file).plan_check_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "eligible_for_sandbox_training": result.eligible_for_sandbox_training}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-train-sandbox":
+        try:
+            result = _build_historical_model_training_sandbox(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "training_executed": result.run_report.training_executed}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-evaluation-report":
+        try:
+            result = _build_historical_model_training_sandbox(args.fixture_file).evaluation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_only_prediction_count": result.report_only_prediction_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-artifact-manifest":
+        try:
+            result = _build_historical_model_training_sandbox(args.fixture_file).artifact_manifest
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "artifact_manifest_id": result.artifact_manifest_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-training-safety-report":
+        try:
+            result = _build_historical_model_training_sandbox(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -3864,6 +3934,20 @@ def _load_historical_dataset_readiness_fixture_or_raise(fixture_file: Path):
 def _build_historical_dataset_readiness(fixture_file: Path):
     fixture = _load_historical_dataset_readiness_fixture_or_raise(fixture_file)
     return build_historical_dataset_readiness(fixture)
+
+
+def _load_historical_model_training_fixture_or_raise(fixture_file: Path):
+    return load_historical_model_training_fixture(fixture_file)
+
+
+def _build_historical_model_training_plan_check(fixture_file: Path):
+    fixture = _load_historical_model_training_fixture_or_raise(fixture_file)
+    return build_historical_model_training_plan_check(fixture)
+
+
+def _build_historical_model_training_sandbox(fixture_file: Path):
+    fixture = _load_historical_model_training_fixture_or_raise(fixture_file)
+    return run_historical_model_training_sandbox(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

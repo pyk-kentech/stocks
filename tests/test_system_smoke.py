@@ -130,6 +130,28 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_dataset_readiness_ml_training_run"] is False
     assert result["checks"]["historical_dataset_readiness_learned_model_evaluation_run"] is False
     assert result["checks"]["historical_dataset_readiness_ml_ready_tensor_export_created"] is False
+    assert result["checks"]["historical_model_training_sandbox_fixture_run"] is True
+    assert result["checks"]["historical_model_training_plan_check_generated"] is True
+    assert result["checks"]["historical_model_training_run_report_generated"] is True
+    assert result["checks"]["historical_model_evaluation_report_generated"] is True
+    assert result["checks"]["historical_model_metrics_report_generated"] is True
+    assert result["checks"]["historical_model_artifact_manifest_generated"] is True
+    assert result["checks"]["historical_model_training_local_only"] is True
+    assert result["checks"]["historical_model_training_offline_only"] is True
+    assert result["checks"]["historical_model_training_chronological_split_used"] is True
+    assert result["checks"]["historical_model_training_no_random_shuffle"] is True
+    assert result["checks"]["historical_model_training_dummy_models_available"] is True
+    assert result["checks"]["historical_model_training_optional_sklearn_fail_closed"] is True
+    assert result["checks"]["historical_model_training_report_only"] is True
+    assert result["checks"]["historical_model_training_non_executable"] is True
+    assert result["checks"]["historical_model_training_no_runtime_signal"] is True
+    assert result["checks"]["historical_model_training_no_order_candidate"] is True
+    assert result["checks"]["historical_model_training_no_live_inference"] is True
+    assert result["checks"]["historical_model_training_no_broker_path"] is True
+    assert result["checks"]["historical_model_training_no_live_prod"] is True
+    assert result["checks"]["historical_model_training_no_network"] is True
+    assert result["checks"]["historical_model_training_no_cloud_llm"] is True
+    assert result["checks"]["historical_model_training_no_local_llm_runtime"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
