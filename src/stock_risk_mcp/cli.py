@@ -224,6 +224,8 @@ from stock_risk_mcp.historical_model_training_engine import (
     build_historical_model_training_plan_check,
     run_historical_model_training_sandbox,
 )
+from stock_risk_mcp.historical_model_experiment_engine import build_historical_model_experiment_registry
+from stock_risk_mcp.historical_model_experiment_fixture import load_historical_model_experiment_fixture
 from stock_risk_mcp.historical_model_training_fixture import load_historical_model_training_fixture
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
@@ -863,6 +865,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_model_training_safety_report = subparsers.add_parser("historical-model-training-safety-report")
     historical_model_training_safety_report.add_argument("--fixture-file", type=Path, required=True)
     historical_model_training_safety_report.add_argument("--output-file", type=Path)
+    historical_model_experiment_register = subparsers.add_parser("historical-model-experiment-register")
+    historical_model_experiment_register.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_experiment_register.add_argument("--output-file", type=Path)
+    historical_model_experiment_compare = subparsers.add_parser("historical-model-experiment-compare")
+    historical_model_experiment_compare.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_experiment_compare.add_argument("--output-file", type=Path)
+    historical_model_risk_review = subparsers.add_parser("historical-model-risk-review")
+    historical_model_risk_review.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_risk_review.add_argument("--output-file", type=Path)
+    historical_model_promotion_block_report = subparsers.add_parser("historical-model-promotion-block-report")
+    historical_model_promotion_block_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_promotion_block_report.add_argument("--output-file", type=Path)
+    historical_model_experiment_safety_report = subparsers.add_parser("historical-model-experiment-safety-report")
+    historical_model_experiment_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_model_experiment_safety_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1877,6 +1894,11 @@ def main(argv: list[str] | None = None) -> None:
         "historical-model-evaluation-report",
         "historical-model-artifact-manifest",
         "historical-model-training-safety-report",
+        "historical-model-experiment-register",
+        "historical-model-experiment-compare",
+        "historical-model-risk-review",
+        "historical-model-promotion-block-report",
+        "historical-model-experiment-safety-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3264,6 +3286,51 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-experiment-register":
+        try:
+            result = _build_historical_model_experiment_registry(args.fixture_file).registry_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "experiment_count": result.experiment_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-experiment-compare":
+        try:
+            result = _build_historical_model_experiment_registry(args.fixture_file).comparison_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "compared_experiment_count": len(result.compared_experiment_ids)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-risk-review":
+        try:
+            result = _build_historical_model_experiment_registry(args.fixture_file).risk_review_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "unsafe_artifact_metadata": result.unsafe_artifact_metadata}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-promotion-block-report":
+        try:
+            result = _build_historical_model_experiment_registry(args.fixture_file).promotion_block_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "promotion_block_report_id": result.promotion_block_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-model-experiment-safety-report":
+        try:
+            result = _build_historical_model_experiment_registry(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -3948,6 +4015,15 @@ def _build_historical_model_training_plan_check(fixture_file: Path):
 def _build_historical_model_training_sandbox(fixture_file: Path):
     fixture = _load_historical_model_training_fixture_or_raise(fixture_file)
     return run_historical_model_training_sandbox(fixture)
+
+
+def _load_historical_model_experiment_fixture_or_raise(fixture_file: Path):
+    return load_historical_model_experiment_fixture(fixture_file)
+
+
+def _build_historical_model_experiment_registry(fixture_file: Path):
+    fixture = _load_historical_model_experiment_fixture_or_raise(fixture_file)
+    return build_historical_model_experiment_registry(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

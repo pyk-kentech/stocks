@@ -152,6 +152,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_model_training_no_network"] is True
     assert result["checks"]["historical_model_training_no_cloud_llm"] is True
     assert result["checks"]["historical_model_training_no_local_llm_runtime"] is True
+    assert result["checks"]["historical_model_experiment_registry_fixture_run"] is True
+    assert result["checks"]["historical_model_experiment_registry_report_generated"] is True
+    assert result["checks"]["historical_model_comparison_report_generated"] is True
+    assert result["checks"]["historical_model_risk_review_generated"] is True
+    assert result["checks"]["historical_model_promotion_block_report_generated"] is True
+    assert result["checks"]["historical_model_experiment_lineage_report_generated"] is True
+    assert result["checks"]["historical_model_experiment_report_only"] is True
+    assert result["checks"]["historical_model_experiment_non_executable"] is True
+    assert result["checks"]["historical_model_experiment_no_runtime_signal"] is True
+    assert result["checks"]["historical_model_experiment_no_order_candidate"] is True
+    assert result["checks"]["historical_model_experiment_no_live_inference"] is True
+    assert result["checks"]["historical_model_experiment_no_deployment"] is True
+    assert result["checks"]["historical_model_experiment_no_paper_trading"] is True
+    assert result["checks"]["historical_model_experiment_no_broker_path"] is True
+    assert result["checks"]["historical_model_experiment_no_live_prod"] is True
+    assert result["checks"]["historical_model_experiment_no_network"] is True
+    assert result["checks"]["historical_model_experiment_no_cloud_llm"] is True
+    assert result["checks"]["historical_model_experiment_no_local_llm_runtime"] is True
+    assert result["checks"]["historical_model_experiment_promotion_blocked_by_default"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

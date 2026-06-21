@@ -133,6 +133,8 @@ from stock_risk_mcp.historical_model_training_engine import (
 )
 from stock_risk_mcp.historical_model_training_models import HistoricalModelTrainingInput
 from stock_risk_mcp.historical_model_training_models import HistoricalModelTrainingModelType
+from stock_risk_mcp.historical_model_experiment_engine import build_historical_model_experiment_registry
+from stock_risk_mcp.historical_model_experiment_models import HistoricalModelExperimentRegistryInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2056,6 +2058,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_dataset_validation = _run_historical_dataset_validation_smoke(output_dir)
     historical_dataset_readiness = _run_historical_dataset_readiness_smoke(output_dir)
     historical_model_training = _run_historical_model_training_smoke(output_dir)
+    historical_model_experiment = _run_historical_model_experiment_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2317,6 +2320,25 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_model_training_no_network": historical_model_training["no_network"],
             "historical_model_training_no_cloud_llm": historical_model_training["no_cloud_llm"],
             "historical_model_training_no_local_llm_runtime": historical_model_training["no_local_llm_runtime"],
+            "historical_model_experiment_registry_fixture_run": historical_model_experiment["fixture_run"],
+            "historical_model_experiment_registry_report_generated": historical_model_experiment["registry_report_generated"],
+            "historical_model_comparison_report_generated": historical_model_experiment["comparison_report_generated"],
+            "historical_model_risk_review_generated": historical_model_experiment["risk_review_generated"],
+            "historical_model_promotion_block_report_generated": historical_model_experiment["promotion_block_report_generated"],
+            "historical_model_experiment_lineage_report_generated": historical_model_experiment["lineage_report_generated"],
+            "historical_model_experiment_report_only": historical_model_experiment["report_only"],
+            "historical_model_experiment_non_executable": historical_model_experiment["non_executable"],
+            "historical_model_experiment_no_runtime_signal": historical_model_experiment["no_runtime_signal"],
+            "historical_model_experiment_no_order_candidate": historical_model_experiment["no_order_candidate"],
+            "historical_model_experiment_no_live_inference": historical_model_experiment["no_live_inference"],
+            "historical_model_experiment_no_deployment": historical_model_experiment["no_deployment"],
+            "historical_model_experiment_no_paper_trading": historical_model_experiment["no_paper_trading"],
+            "historical_model_experiment_no_broker_path": historical_model_experiment["no_broker_path"],
+            "historical_model_experiment_no_live_prod": historical_model_experiment["no_live_prod"],
+            "historical_model_experiment_no_network": historical_model_experiment["no_network"],
+            "historical_model_experiment_no_cloud_llm": historical_model_experiment["no_cloud_llm"],
+            "historical_model_experiment_no_local_llm_runtime": historical_model_experiment["no_local_llm_runtime"],
+            "historical_model_experiment_promotion_blocked_by_default": historical_model_experiment["promotion_blocked_by_default"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -4143,5 +4165,245 @@ def _run_historical_model_training_smoke(output_dir: Path) -> dict[str, bool]:
         "no_local_llm_runtime": (
             trained.training_config.no_local_llm_runtime is True
             and trained.artifact_manifest.no_local_llm_runtime is True
+        ),
+    }
+
+
+def _run_historical_model_experiment_smoke(output_dir: Path) -> dict[str, bool]:
+    training_input = HistoricalModelTrainingInput.model_validate_json(
+        (output_dir / "historical_model_training_input.json").read_text(encoding="utf-8")
+    )
+
+    experiment_fixture = HistoricalModelExperimentRegistryInput.model_validate(
+        {
+            "schema_version": "5.8-historical-model-experiment-registry-input",
+            "registry_input_id": "historical-model-experiment-registry-input-smoke",
+            "registry_config": {
+                "config_id": "historical-model-experiment-registry-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+            },
+            "experiment_records": [
+                {
+                    "experiment_id": "historical-model-experiment-smoke",
+                    "model_type": training_input.run_report.model_type,
+                    "dataset_manifest_id": training_input.dataset_ref.dataset_manifest_id,
+                    "split_manifest_id": training_input.split_ref.split_manifest_id,
+                    "feature_schema_version": training_input.feature_schema.feature_schema_version,
+                    "label_schema_version": training_input.label_schema.label_schema_version,
+                    "metrics_report_id": training_input.metrics_report.metrics_report_id,
+                    "artifact_manifest_id": training_input.artifact_manifest.artifact_manifest_id,
+                    "safety_report_id": training_input.safety_report.safety_report_id,
+                    "training_timestamp": training_input.artifact_manifest.training_timestamp,
+                    "model_metadata": {"sandbox_origin": "offline"},
+                    "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                    "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                    "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+                }
+            ],
+            "training_run_report": training_input.run_report.model_dump(mode="json"),
+            "evaluation_report": training_input.evaluation_report.model_dump(mode="json"),
+            "metrics_report": training_input.metrics_report.model_dump(mode="json"),
+            "artifact_manifest": training_input.artifact_manifest.model_dump(mode="json"),
+            "training_safety_report": training_input.safety_report.model_dump(mode="json"),
+            "training_gap_report": training_input.gap_report.model_dump(mode="json"),
+            "baseline_evaluation_report": training_input.baseline_evaluation_report.model_dump(mode="json")
+            if training_input.baseline_evaluation_report is not None
+            else None,
+            "split_manifest": training_input.split_manifest.model_dump(mode="json") if training_input.split_manifest is not None else None,
+            "leakage_audit_report": training_input.leakage_audit_report.model_dump(mode="json")
+            if training_input.leakage_audit_report is not None
+            else None,
+            "registry_report": {
+                "registry_report_id": "historical-model-experiment-registry-report-smoke",
+                "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                "experiment_count": 0,
+                "blocked_experiment_count": 0,
+                "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+            },
+            "comparison_report": {
+                "comparison_report_id": "historical-model-comparison-report-smoke",
+                "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                "compared_experiment_ids": [],
+                "compared_metric_names": [],
+                "validation_accuracy_delta": None,
+                "test_accuracy_delta": None,
+                "balanced_accuracy_delta": None,
+                "macro_f1_delta": None,
+                "baseline_improvement_delta": None,
+                "safety_blocked": True,
+                "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+            },
+            "risk_review_report": {
+                "risk_review_report_id": "historical-model-risk-review-report-smoke",
+                "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                "overfit_risk": False,
+                "low_label_support": False,
+                "severe_label_imbalance": False,
+                "train_test_metric_gap": False,
+                "weak_baseline_improvement": False,
+                "missing_leakage_audit_lineage": False,
+                "missing_validation_split_lineage": False,
+                "unsafe_artifact_metadata": False,
+                "optional_sklearn_dependency_risk": False,
+                "unsupported_model_type": False,
+                "missing_safety_flags": False,
+                "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+            },
+            "promotion_block_report": {
+                "promotion_block_report_id": "historical-model-promotion-block-report-smoke",
+                "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                "production_use_allowed": False,
+                "live_inference_allowed": False,
+                "runtime_trading_signal_allowed": False,
+                "order_candidate_allowed": False,
+                "paper_trading_allowed": False,
+                "broker_path_allowed": False,
+                "live_prod_allowed": False,
+                "deployment_allowed": False,
+                "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+            },
+            "lineage_report": {
+                "lineage_report_id": "historical-model-lineage-report-smoke",
+                "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                "leakage_audit_lineage_present": True,
+                "validation_split_lineage_present": True,
+                "artifact_manifest_lineage_present": True,
+                "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+            },
+            "safety_report": {
+                "safety_report_id": "historical-model-experiment-safety-report-smoke",
+            },
+            "gap_report": {
+                "gap_report_id": "historical-model-experiment-gap-report-smoke",
+                "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-model-experiment-audit-record-smoke",
+                    "registry_input_id": "historical-model-experiment-registry-input-smoke",
+                    "created_at": "2026-06-24T09:25:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_model_experiment_smoke_fixture.json"),
+                    "source_manifest_ids": training_input.metrics_report.source_manifest_ids,
+                    "source_audit_record_ids": training_input.metrics_report.source_audit_record_ids,
+                    "provider_provenance_ids": training_input.metrics_report.provider_provenance_ids,
+                }
+            ],
+        }
+    )
+    experiment = build_historical_model_experiment_registry(experiment_fixture)
+
+    (output_dir / "historical_model_experiment_registry_input.json").write_text(
+        experiment.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_experiment_registry_report.json").write_text(
+        experiment.registry_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_comparison_report.json").write_text(
+        experiment.comparison_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_risk_review_report.json").write_text(
+        experiment.risk_review_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_promotion_block_report.json").write_text(
+        experiment.promotion_block_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_experiment_lineage_report.json").write_text(
+        experiment.lineage_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_model_experiment_safety_report.json").write_text(
+        experiment.safety_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    return {
+        "fixture_run": True,
+        "registry_report_generated": experiment.registry_report.experiment_count == 1,
+        "comparison_report_generated": len(experiment.comparison_report.compared_experiment_ids) == 1,
+        "risk_review_generated": experiment.risk_review_report.risk_review_report_id.endswith("SMOKE"),
+        "promotion_block_report_generated": experiment.promotion_block_report.promotion_block_report_id.endswith("SMOKE"),
+        "lineage_report_generated": experiment.lineage_report.lineage_report_id.endswith("SMOKE"),
+        "report_only": (
+            experiment.registry_report.report_only is True
+            and experiment.comparison_report.report_only is True
+            and experiment.risk_review_report.report_only is True
+            and experiment.promotion_block_report.report_only is True
+        ),
+        "non_executable": (
+            experiment.registry_report.non_executable is True
+            and experiment.comparison_report.non_executable is True
+            and experiment.risk_review_report.non_executable is True
+            and experiment.promotion_block_report.non_executable is True
+        ),
+        "no_runtime_signal": (
+            experiment.registry_report.no_runtime_trading_signal is True
+            and experiment.safety_report.no_runtime_trading_signal is True
+            and experiment.promotion_block_report.runtime_trading_signal_allowed is False
+        ),
+        "no_order_candidate": (
+            experiment.registry_report.no_order_candidate is True
+            and experiment.safety_report.no_order_candidate is True
+            and experiment.promotion_block_report.order_candidate_allowed is False
+        ),
+        "no_live_inference": (
+            experiment.registry_report.no_live_inference is True
+            and experiment.safety_report.no_live_inference is True
+            and experiment.promotion_block_report.live_inference_allowed is False
+        ),
+        "no_deployment": (
+            experiment.registry_report.no_deployment is True
+            and experiment.safety_report.no_deployment is True
+            and experiment.promotion_block_report.deployment_allowed is False
+        ),
+        "no_paper_trading": experiment.promotion_block_report.paper_trading_allowed is False,
+        "no_broker_path": (
+            experiment.registry_report.no_broker_path is True
+            and experiment.safety_report.no_broker_path is True
+            and experiment.promotion_block_report.broker_path_allowed is False
+        ),
+        "no_live_prod": (
+            experiment.registry_report.no_live_prod is True
+            and experiment.safety_report.no_live_prod is True
+            and experiment.promotion_block_report.live_prod_allowed is False
+        ),
+        "no_network": experiment.registry_report.no_network is True and experiment.safety_report.no_network is True,
+        "no_cloud_llm": experiment.registry_report.no_cloud_llm is True and experiment.safety_report.no_cloud_llm is True,
+        "no_local_llm_runtime": (
+            experiment.registry_report.no_local_llm_runtime is True
+            and experiment.safety_report.no_local_llm_runtime is True
+        ),
+        "promotion_blocked_by_default": (
+            experiment.promotion_block_report.production_use_allowed is False
+            and experiment.promotion_block_report.live_inference_allowed is False
+            and experiment.promotion_block_report.runtime_trading_signal_allowed is False
+            and experiment.promotion_block_report.order_candidate_allowed is False
+            and experiment.promotion_block_report.paper_trading_allowed is False
+            and experiment.promotion_block_report.broker_path_allowed is False
+            and experiment.promotion_block_report.live_prod_allowed is False
+            and experiment.promotion_block_report.deployment_allowed is False
         ),
     }
