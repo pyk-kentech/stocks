@@ -226,6 +226,8 @@ from stock_risk_mcp.historical_model_training_engine import (
 )
 from stock_risk_mcp.historical_model_experiment_engine import build_historical_model_experiment_registry
 from stock_risk_mcp.historical_model_experiment_fixture import load_historical_model_experiment_fixture
+from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
+from stock_risk_mcp.historical_signal_candidate_fixture import load_historical_signal_candidate_fixture
 from stock_risk_mcp.historical_model_training_fixture import load_historical_model_training_fixture
 from stock_risk_mcp.sell_safety_gate import SellSafetyGate
 from stock_risk_mcp.notification_digest import build_daily_digest
@@ -880,6 +882,18 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_model_experiment_safety_report = subparsers.add_parser("historical-model-experiment-safety-report")
     historical_model_experiment_safety_report.add_argument("--fixture-file", type=Path, required=True)
     historical_model_experiment_safety_report.add_argument("--output-file", type=Path)
+    historical_signal_candidate_build = subparsers.add_parser("historical-signal-candidate-build")
+    historical_signal_candidate_build.add_argument("--fixture-file", type=Path, required=True)
+    historical_signal_candidate_build.add_argument("--output-file", type=Path)
+    historical_signal_candidate_report = subparsers.add_parser("historical-signal-candidate-report")
+    historical_signal_candidate_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_signal_candidate_report.add_argument("--output-file", type=Path)
+    historical_signal_candidate_safety_report = subparsers.add_parser("historical-signal-candidate-safety-report")
+    historical_signal_candidate_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_signal_candidate_safety_report.add_argument("--output-file", type=Path)
+    historical_signal_candidate_gap_report = subparsers.add_parser("historical-signal-candidate-gap-report")
+    historical_signal_candidate_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    historical_signal_candidate_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1899,6 +1913,10 @@ def main(argv: list[str] | None = None) -> None:
         "historical-model-risk-review",
         "historical-model-promotion-block-report",
         "historical-model-experiment-safety-report",
+        "historical-signal-candidate-build",
+        "historical-signal-candidate-report",
+        "historical-signal-candidate-safety-report",
+        "historical-signal-candidate-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3331,6 +3349,42 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-signal-candidate-build":
+        try:
+            result = _build_historical_signal_candidate_batch(args.fixture_file).candidate_batch
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "accepted_candidate_count": result.accepted_candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-signal-candidate-report":
+        try:
+            result = _build_historical_signal_candidate_batch(args.fixture_file).candidate_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-signal-candidate-safety-report":
+        try:
+            result = _build_historical_signal_candidate_batch(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-signal-candidate-gap-report":
+        try:
+            result = _build_historical_signal_candidate_batch(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4024,6 +4078,15 @@ def _load_historical_model_experiment_fixture_or_raise(fixture_file: Path):
 def _build_historical_model_experiment_registry(fixture_file: Path):
     fixture = _load_historical_model_experiment_fixture_or_raise(fixture_file)
     return build_historical_model_experiment_registry(fixture)
+
+
+def _load_historical_signal_candidate_fixture_or_raise(fixture_file: Path):
+    return load_historical_signal_candidate_fixture(fixture_file)
+
+
+def _build_historical_signal_candidate_batch(fixture_file: Path):
+    fixture = _load_historical_signal_candidate_fixture_or_raise(fixture_file)
+    return build_historical_signal_candidate_batch(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

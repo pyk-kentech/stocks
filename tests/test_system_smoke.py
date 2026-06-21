@@ -171,6 +171,29 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_model_experiment_no_cloud_llm"] is True
     assert result["checks"]["historical_model_experiment_no_local_llm_runtime"] is True
     assert result["checks"]["historical_model_experiment_promotion_blocked_by_default"] is True
+    assert result["checks"]["historical_signal_candidate_fixture_run"] is True
+    assert result["checks"]["historical_signal_candidate_build_generated"] is True
+    assert result["checks"]["historical_signal_candidate_report_generated"] is True
+    assert result["checks"]["historical_signal_candidate_safety_report_generated"] is True
+    assert result["checks"]["historical_signal_candidate_gap_report_generated"] is True
+    assert result["checks"]["historical_signal_candidate_audit_record_generated"] is True
+    assert result["checks"]["historical_signal_candidate_report_only"] is True
+    assert result["checks"]["historical_signal_candidate_non_executable"] is True
+    assert result["checks"]["historical_signal_candidate_local_only"] is True
+    assert result["checks"]["historical_signal_candidate_offline_only"] is True
+    assert result["checks"]["historical_signal_candidate_no_runtime_signal"] is True
+    assert result["checks"]["historical_signal_candidate_no_order_candidate"] is True
+    assert result["checks"]["historical_signal_candidate_no_live_inference"] is True
+    assert result["checks"]["historical_signal_candidate_no_deployment"] is True
+    assert result["checks"]["historical_signal_candidate_no_paper_trading"] is True
+    assert result["checks"]["historical_signal_candidate_no_broker_path"] is True
+    assert result["checks"]["historical_signal_candidate_no_live_prod"] is True
+    assert result["checks"]["historical_signal_candidate_no_network"] is True
+    assert result["checks"]["historical_signal_candidate_no_provider_api"] is True
+    assert result["checks"]["historical_signal_candidate_no_cloud_llm"] is True
+    assert result["checks"]["historical_signal_candidate_no_local_llm_runtime"] is True
+    assert result["checks"]["historical_signal_candidate_no_buy_sell_order_execution"] is True
+    assert result["checks"]["historical_signal_candidate_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

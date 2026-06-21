@@ -135,6 +135,8 @@ from stock_risk_mcp.historical_model_training_models import HistoricalModelTrain
 from stock_risk_mcp.historical_model_training_models import HistoricalModelTrainingModelType
 from stock_risk_mcp.historical_model_experiment_engine import build_historical_model_experiment_registry
 from stock_risk_mcp.historical_model_experiment_models import HistoricalModelExperimentRegistryInput
+from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
+from stock_risk_mcp.historical_signal_candidate_models import HistoricalSignalCandidateInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2059,6 +2061,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_dataset_readiness = _run_historical_dataset_readiness_smoke(output_dir)
     historical_model_training = _run_historical_model_training_smoke(output_dir)
     historical_model_experiment = _run_historical_model_experiment_smoke(output_dir)
+    historical_signal_candidate = _run_historical_signal_candidate_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2339,6 +2342,29 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_model_experiment_no_cloud_llm": historical_model_experiment["no_cloud_llm"],
             "historical_model_experiment_no_local_llm_runtime": historical_model_experiment["no_local_llm_runtime"],
             "historical_model_experiment_promotion_blocked_by_default": historical_model_experiment["promotion_blocked_by_default"],
+            "historical_signal_candidate_fixture_run": historical_signal_candidate["fixture_run"],
+            "historical_signal_candidate_build_generated": historical_signal_candidate["build_generated"],
+            "historical_signal_candidate_report_generated": historical_signal_candidate["report_generated"],
+            "historical_signal_candidate_safety_report_generated": historical_signal_candidate["safety_report_generated"],
+            "historical_signal_candidate_gap_report_generated": historical_signal_candidate["gap_report_generated"],
+            "historical_signal_candidate_audit_record_generated": historical_signal_candidate["audit_record_generated"],
+            "historical_signal_candidate_report_only": historical_signal_candidate["report_only"],
+            "historical_signal_candidate_non_executable": historical_signal_candidate["non_executable"],
+            "historical_signal_candidate_local_only": historical_signal_candidate["local_only"],
+            "historical_signal_candidate_offline_only": historical_signal_candidate["offline_only"],
+            "historical_signal_candidate_no_runtime_signal": historical_signal_candidate["no_runtime_signal"],
+            "historical_signal_candidate_no_order_candidate": historical_signal_candidate["no_order_candidate"],
+            "historical_signal_candidate_no_live_inference": historical_signal_candidate["no_live_inference"],
+            "historical_signal_candidate_no_deployment": historical_signal_candidate["no_deployment"],
+            "historical_signal_candidate_no_paper_trading": historical_signal_candidate["no_paper_trading"],
+            "historical_signal_candidate_no_broker_path": historical_signal_candidate["no_broker_path"],
+            "historical_signal_candidate_no_live_prod": historical_signal_candidate["no_live_prod"],
+            "historical_signal_candidate_no_network": historical_signal_candidate["no_network"],
+            "historical_signal_candidate_no_provider_api": historical_signal_candidate["no_provider_api"],
+            "historical_signal_candidate_no_cloud_llm": historical_signal_candidate["no_cloud_llm"],
+            "historical_signal_candidate_no_local_llm_runtime": historical_signal_candidate["no_local_llm_runtime"],
+            "historical_signal_candidate_no_buy_sell_order_execution": historical_signal_candidate["no_buy_sell_order_execution"],
+            "historical_signal_candidate_parquet_unsupported": historical_signal_candidate["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -4406,4 +4432,216 @@ def _run_historical_model_experiment_smoke(output_dir: Path) -> dict[str, bool]:
             and experiment.promotion_block_report.live_prod_allowed is False
             and experiment.promotion_block_report.deployment_allowed is False
         ),
+    }
+
+
+def _run_historical_signal_candidate_smoke(output_dir: Path) -> dict[str, bool]:
+    experiment_input = HistoricalModelExperimentRegistryInput.model_validate_json(
+        (output_dir / "historical_model_experiment_registry_input.json").read_text(encoding="utf-8")
+    )
+    experiment_record = experiment_input.experiment_records[0]
+    fixture = HistoricalSignalCandidateInput.model_validate(
+        {
+            "schema_version": "5.9-historical-signal-candidate-input",
+            "signal_candidate_input_id": "historical-signal-candidate-input-smoke",
+            "signal_candidate_config": {
+                "config_id": "historical-signal-candidate-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+            },
+            "source_refs": [
+                {
+                    "source_ref_id": "historical-signal-source-ref-smoke",
+                    "symbol": "005930",
+                    "timestamp": "2026-06-24T09:30:00+09:00",
+                    "source_model_id": experiment_input.training_run_report.run_report_id,
+                    "source_experiment_id": experiment_record.experiment_id,
+                    "source_metrics_report_id": experiment_input.metrics_report.metrics_report_id,
+                    "source_artifact_manifest_id": experiment_input.artifact_manifest.artifact_manifest_id,
+                    "source_risk_review_id": experiment_input.risk_review_report.risk_review_report_id,
+                    "source_promotion_block_id": experiment_input.promotion_block_report.promotion_block_report_id,
+                    "dataset_lineage_id": experiment_record.dataset_manifest_id,
+                    "split_lineage_id": experiment_record.split_manifest_id,
+                    "score": 0.76,
+                    "score_bucket": "HIGH",
+                    "confidence_bucket": "HIGH",
+                    "predicted_outcome_label": "OUTCOME_FAVORABLE",
+                    "horizon": "T_PLUS_5",
+                    "feature_schema_version": experiment_record.feature_schema_version,
+                    "label_schema_version": experiment_record.label_schema_version,
+                    "explanation_summary": "Offline neutral observation candidate from experiment registry smoke fixture.",
+                    "source_manifest_ids": experiment_input.metrics_report.source_manifest_ids,
+                    "source_audit_record_ids": experiment_input.metrics_report.source_audit_record_ids,
+                    "provider_provenance_ids": experiment_input.metrics_report.provider_provenance_ids,
+                    "metadata": {"report_origin": "offline_fixture"},
+                }
+            ],
+            "candidate_batch": {
+                "candidate_batch_id": "historical-signal-candidate-batch-smoke",
+                "signal_candidate_input_id": "historical-signal-candidate-input-smoke",
+                "candidates": [],
+                "accepted_candidate_count": 0,
+                "rejected_candidate_count": 0,
+            },
+            "candidate_report": {
+                "candidate_report_id": "historical-signal-candidate-report-smoke",
+                "signal_candidate_input_id": "historical-signal-candidate-input-smoke",
+                "candidate_count": 0,
+                "accepted_candidate_count": 0,
+                "rejected_candidate_count": 0,
+                "gap_counts": {},
+                "safety_flag_summary": {},
+                "score_bucket_distribution": {},
+                "confidence_bucket_distribution": {},
+                "outcome_label_distribution": {},
+                "lineage_coverage_summary": {},
+                "blocked_execution_summary": {},
+            },
+            "safety_report": {
+                "safety_report_id": "historical-signal-candidate-safety-report-smoke",
+                "signal_candidate_input_id": "historical-signal-candidate-input-smoke",
+                "blocked_runtime_signal_count": 0,
+                "blocked_order_candidate_count": 0,
+                "blocked_paper_trading_count": 0,
+                "blocked_live_inference_count": 0,
+                "blocked_deployment_count": 0,
+                "blocked_broker_path_count": 0,
+            },
+            "gap_report": {
+                "gap_report_id": "historical-signal-candidate-gap-report-smoke",
+                "signal_candidate_input_id": "historical-signal-candidate-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-signal-candidate-audit-record-smoke",
+                    "signal_candidate_input_id": "historical-signal-candidate-input-smoke",
+                    "created_at": "2026-06-24T09:35:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_signal_candidate_smoke_fixture.json"),
+                    "source_manifest_ids": experiment_input.metrics_report.source_manifest_ids,
+                    "source_audit_record_ids": experiment_input.metrics_report.source_audit_record_ids,
+                    "provider_provenance_ids": experiment_input.metrics_report.provider_provenance_ids,
+                }
+            ],
+        }
+    )
+    signal_candidate = build_historical_signal_candidate_batch(fixture)
+
+    (output_dir / "historical_signal_candidate_input.json").write_text(
+        signal_candidate.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_signal_candidate_batch.json").write_text(
+        signal_candidate.candidate_batch.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_signal_candidate_report.json").write_text(
+        signal_candidate.candidate_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_signal_candidate_safety_report.json").write_text(
+        signal_candidate.safety_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_signal_candidate_gap_report.json").write_text(
+        signal_candidate.gap_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    batch_dump = json.dumps(signal_candidate.candidate_batch.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "build_generated": signal_candidate.candidate_batch.accepted_candidate_count == 1,
+        "report_generated": signal_candidate.candidate_report.candidate_count == 1,
+        "safety_report_generated": signal_candidate.safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": signal_candidate.gap_report.gap_report_id.endswith("SMOKE"),
+        "audit_record_generated": len(signal_candidate.audit_records) == 1,
+        "report_only": (
+            signal_candidate.candidate_batch.report_only is True
+            and signal_candidate.candidate_report.report_only is True
+            and signal_candidate.safety_report.report_only is True
+            and signal_candidate.gap_report.report_only is True
+        ),
+        "non_executable": (
+            signal_candidate.candidate_batch.non_executable is True
+            and signal_candidate.candidate_report.non_executable is True
+            and signal_candidate.safety_report.non_executable is True
+            and signal_candidate.gap_report.non_executable is True
+        ),
+        "local_only": (
+            signal_candidate.candidate_batch.local_file_only is True
+            and signal_candidate.candidate_report.local_file_only is True
+            and signal_candidate.safety_report.local_file_only is True
+            and signal_candidate.gap_report.local_file_only is True
+        ),
+        "offline_only": (
+            signal_candidate.candidate_batch.offline_only is True
+            and signal_candidate.candidate_report.offline_only is True
+            and signal_candidate.safety_report.offline_only is True
+            and signal_candidate.gap_report.offline_only is True
+        ),
+        "no_runtime_signal": (
+            signal_candidate.candidate_batch.no_runtime_trading_signal is True
+            and signal_candidate.candidate_report.no_runtime_trading_signal is True
+            and signal_candidate.safety_report.no_runtime_trading_signal is True
+        ),
+        "no_order_candidate": (
+            signal_candidate.candidate_batch.no_order_candidate is True
+            and signal_candidate.candidate_report.no_order_candidate is True
+            and signal_candidate.safety_report.no_order_candidate is True
+        ),
+        "no_live_inference": (
+            signal_candidate.candidate_batch.no_live_inference is True
+            and signal_candidate.candidate_report.no_live_inference is True
+            and signal_candidate.safety_report.no_live_inference is True
+        ),
+        "no_deployment": (
+            signal_candidate.candidate_batch.no_deployment is True
+            and signal_candidate.candidate_report.no_deployment is True
+            and signal_candidate.safety_report.no_deployment is True
+        ),
+        "no_paper_trading": (
+            signal_candidate.candidate_batch.no_paper_trading is True
+            and signal_candidate.candidate_report.no_paper_trading is True
+            and signal_candidate.safety_report.no_paper_trading is True
+        ),
+        "no_broker_path": (
+            signal_candidate.candidate_batch.no_broker_path is True
+            and signal_candidate.candidate_report.no_broker_path is True
+            and signal_candidate.safety_report.no_broker_path is True
+        ),
+        "no_live_prod": (
+            signal_candidate.candidate_batch.no_live_prod is True
+            and signal_candidate.candidate_report.no_live_prod is True
+            and signal_candidate.safety_report.no_live_prod is True
+        ),
+        "no_network": (
+            signal_candidate.candidate_batch.no_network is True
+            and signal_candidate.candidate_report.no_network is True
+            and signal_candidate.safety_report.no_network is True
+        ),
+        "no_provider_api": (
+            signal_candidate.candidate_batch.no_provider_api is True
+            and signal_candidate.candidate_report.no_provider_api is True
+            and signal_candidate.safety_report.no_provider_api is True
+        ),
+        "no_cloud_llm": (
+            signal_candidate.candidate_batch.no_cloud_llm is True
+            and signal_candidate.candidate_report.no_cloud_llm is True
+            and signal_candidate.safety_report.no_cloud_llm is True
+        ),
+        "no_local_llm_runtime": (
+            signal_candidate.candidate_batch.no_local_llm_runtime is True
+            and signal_candidate.candidate_report.no_local_llm_runtime is True
+            and signal_candidate.safety_report.no_local_llm_runtime is True
+        ),
+        "no_buy_sell_order_execution": all(
+            token not in batch_dump
+            for token in ("\"buy\"", "\"sell\"", "\"entry\"", "\"exit\"", "order_intent", "execution_approval")
+        ),
+        "parquet_unsupported": ".parquet" not in batch_dump,
     }
