@@ -228,6 +228,8 @@ from stock_risk_mcp.historical_model_experiment_engine import build_historical_m
 from stock_risk_mcp.historical_model_experiment_fixture import load_historical_model_experiment_fixture
 from stock_risk_mcp.broker_mock_adapter_engine import run_broker_mock_adapter_boundary
 from stock_risk_mcp.broker_mock_adapter_fixture import load_broker_mock_adapter_fixture
+from stock_risk_mcp.kiwoom_mock_adapter_engine import run_kiwoom_mock_adapter_draft_mapping
+from stock_risk_mcp.kiwoom_mock_adapter_fixture import load_kiwoom_mock_adapter_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -925,6 +927,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     broker_mock_adapter_gap_report = subparsers.add_parser("broker-mock-adapter-gap-report")
     broker_mock_adapter_gap_report.add_argument("--fixture-file", type=Path, required=True)
     broker_mock_adapter_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_adapter_draft_build = subparsers.add_parser("kiwoom-mock-adapter-draft-build")
+    kiwoom_mock_adapter_draft_build.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_adapter_draft_build.add_argument("--output-file", type=Path)
+    kiwoom_mock_adapter_request_draft_report = subparsers.add_parser("kiwoom-mock-adapter-request-draft-report")
+    kiwoom_mock_adapter_request_draft_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_adapter_request_draft_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_adapter_response_draft_report = subparsers.add_parser("kiwoom-mock-adapter-response-draft-report")
+    kiwoom_mock_adapter_response_draft_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_adapter_response_draft_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_adapter_safety_report = subparsers.add_parser("kiwoom-mock-adapter-safety-report")
+    kiwoom_mock_adapter_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_adapter_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_adapter_gap_report = subparsers.add_parser("kiwoom-mock-adapter-gap-report")
+    kiwoom_mock_adapter_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_adapter_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1957,6 +1974,11 @@ def main(argv: list[str] | None = None) -> None:
         "broker-mock-adapter-order-boundary-report",
         "broker-mock-adapter-safety-report",
         "broker-mock-adapter-gap-report",
+        "kiwoom-mock-adapter-draft-build",
+        "kiwoom-mock-adapter-request-draft-report",
+        "kiwoom-mock-adapter-response-draft-report",
+        "kiwoom-mock-adapter-safety-report",
+        "kiwoom-mock-adapter-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3564,6 +3586,79 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-adapter-draft-build":
+        try:
+            result = _run_kiwoom_mock_adapter_draft_mapping(args.fixture_file)
+            output = {
+                "kiwoom_mock_only": True,
+                "draft_only": True,
+                "paper_only": True,
+                "disabled_by_default": True,
+                "explicit_opt_in_required": True,
+                "non_executable": True,
+                "local_file_only": True,
+                "offline_only": True,
+                "evidence_backed": True,
+                "no_credentials_loaded": True,
+                "no_oauth_token_request": True,
+                "no_api_call": True,
+                "no_mockapi_call": True,
+                "no_network_call": True,
+                "no_websocket_connection": True,
+                "no_real_order": True,
+                "no_real_account_mutation": True,
+                "no_live_trading": True,
+                "no_live_prod": True,
+                "no_broker_api_call": True,
+                "no_order_api_call": True,
+                "no_account_api_call": True,
+                "no_provider_api_call": True,
+                "no_cloud_llm": True,
+                "no_local_llm_runtime": True,
+                "adapter_draft_boundary": result.model_dump(mode="json"),
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(output, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "adapter_input_id": result.adapter_input_id}
+            return output
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-adapter-request-draft-report":
+        try:
+            result = _run_kiwoom_mock_adapter_draft_mapping(args.fixture_file).order_request_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "request_draft_id": result.request_draft_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-adapter-response-draft-report":
+        try:
+            result = _run_kiwoom_mock_adapter_draft_mapping(args.fixture_file).order_response_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "response_draft_id": result.response_draft_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-adapter-safety-report":
+        try:
+            result = _run_kiwoom_mock_adapter_draft_mapping(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-adapter-gap-report":
+        try:
+            result = _run_kiwoom_mock_adapter_draft_mapping(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4284,6 +4379,15 @@ def _load_broker_mock_adapter_fixture_or_raise(fixture_file: Path):
 def _run_broker_mock_adapter_boundary(fixture_file: Path):
     fixture = _load_broker_mock_adapter_fixture_or_raise(fixture_file)
     return run_broker_mock_adapter_boundary(fixture)
+
+
+def _load_kiwoom_mock_adapter_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_adapter_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_adapter_draft_mapping(fixture_file: Path):
+    fixture = _load_kiwoom_mock_adapter_fixture_or_raise(fixture_file)
+    return run_kiwoom_mock_adapter_draft_mapping(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

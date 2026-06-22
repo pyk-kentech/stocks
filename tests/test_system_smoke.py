@@ -267,6 +267,43 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["broker_mock_adapter_no_cloud_llm"] is True
     assert result["checks"]["broker_mock_adapter_no_local_llm_runtime"] is True
     assert result["checks"]["broker_mock_adapter_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_adapter_draft_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_adapter_draft_build_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_order_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_request_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_response_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_execution_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_account_snapshot_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_position_snapshot_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_adapter_kiwoom_mock_only"] is True
+    assert result["checks"]["kiwoom_mock_adapter_draft_only"] is True
+    assert result["checks"]["kiwoom_mock_adapter_paper_only"] is True
+    assert result["checks"]["kiwoom_mock_adapter_disabled_by_default"] is True
+    assert result["checks"]["kiwoom_mock_adapter_explicit_opt_in_required"] is True
+    assert result["checks"]["kiwoom_mock_adapter_non_executable"] is True
+    assert result["checks"]["kiwoom_mock_adapter_local_only"] is True
+    assert result["checks"]["kiwoom_mock_adapter_offline_only"] is True
+    assert result["checks"]["kiwoom_mock_adapter_evidence_backed"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_credentials_loaded"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_oauth_token_request"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_api_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_mockapi_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_network_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_websocket_connection"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_real_order"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_real_account_mutation"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_live_trading"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_live_prod"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_broker_api_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_order_api_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_account_api_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_provider_api_call"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_cloud_llm"] is True
+    assert result["checks"]["kiwoom_mock_adapter_no_local_llm_runtime"] is True
+    assert result["checks"]["kiwoom_mock_adapter_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

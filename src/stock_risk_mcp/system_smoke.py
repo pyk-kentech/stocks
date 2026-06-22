@@ -141,6 +141,8 @@ from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_
 from stock_risk_mcp.historical_paper_trading_models import HistoricalPaperTradingInput
 from stock_risk_mcp.broker_mock_adapter_engine import run_broker_mock_adapter_boundary
 from stock_risk_mcp.broker_mock_adapter_models import BrokerMockAdapterInput
+from stock_risk_mcp.kiwoom_mock_adapter_engine import run_kiwoom_mock_adapter_draft_mapping
+from stock_risk_mcp.kiwoom_mock_adapter_models import KiwoomMockAdapterInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2068,6 +2070,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_signal_candidate = _run_historical_signal_candidate_smoke(output_dir)
     historical_paper_trading = _run_historical_paper_trading_smoke(output_dir)
     broker_mock_adapter = _run_broker_mock_adapter_smoke(output_dir)
+    kiwoom_mock_adapter = _run_kiwoom_mock_adapter_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2444,6 +2447,43 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "broker_mock_adapter_no_cloud_llm": broker_mock_adapter["no_cloud_llm"],
             "broker_mock_adapter_no_local_llm_runtime": broker_mock_adapter["no_local_llm_runtime"],
             "broker_mock_adapter_parquet_unsupported": broker_mock_adapter["parquet_unsupported"],
+            "kiwoom_mock_adapter_draft_fixture_run": kiwoom_mock_adapter["fixture_run"],
+            "kiwoom_mock_adapter_draft_build_generated": kiwoom_mock_adapter["draft_build_generated"],
+            "kiwoom_mock_adapter_order_draft_generated": kiwoom_mock_adapter["order_draft_generated"],
+            "kiwoom_mock_adapter_request_draft_generated": kiwoom_mock_adapter["request_draft_generated"],
+            "kiwoom_mock_adapter_response_draft_generated": kiwoom_mock_adapter["response_draft_generated"],
+            "kiwoom_mock_adapter_execution_draft_generated": kiwoom_mock_adapter["execution_draft_generated"],
+            "kiwoom_mock_adapter_account_snapshot_draft_generated": kiwoom_mock_adapter["account_snapshot_draft_generated"],
+            "kiwoom_mock_adapter_position_snapshot_draft_generated": kiwoom_mock_adapter["position_snapshot_draft_generated"],
+            "kiwoom_mock_adapter_safety_report_generated": kiwoom_mock_adapter["safety_report_generated"],
+            "kiwoom_mock_adapter_gap_report_generated": kiwoom_mock_adapter["gap_report_generated"],
+            "kiwoom_mock_adapter_audit_record_generated": kiwoom_mock_adapter["audit_record_generated"],
+            "kiwoom_mock_adapter_kiwoom_mock_only": kiwoom_mock_adapter["kiwoom_mock_only"],
+            "kiwoom_mock_adapter_draft_only": kiwoom_mock_adapter["draft_only"],
+            "kiwoom_mock_adapter_paper_only": kiwoom_mock_adapter["paper_only"],
+            "kiwoom_mock_adapter_disabled_by_default": kiwoom_mock_adapter["disabled_by_default"],
+            "kiwoom_mock_adapter_explicit_opt_in_required": kiwoom_mock_adapter["explicit_opt_in_required"],
+            "kiwoom_mock_adapter_non_executable": kiwoom_mock_adapter["non_executable"],
+            "kiwoom_mock_adapter_local_only": kiwoom_mock_adapter["local_only"],
+            "kiwoom_mock_adapter_offline_only": kiwoom_mock_adapter["offline_only"],
+            "kiwoom_mock_adapter_evidence_backed": kiwoom_mock_adapter["evidence_backed"],
+            "kiwoom_mock_adapter_no_credentials_loaded": kiwoom_mock_adapter["no_credentials_loaded"],
+            "kiwoom_mock_adapter_no_oauth_token_request": kiwoom_mock_adapter["no_oauth_token_request"],
+            "kiwoom_mock_adapter_no_api_call": kiwoom_mock_adapter["no_api_call"],
+            "kiwoom_mock_adapter_no_mockapi_call": kiwoom_mock_adapter["no_mockapi_call"],
+            "kiwoom_mock_adapter_no_network_call": kiwoom_mock_adapter["no_network_call"],
+            "kiwoom_mock_adapter_no_websocket_connection": kiwoom_mock_adapter["no_websocket_connection"],
+            "kiwoom_mock_adapter_no_real_order": kiwoom_mock_adapter["no_real_order"],
+            "kiwoom_mock_adapter_no_real_account_mutation": kiwoom_mock_adapter["no_real_account_mutation"],
+            "kiwoom_mock_adapter_no_live_trading": kiwoom_mock_adapter["no_live_trading"],
+            "kiwoom_mock_adapter_no_live_prod": kiwoom_mock_adapter["no_live_prod"],
+            "kiwoom_mock_adapter_no_broker_api_call": kiwoom_mock_adapter["no_broker_api_call"],
+            "kiwoom_mock_adapter_no_order_api_call": kiwoom_mock_adapter["no_order_api_call"],
+            "kiwoom_mock_adapter_no_account_api_call": kiwoom_mock_adapter["no_account_api_call"],
+            "kiwoom_mock_adapter_no_provider_api_call": kiwoom_mock_adapter["no_provider_api_call"],
+            "kiwoom_mock_adapter_no_cloud_llm": kiwoom_mock_adapter["no_cloud_llm"],
+            "kiwoom_mock_adapter_no_local_llm_runtime": kiwoom_mock_adapter["no_local_llm_runtime"],
+            "kiwoom_mock_adapter_parquet_unsupported": kiwoom_mock_adapter["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -5262,4 +5302,211 @@ def _run_broker_mock_adapter_smoke(output_dir: Path) -> dict[str, bool]:
         "no_cloud_llm": all(getattr(item, "no_cloud_llm", True) is True for item in all_items),
         "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in all_items),
         "parquet_unsupported": ".parquet" not in broker_dump,
+    }
+
+
+def _run_kiwoom_mock_adapter_smoke(output_dir: Path) -> dict[str, bool]:
+    broker_mock_input = json.loads((output_dir / "broker_mock_adapter_input.json").read_text(encoding="utf-8"))
+    broker_mock_order_intent = broker_mock_input["broker_mock_order_intent"]
+
+    fixture = KiwoomMockAdapterInput.model_validate(
+        {
+            "schema_version": "v6.3-kiwoom-mock-adapter-input",
+            "adapter_input_id": "kiwoom-mock-adapter-input-smoke",
+            "adapter_config": {
+                "config_id": "kiwoom-mock-adapter-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "market": "KRX",
+                "broker_mock_adapter_id": "BROKER-MOCK-ADAPTER-SMOKE",
+                "evidence_pack_ref": "docs/superpowers/specs/2026-06-18-kiwoom-rest-api-official-evidence-pack.md",
+                "capability_matrix_ref": "docs/superpowers/specs/2026-06-18-kiwoom-rest-api-capability-matrix.json",
+            },
+            "capability_ref": {
+                "capability_ref_id": "DOMESTIC_STOCK_ORDER_CREATE_MOCK",
+                "evidence_endpoint_ref": "KT10000",
+                "evidence_category": "국내주식 / 주문",
+                "endpoint_path": "/api/dostk/ordr",
+                "http_method": "POST",
+                "mock_domain": "https://mockapi.kiwoom.com",
+                "mock_krx_only": True,
+                "documented_request_fields": [
+                    "dmst_stex_tp",
+                    "stk_cd",
+                    "ord_qty",
+                    "ord_uv",
+                    "trde_tp",
+                    "cond_uv",
+                ],
+                "documented_response_fields": ["ord_no", "dmst_stex_tp"],
+                "supported_draft_sides": ["KIWOOM_MOCK_BUY_DRAFT", "KIWOOM_MOCK_SELL_DRAFT"],
+                "supported_order_types": ["LIMIT"],
+            },
+            "order_draft": {
+                "order_draft_id": "kiwoom-mock-order-draft-smoke",
+                "source_broker_mock_order_intent_ref_id": broker_mock_order_intent["mock_order_intent_id"],
+                "source_paper_order_intent_ref_id": broker_mock_order_intent["source_paper_order_intent_ref_id"],
+                "source_signal_candidate_ref_id": broker_mock_order_intent["source_signal_candidate_ref_id"],
+                "symbol": broker_mock_order_intent["symbol"],
+                "market": "KRX",
+                "market_profile": broker_mock_order_intent["market_profile"],
+                "strategy_track": "DOMESTIC_KR",
+                "side": "KIWOOM_MOCK_BUY_DRAFT",
+                "order_type": "LIMIT",
+                "quantity": 10,
+                "price": 70000,
+                "documented_endpoint_path": "/api/dostk/ordr",
+                "documented_api_id": "KT10000",
+                "documented_required_fields": [
+                    "dmst_stex_tp",
+                    "stk_cd",
+                    "ord_qty",
+                    "ord_uv",
+                    "trde_tp",
+                    "cond_uv",
+                ],
+                "source_manifest_ids": ["MANIFEST-SMOKE-1"],
+                "source_audit_record_ids": ["AUDIT-SMOKE-1"],
+                "provider_provenance_ids": ["PROVENANCE-SMOKE-1"],
+                "metadata": {"mapping_stage": "draft_only"},
+            },
+            "order_request_draft": {
+                "request_draft_id": "kiwoom-mock-order-request-draft-smoke",
+                "order_draft_id": "kiwoom-mock-order-draft-smoke",
+                "request_body_fields": {
+                    "dmst_stex_tp": "KRX",
+                    "stk_cd": broker_mock_order_intent["symbol"],
+                    "ord_qty": 10,
+                    "ord_uv": 70000,
+                    "trde_tp": "LIMIT",
+                    "cond_uv": "0",
+                },
+                "metadata": {"request_shape": "documented_only"},
+            },
+            "order_response_draft": {
+                "response_draft_id": "kiwoom-mock-order-response-draft-smoke",
+                "request_draft_id": "kiwoom-mock-order-request-draft-smoke",
+                "documented_response_fields": ["ord_no", "dmst_stex_tp"],
+                "metadata": {"response_shape": "documented_only"},
+            },
+            "execution_draft": {
+                "execution_draft_id": "kiwoom-mock-execution-draft-smoke",
+                "order_draft_id": "kiwoom-mock-order-draft-smoke",
+                "request_draft_id": "kiwoom-mock-order-request-draft-smoke",
+                "response_draft_id": "kiwoom-mock-order-response-draft-smoke",
+                "symbol": broker_mock_order_intent["symbol"],
+                "side": "KIWOOM_MOCK_BUY_DRAFT",
+                "documented_status": "DRAFT_ONLY",
+                "metadata": {"execution_shape": "documented_only"},
+            },
+            "account_snapshot_draft": {
+                "account_snapshot_draft_id": "kiwoom-mock-account-snapshot-draft-smoke",
+                "base_currency": "KRW",
+                "position_snapshots": [
+                    {
+                        "position_snapshot_draft_id": "kiwoom-mock-position-snapshot-draft-smoke",
+                        "symbol": broker_mock_order_intent["symbol"],
+                        "market": "KRX",
+                        "quantity": 0,
+                        "average_price": 0,
+                        "mark_price": 0,
+                        "exposure_value": 0,
+                        "metadata": {"position_shape": "draft_only"},
+                    }
+                ],
+                "metadata": {"account_shape": "draft_only"},
+            },
+            "safety_report": {
+                "safety_report_id": "kiwoom-mock-safety-report-smoke",
+                "blocked": False,
+                "findings": [],
+            },
+            "gap_report": {
+                "gap_report_id": "kiwoom-mock-gap-report-smoke",
+                "adapter_input_id": "kiwoom-mock-adapter-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": ["MANIFEST-SMOKE-1"],
+                "source_audit_record_ids": ["AUDIT-SMOKE-1"],
+                "provider_provenance_ids": ["PROVENANCE-SMOKE-1"],
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "kiwoom-mock-audit-record-smoke",
+                    "adapter_input_id": "kiwoom-mock-adapter-input-smoke",
+                    "created_at": "2026-06-25T09:12:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "kiwoom_mock_adapter_smoke_fixture.json"),
+                    "source_manifest_ids": ["MANIFEST-SMOKE-1"],
+                    "source_audit_record_ids": ["AUDIT-SMOKE-1"],
+                    "provider_provenance_ids": ["PROVENANCE-SMOKE-1"],
+                }
+            ],
+        }
+    )
+    kiwoom_mock = run_kiwoom_mock_adapter_draft_mapping(fixture)
+
+    (output_dir / "kiwoom_mock_adapter_input.json").write_text(kiwoom_mock.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_order_draft.json").write_text(kiwoom_mock.order_draft.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_request_draft.json").write_text(kiwoom_mock.order_request_draft.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_response_draft.json").write_text(kiwoom_mock.order_response_draft.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_execution_draft.json").write_text(kiwoom_mock.execution_draft.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_account_snapshot_draft.json").write_text(kiwoom_mock.account_snapshot_draft.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_safety_report.json").write_text(kiwoom_mock.safety_report.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "kiwoom_mock_adapter_gap_report.json").write_text(kiwoom_mock.gap_report.model_dump_json(indent=2), encoding="utf-8")
+
+    all_items = (
+        kiwoom_mock.adapter_config,
+        kiwoom_mock.capability_ref,
+        kiwoom_mock.order_draft,
+        kiwoom_mock.order_request_draft,
+        kiwoom_mock.order_response_draft,
+        kiwoom_mock.execution_draft,
+        kiwoom_mock.account_snapshot_draft,
+        kiwoom_mock.account_snapshot_draft.position_snapshots[0],
+        kiwoom_mock.safety_report,
+        kiwoom_mock.gap_report,
+        kiwoom_mock.audit_records[0],
+    )
+    dumped = json.dumps(kiwoom_mock.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "draft_build_generated": kiwoom_mock.adapter_input_id.endswith("SMOKE"),
+        "order_draft_generated": kiwoom_mock.order_draft.order_draft_id.endswith("SMOKE"),
+        "request_draft_generated": kiwoom_mock.order_request_draft.request_draft_id.endswith("SMOKE"),
+        "response_draft_generated": kiwoom_mock.order_response_draft.response_draft_id.endswith("SMOKE"),
+        "execution_draft_generated": kiwoom_mock.execution_draft.execution_draft_id.endswith("SMOKE"),
+        "account_snapshot_draft_generated": kiwoom_mock.account_snapshot_draft.account_snapshot_draft_id.endswith("SMOKE"),
+        "position_snapshot_draft_generated": kiwoom_mock.account_snapshot_draft.position_snapshots[0].position_snapshot_draft_id.endswith("SMOKE"),
+        "safety_report_generated": kiwoom_mock.safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": kiwoom_mock.gap_report.gap_report_id.endswith("SMOKE"),
+        "audit_record_generated": len(kiwoom_mock.audit_records) == 1,
+        "kiwoom_mock_only": all(getattr(item, "kiwoom_mock_only", True) is True for item in all_items),
+        "draft_only": all(getattr(item, "draft_only", True) is True for item in all_items),
+        "paper_only": all(getattr(item, "paper_only", True) is True for item in all_items),
+        "disabled_by_default": all(getattr(item, "disabled_by_default", True) is True for item in all_items),
+        "explicit_opt_in_required": all(getattr(item, "explicit_opt_in_required", True) is True for item in all_items),
+        "non_executable": all(getattr(item, "non_executable", True) is True for item in all_items),
+        "local_only": all(getattr(item, "local_file_only", True) is True for item in all_items),
+        "offline_only": all(getattr(item, "offline_only", True) is True for item in all_items),
+        "evidence_backed": all(getattr(item, "evidence_backed", True) is True for item in all_items),
+        "no_credentials_loaded": all(getattr(item, "no_credentials_loaded", True) is True for item in all_items),
+        "no_oauth_token_request": all(getattr(item, "no_oauth_token_request", True) is True for item in all_items),
+        "no_api_call": all(getattr(item, "no_api_call", True) is True for item in all_items),
+        "no_mockapi_call": all(getattr(item, "no_mockapi_call", True) is True for item in all_items),
+        "no_network_call": all(getattr(item, "no_network_call", True) is True for item in all_items),
+        "no_websocket_connection": all(getattr(item, "no_websocket_connection", True) is True for item in all_items),
+        "no_real_order": all(getattr(item, "no_real_order", True) is True for item in all_items),
+        "no_real_account_mutation": all(getattr(item, "no_real_account_mutation", True) is True for item in all_items),
+        "no_live_trading": all(getattr(item, "no_live_trading", True) is True for item in all_items),
+        "no_live_prod": all(getattr(item, "no_live_prod", True) is True for item in all_items),
+        "no_broker_api_call": all(getattr(item, "no_broker_api_call", True) is True for item in all_items),
+        "no_order_api_call": all(getattr(item, "no_order_api_call", True) is True for item in all_items),
+        "no_account_api_call": all(getattr(item, "no_account_api_call", True) is True for item in all_items),
+        "no_provider_api_call": all(getattr(item, "no_provider_api_call", True) is True for item in all_items),
+        "no_cloud_llm": all(getattr(item, "no_cloud_llm", True) is True for item in all_items),
+        "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in all_items),
+        "parquet_unsupported": ".parquet" not in dumped,
     }
