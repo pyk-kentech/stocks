@@ -238,6 +238,12 @@ from stock_risk_mcp.kiwoom_mock_credential_boundary_fixture import (
 )
 from stock_risk_mcp.kiwoom_mock_oauth_draft_engine import run_kiwoom_mock_oauth_draft_boundary
 from stock_risk_mcp.kiwoom_mock_oauth_draft_fixture import load_kiwoom_mock_oauth_draft_fixture
+from stock_risk_mcp.kiwoom_mock_api_transport_draft_engine import (
+    run_kiwoom_mock_api_transport_draft_boundary,
+)
+from stock_risk_mcp.kiwoom_mock_api_transport_draft_fixture import (
+    load_kiwoom_mock_api_transport_draft_fixture,
+)
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -983,6 +989,28 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_oauth_gap_report = subparsers.add_parser("kiwoom-mock-oauth-gap-report")
     kiwoom_mock_oauth_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_oauth_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_transport_request_envelope_draft = subparsers.add_parser(
+        "kiwoom-mock-api-transport-request-envelope-draft"
+    )
+    kiwoom_mock_api_transport_request_envelope_draft.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_transport_request_envelope_draft.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_transport_policy_report = subparsers.add_parser("kiwoom-mock-api-transport-policy-report")
+    kiwoom_mock_api_transport_policy_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_transport_policy_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_retry_timeout_report = subparsers.add_parser("kiwoom-mock-api-retry-timeout-report")
+    kiwoom_mock_api_retry_timeout_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_retry_timeout_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_error_response_draft_report = subparsers.add_parser(
+        "kiwoom-mock-api-error-response-draft-report"
+    )
+    kiwoom_mock_api_error_response_draft_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_error_response_draft_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_transport_safety_report = subparsers.add_parser("kiwoom-mock-api-transport-safety-report")
+    kiwoom_mock_api_transport_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_transport_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_transport_gap_report = subparsers.add_parser("kiwoom-mock-api-transport-gap-report")
+    kiwoom_mock_api_transport_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_transport_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2031,6 +2059,12 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-oauth-token-lifecycle-report",
         "kiwoom-mock-oauth-safety-report",
         "kiwoom-mock-oauth-gap-report",
+        "kiwoom-mock-api-transport-request-envelope-draft",
+        "kiwoom-mock-api-transport-policy-report",
+        "kiwoom-mock-api-retry-timeout-report",
+        "kiwoom-mock-api-error-response-draft-report",
+        "kiwoom-mock-api-transport-safety-report",
+        "kiwoom-mock-api-transport-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3836,6 +3870,68 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-transport-request-envelope-draft":
+        try:
+            result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).request_envelope_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "draft_id": result.draft_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-transport-policy-report":
+        try:
+            result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).transport_policy
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "policy_id": result.policy_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-retry-timeout-report":
+        try:
+            result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).retry_timeout_policy
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "policy_id": result.policy_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-error-response-draft-report":
+        try:
+            result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).error_response_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "error_draft_id": result.error_draft_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-transport-safety-report":
+        try:
+            result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "safety_report_id": result.safety_report_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-transport-gap-report":
+        try:
+            result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4586,6 +4682,18 @@ def _run_kiwoom_mock_oauth_draft_boundary(fixture_file: Path):
         fixture,
         explicit_opt_in_ack=True,
         credential_boundary_ref="docs/superpowers/plans/2026-06-18-kiwoom-mock-credential-environment-boundary-design.md",
+    )
+
+
+def _load_kiwoom_mock_api_transport_draft_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_api_transport_draft_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_api_transport_draft_boundary(fixture_file: Path):
+    fixture = _load_kiwoom_mock_api_transport_draft_fixture_or_raise(fixture_file)
+    return run_kiwoom_mock_api_transport_draft_boundary(
+        fixture,
+        oauth_draft_boundary_ref="docs/superpowers/plans/2026-06-18-kiwoom-mock-oauth-token-draft-boundary-design.md",
     )
 
 

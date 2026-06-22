@@ -367,6 +367,40 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_mock_oauth_no_cloud_llm"] is True
     assert result["checks"]["kiwoom_mock_oauth_no_local_llm_runtime"] is True
     assert result["checks"]["kiwoom_mock_oauth_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_draft_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_request_envelope_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_policy_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_retry_timeout_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_error_response_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_draft_only"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_mock_only"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_offline_only"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_local_only"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_request_envelope_only"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_non_executable"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_authorization_header"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_token_loading"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_token_usage"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_token_refresh"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_environment_read"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_credential_file_read"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_credentials_loaded"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_http_client"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_http_session"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_transport"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_api_call"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_mockapi_call"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_websocket_connection"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_network_call"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_account_read"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_account_mutation"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_real_order"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_live_trading"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_no_live_prod"] is True
+    assert result["checks"]["kiwoom_mock_api_transport_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
