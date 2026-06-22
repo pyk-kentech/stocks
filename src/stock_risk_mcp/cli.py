@@ -226,6 +226,8 @@ from stock_risk_mcp.historical_model_training_engine import (
 )
 from stock_risk_mcp.historical_model_experiment_engine import build_historical_model_experiment_registry
 from stock_risk_mcp.historical_model_experiment_fixture import load_historical_model_experiment_fixture
+from stock_risk_mcp.broker_mock_adapter_engine import run_broker_mock_adapter_boundary
+from stock_risk_mcp.broker_mock_adapter_fixture import load_broker_mock_adapter_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -908,6 +910,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_paper_trading_gap_report = subparsers.add_parser("historical-paper-trading-gap-report")
     historical_paper_trading_gap_report.add_argument("--fixture-file", type=Path, required=True)
     historical_paper_trading_gap_report.add_argument("--output-file", type=Path)
+    broker_mock_adapter_boundary_run = subparsers.add_parser("broker-mock-adapter-boundary-run")
+    broker_mock_adapter_boundary_run.add_argument("--fixture-file", type=Path, required=True)
+    broker_mock_adapter_boundary_run.add_argument("--output-file", type=Path)
+    broker_mock_adapter_capability_report = subparsers.add_parser("broker-mock-adapter-capability-report")
+    broker_mock_adapter_capability_report.add_argument("--fixture-file", type=Path, required=True)
+    broker_mock_adapter_capability_report.add_argument("--output-file", type=Path)
+    broker_mock_adapter_order_boundary_report = subparsers.add_parser("broker-mock-adapter-order-boundary-report")
+    broker_mock_adapter_order_boundary_report.add_argument("--fixture-file", type=Path, required=True)
+    broker_mock_adapter_order_boundary_report.add_argument("--output-file", type=Path)
+    broker_mock_adapter_safety_report = subparsers.add_parser("broker-mock-adapter-safety-report")
+    broker_mock_adapter_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    broker_mock_adapter_safety_report.add_argument("--output-file", type=Path)
+    broker_mock_adapter_gap_report = subparsers.add_parser("broker-mock-adapter-gap-report")
+    broker_mock_adapter_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    broker_mock_adapter_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1935,6 +1952,11 @@ def main(argv: list[str] | None = None) -> None:
         "historical-paper-trading-performance-report",
         "historical-paper-trading-safety-report",
         "historical-paper-trading-gap-report",
+        "broker-mock-adapter-boundary-run",
+        "broker-mock-adapter-capability-report",
+        "broker-mock-adapter-order-boundary-report",
+        "broker-mock-adapter-safety-report",
+        "broker-mock-adapter-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3440,6 +3462,108 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "broker-mock-adapter-boundary-run":
+        try:
+            result = _run_broker_mock_adapter_boundary(args.fixture_file)
+            output = {
+                "mock_only": True,
+                "paper_only": True,
+                "disabled_by_default": True,
+                "explicit_opt_in_required": True,
+                "non_executable_by_default": True,
+                "local_file_only": True,
+                "offline_only": True,
+                "no_real_order": True,
+                "no_real_account_mutation": True,
+                "no_live_trading": True,
+                "no_live_prod": True,
+                "no_production_broker": True,
+                "no_credentials_loaded": True,
+                "no_network_call": True,
+                "no_kiwoom_api_call": True,
+                "no_ls_api_call": True,
+                "no_broker_api_call": True,
+                "no_order_api_call": True,
+                "no_account_api_call": True,
+                "no_provider_api_call": True,
+                "no_cloud_llm": True,
+                "no_local_llm_runtime": True,
+                "adapter_boundary": result.model_dump(mode="json"),
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(output, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.adapter_config.config_id}
+            return output
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "broker-mock-adapter-capability-report":
+        try:
+            result = _run_broker_mock_adapter_boundary(args.fixture_file).capability
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "capability_id": result.capability_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "broker-mock-adapter-order-boundary-report":
+        try:
+            result = _run_broker_mock_adapter_boundary(args.fixture_file)
+            output = {
+                "mock_only": True,
+                "paper_only": True,
+                "disabled_by_default": True,
+                "explicit_opt_in_required": True,
+                "non_executable_by_default": True,
+                "local_file_only": True,
+                "offline_only": True,
+                "no_real_order": True,
+                "no_real_account_mutation": True,
+                "no_live_trading": True,
+                "no_live_prod": True,
+                "no_production_broker": True,
+                "no_credentials_loaded": True,
+                "no_network_call": True,
+                "no_kiwoom_api_call": True,
+                "no_ls_api_call": True,
+                "no_broker_api_call": True,
+                "no_order_api_call": True,
+                "no_account_api_call": True,
+                "no_provider_api_call": True,
+                "no_cloud_llm": True,
+                "no_local_llm_runtime": True,
+                "broker_mock_order_intent": result.broker_mock_order_intent.model_dump(mode="json"),
+                "broker_mock_order_request": result.broker_mock_order_request.model_dump(mode="json"),
+                "broker_mock_order_response": result.broker_mock_order_response.model_dump(mode="json"),
+                "broker_mock_execution_report": result.broker_mock_execution_report.model_dump(mode="json"),
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(output, indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "mock_order_intent_id": result.broker_mock_order_intent.mock_order_intent_id,
+                }
+            return output
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "broker-mock-adapter-safety-report":
+        try:
+            result = _run_broker_mock_adapter_boundary(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "broker-mock-adapter-gap-report":
+        try:
+            result = _run_broker_mock_adapter_boundary(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4151,6 +4275,15 @@ def _load_historical_paper_trading_fixture_or_raise(fixture_file: Path):
 def _run_historical_paper_trading(fixture_file: Path):
     fixture = _load_historical_paper_trading_fixture_or_raise(fixture_file)
     return run_historical_paper_trading(fixture)
+
+
+def _load_broker_mock_adapter_fixture_or_raise(fixture_file: Path):
+    return load_broker_mock_adapter_fixture(fixture_file)
+
+
+def _run_broker_mock_adapter_boundary(fixture_file: Path):
+    fixture = _load_broker_mock_adapter_fixture_or_raise(fixture_file)
+    return run_broker_mock_adapter_boundary(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

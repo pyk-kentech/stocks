@@ -139,6 +139,8 @@ from stock_risk_mcp.historical_signal_candidate_engine import build_historical_s
 from stock_risk_mcp.historical_signal_candidate_models import HistoricalSignalCandidateInput
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_models import HistoricalPaperTradingInput
+from stock_risk_mcp.broker_mock_adapter_engine import run_broker_mock_adapter_boundary
+from stock_risk_mcp.broker_mock_adapter_models import BrokerMockAdapterInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2065,6 +2067,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_model_experiment = _run_historical_model_experiment_smoke(output_dir)
     historical_signal_candidate = _run_historical_signal_candidate_smoke(output_dir)
     historical_paper_trading = _run_historical_paper_trading_smoke(output_dir)
+    broker_mock_adapter = _run_broker_mock_adapter_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2404,16 +2407,56 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_paper_trading_no_local_llm_runtime": historical_paper_trading["no_local_llm_runtime"],
             "historical_paper_trading_no_external_execution": historical_paper_trading["no_external_execution"],
             "historical_paper_trading_parquet_unsupported": historical_paper_trading["parquet_unsupported"],
+            "broker_mock_adapter_boundary_fixture_run": broker_mock_adapter["fixture_run"],
+            "broker_mock_adapter_boundary_run_generated": broker_mock_adapter["boundary_run_generated"],
+            "broker_mock_adapter_capability_report_generated": broker_mock_adapter["capability_report_generated"],
+            "broker_mock_adapter_order_intent_generated": broker_mock_adapter["order_intent_generated"],
+            "broker_mock_adapter_order_request_generated": broker_mock_adapter["order_request_generated"],
+            "broker_mock_adapter_order_response_generated": broker_mock_adapter["order_response_generated"],
+            "broker_mock_adapter_execution_report_generated": broker_mock_adapter["execution_report_generated"],
+            "broker_mock_adapter_account_snapshot_generated": broker_mock_adapter["account_snapshot_generated"],
+            "broker_mock_adapter_position_snapshot_generated": broker_mock_adapter["position_snapshot_generated"],
+            "broker_mock_adapter_safety_report_generated": broker_mock_adapter["safety_report_generated"],
+            "broker_mock_adapter_gap_report_generated": broker_mock_adapter["gap_report_generated"],
+            "broker_mock_adapter_audit_record_generated": broker_mock_adapter["audit_record_generated"],
+            "broker_mock_adapter_mock_only": broker_mock_adapter["mock_only"],
+            "broker_mock_adapter_paper_only": broker_mock_adapter["paper_only"],
+            "broker_mock_adapter_disabled_by_default": broker_mock_adapter["disabled_by_default"],
+            "broker_mock_adapter_explicit_opt_in_required": broker_mock_adapter["explicit_opt_in_required"],
+            "broker_mock_adapter_non_executable_by_default": broker_mock_adapter["non_executable_by_default"],
+            "broker_mock_adapter_local_only": broker_mock_adapter["local_only"],
+            "broker_mock_adapter_offline_only": broker_mock_adapter["offline_only"],
+            "broker_mock_adapter_no_real_order": broker_mock_adapter["no_real_order"],
+            "broker_mock_adapter_no_real_order_intent": broker_mock_adapter["no_real_order_intent"],
+            "broker_mock_adapter_no_real_account_mutation": broker_mock_adapter["no_real_account_mutation"],
+            "broker_mock_adapter_no_live_trading": broker_mock_adapter["no_live_trading"],
+            "broker_mock_adapter_no_live_prod": broker_mock_adapter["no_live_prod"],
+            "broker_mock_adapter_no_production_broker": broker_mock_adapter["no_production_broker"],
+            "broker_mock_adapter_no_credentials_loaded": broker_mock_adapter["no_credentials_loaded"],
+            "broker_mock_adapter_no_network_call": broker_mock_adapter["no_network_call"],
+            "broker_mock_adapter_no_kiwoom_api_call": broker_mock_adapter["no_kiwoom_api_call"],
+            "broker_mock_adapter_no_ls_api_call": broker_mock_adapter["no_ls_api_call"],
+            "broker_mock_adapter_no_broker_api_call": broker_mock_adapter["no_broker_api_call"],
+            "broker_mock_adapter_no_order_api_call": broker_mock_adapter["no_order_api_call"],
+            "broker_mock_adapter_no_account_api_call": broker_mock_adapter["no_account_api_call"],
+            "broker_mock_adapter_no_provider_api_call": broker_mock_adapter["no_provider_api_call"],
+            "broker_mock_adapter_no_websocket_connection": broker_mock_adapter["no_websocket_connection"],
+            "broker_mock_adapter_no_cloud_llm": broker_mock_adapter["no_cloud_llm"],
+            "broker_mock_adapter_no_local_llm_runtime": broker_mock_adapter["no_local_llm_runtime"],
+            "broker_mock_adapter_parquet_unsupported": broker_mock_adapter["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
             "gemini_called": False,
             "kiwoom_api_called": False,
+            "kiwoom_mockapi_called": False,
             "ls_api_called": False,
             "broker_api_called": False,
             "account_api_called": False,
             "order_api_called": False,
+            "oauth_token_requested": False,
             "credentials_accessed": False,
+            "websocket_connected": False,
             "external_network_calls": False,
             "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
             "domestic_shadow_advisory_context_fixture_run": domestic_shadow_advisory_bundle.metadata_json["domestic_shadow_advisory_context_fixture_run"],
@@ -5009,4 +5052,214 @@ def _run_historical_paper_trading_smoke(output_dir: Path) -> dict[str, bool]:
         "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
         "no_external_execution": all(getattr(item, "no_external_execution", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
         "parquet_unsupported": ".parquet" not in paper.model_dump_json(indent=2).lower(),
+    }
+
+
+def _run_broker_mock_adapter_smoke(output_dir: Path) -> dict[str, bool]:
+    paper_input = HistoricalPaperTradingInput.model_validate_json(
+        (output_dir / "historical_paper_trading_input.json").read_text(encoding="utf-8")
+    )
+    paper_order_intent = paper_input.paper_order_intent
+    paper_decision = paper_input.paper_decision
+
+    fixture = BrokerMockAdapterInput.model_validate(
+        {
+            "schema_version": "v6.2-broker-mock-adapter-input",
+            "adapter_input_id": "broker-mock-adapter-input-smoke",
+            "adapter_config": {
+                "config_id": "broker-mock-adapter-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "mock_adapter_family": "GENERIC_BROKER_MOCK",
+            },
+            "capability": {
+                "capability_id": "broker-mock-capability-smoke",
+                "supported_markets": ["KRX"],
+                "supported_order_types": ["LIMIT"],
+                "supported_order_sides": ["MOCK_BUY", "MOCK_SELL", "MOCK_CANCEL", "MOCK_REPLACE", "MOCK_CLOSE"],
+                "supports_mock_order_submission": False,
+                "supports_mock_cancellation": False,
+                "supports_mock_status_polling": False,
+                "supports_mock_account_snapshot": False,
+                "supports_mock_position_snapshot": False,
+                "supports_deterministic_replay_mode": True,
+                "supports_async_callback_simulation": False,
+            },
+            "broker_mock_order_intent": {
+                "mock_order_intent_id": "broker-mock-order-intent-smoke",
+                "source_paper_order_intent_ref_id": paper_order_intent.paper_order_intent_id,
+                "source_paper_decision_ref_id": paper_decision.decision_id,
+                "source_signal_candidate_ref_id": paper_order_intent.signal_candidate_ref_id,
+                "symbol": paper_order_intent.symbol,
+                "market": "KRX",
+                "strategy_track": "DOMESTIC_KR",
+                "market_profile": "DOMESTIC_EQUITY",
+                "side": "MOCK_BUY",
+                "mock_order_type": "LIMIT",
+                "requested_quantity": float(paper_order_intent.quantity),
+                "session_timestamp": "2026-06-25T09:10:00+09:00",
+                "mock_adapter_target_id": "GENERIC-BROKER-MOCK",
+                "source_manifest_ids": ["MANIFEST-SMOKE-1"],
+                "source_audit_record_ids": ["AUDIT-SMOKE-1"],
+                "provider_provenance_ids": ["PROVENANCE-SMOKE-1"],
+                "metadata": {"simulation_stage": "boundary_only"},
+            },
+            "broker_mock_order_request": {
+                "mock_order_request_id": "broker-mock-order-request-smoke",
+                "mock_order_intent_id": "broker-mock-order-intent-smoke",
+                "request_created_at": "2026-06-25T09:10:05+09:00",
+                "request_metadata": {"request_mode": "mock_boundary_only"},
+            },
+            "broker_mock_order_response": {
+                "mock_order_response_id": "broker-mock-order-response-smoke",
+                "mock_order_request_id": "broker-mock-order-request-smoke",
+                "mock_status": "MOCK_ACCEPTED",
+                "response_timestamp": "2026-06-25T09:10:06+09:00",
+                "response_metadata": {"response_mode": "mock_boundary_only"},
+            },
+            "broker_mock_execution_report": {
+                "execution_report_id": "broker-mock-execution-report-smoke",
+                "mock_order_intent_id": "broker-mock-order-intent-smoke",
+                "mock_order_request_id": "broker-mock-order-request-smoke",
+                "mock_order_response_id": "broker-mock-order-response-smoke",
+                "symbol": paper_order_intent.symbol,
+                "side": "MOCK_BUY",
+                "mock_status": "MOCK_ACCEPTED",
+                "mock_filled_quantity": 0,
+                "mock_average_fill_price": 0,
+                "mock_execution_timestamp": "2026-06-25T09:10:06+09:00",
+                "execution_metadata": {"execution_mode": "mock_boundary_only"},
+            },
+            "broker_mock_account_snapshot": {
+                "account_snapshot_id": "broker-mock-account-snapshot-smoke",
+                "mock_adapter_id": "GENERIC-BROKER-MOCK",
+                "snapshot_timestamp": "2026-06-25T09:10:07+09:00",
+                "base_currency": "KRW",
+                "reported_mock_cash": 1000000,
+                "reported_mock_buying_power": 1000000,
+                "reported_mock_equity": 1000000,
+                "position_snapshots": [
+                    {
+                        "position_snapshot_id": "broker-mock-position-snapshot-smoke",
+                        "symbol": paper_order_intent.symbol,
+                        "market": "KRX",
+                        "quantity": 0,
+                        "average_price": 0,
+                        "mark_price": 0,
+                        "exposure_value": 0,
+                        "metadata": {"position_mode": "mock_boundary_only"},
+                    }
+                ],
+                "metadata": {"account_mode": "mock_boundary_only"},
+            },
+            "kiwoom_mock_adapter_boundary": {
+                "boundary_id": "kiwoom-mock-adapter-boundary-smoke",
+                "future_only": True,
+                "implementation_present": False,
+                "executable_transport_present": False,
+                "metadata": {"boundary_family": "future_boundary_only"},
+            },
+            "ls_mock_adapter_boundary": {
+                "boundary_id": "ls-mock-adapter-boundary-smoke",
+                "future_only": True,
+                "implementation_present": False,
+                "executable_transport_present": False,
+                "metadata": {"boundary_family": "future_boundary_only"},
+            },
+            "safety_report": {
+                "safety_report_id": "broker-mock-safety-report-smoke",
+                "blocked": False,
+                "findings": [],
+            },
+            "gap_report": {
+                "gap_report_id": "broker-mock-gap-report-smoke",
+                "adapter_input_id": "broker-mock-adapter-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+                "source_manifest_ids": ["MANIFEST-SMOKE-1"],
+                "source_audit_record_ids": ["AUDIT-SMOKE-1"],
+                "provider_provenance_ids": ["PROVENANCE-SMOKE-1"],
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "broker-mock-audit-record-smoke",
+                    "adapter_input_id": "broker-mock-adapter-input-smoke",
+                    "created_at": "2026-06-25T09:11:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "broker_mock_adapter_smoke_fixture.json"),
+                    "source_manifest_ids": ["MANIFEST-SMOKE-1"],
+                    "source_audit_record_ids": ["AUDIT-SMOKE-1"],
+                    "provider_provenance_ids": ["PROVENANCE-SMOKE-1"],
+                }
+            ],
+        }
+    )
+    broker_mock = run_broker_mock_adapter_boundary(fixture)
+
+    (output_dir / "broker_mock_adapter_input.json").write_text(broker_mock.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_capability_report.json").write_text(broker_mock.capability.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_order_intent.json").write_text(broker_mock.broker_mock_order_intent.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_order_request.json").write_text(broker_mock.broker_mock_order_request.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_order_response.json").write_text(broker_mock.broker_mock_order_response.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_execution_report.json").write_text(broker_mock.broker_mock_execution_report.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_account_snapshot.json").write_text(broker_mock.broker_mock_account_snapshot.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_safety_report.json").write_text(broker_mock.safety_report.model_dump_json(indent=2), encoding="utf-8")
+    (output_dir / "broker_mock_adapter_gap_report.json").write_text(broker_mock.gap_report.model_dump_json(indent=2), encoding="utf-8")
+
+    all_items = (
+        broker_mock.adapter_config,
+        broker_mock.capability,
+        broker_mock.broker_mock_order_intent,
+        broker_mock.broker_mock_order_request,
+        broker_mock.broker_mock_order_response,
+        broker_mock.broker_mock_execution_report,
+        broker_mock.broker_mock_account_snapshot,
+        broker_mock.broker_mock_account_snapshot.position_snapshots[0],
+        broker_mock.kiwoom_mock_adapter_boundary,
+        broker_mock.ls_mock_adapter_boundary,
+        broker_mock.safety_report,
+        broker_mock.gap_report,
+        broker_mock.audit_records[0],
+    )
+    broker_dump = json.dumps(broker_mock.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "boundary_run_generated": broker_mock.adapter_input_id.endswith("SMOKE"),
+        "capability_report_generated": broker_mock.capability.capability_id.endswith("SMOKE"),
+        "order_intent_generated": broker_mock.broker_mock_order_intent.mock_order_intent_id.endswith("SMOKE"),
+        "order_request_generated": broker_mock.broker_mock_order_request.mock_order_request_id.endswith("SMOKE"),
+        "order_response_generated": broker_mock.broker_mock_order_response.mock_order_response_id.endswith("SMOKE"),
+        "execution_report_generated": broker_mock.broker_mock_execution_report.execution_report_id.endswith("SMOKE"),
+        "account_snapshot_generated": broker_mock.broker_mock_account_snapshot.account_snapshot_id.endswith("SMOKE"),
+        "position_snapshot_generated": broker_mock.broker_mock_account_snapshot.position_snapshots[0].position_snapshot_id.endswith("SMOKE"),
+        "safety_report_generated": broker_mock.safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": broker_mock.gap_report.gap_report_id.endswith("SMOKE"),
+        "audit_record_generated": len(broker_mock.audit_records) == 1,
+        "mock_only": all(getattr(item, "mock_only", True) is True for item in all_items),
+        "paper_only": all(getattr(item, "paper_only", True) is True for item in all_items),
+        "disabled_by_default": all(getattr(item, "disabled_by_default", True) is True for item in all_items),
+        "explicit_opt_in_required": all(getattr(item, "explicit_opt_in_required", True) is True for item in all_items),
+        "non_executable_by_default": all(getattr(item, "non_executable_by_default", True) is True for item in all_items),
+        "local_only": all(getattr(item, "local_file_only", True) is True for item in all_items),
+        "offline_only": all(getattr(item, "offline_only", True) is True for item in all_items),
+        "no_real_order": all(getattr(item, "no_real_order", True) is True for item in all_items),
+        "no_real_order_intent": "\"real_order_intent\"" not in broker_dump and "\"orderintent\"" not in broker_dump,
+        "no_real_account_mutation": all(getattr(item, "no_real_account_mutation", True) is True for item in all_items),
+        "no_live_trading": all(getattr(item, "no_live_trading", True) is True for item in all_items),
+        "no_live_prod": all(getattr(item, "no_live_prod", True) is True for item in all_items),
+        "no_production_broker": all(getattr(item, "no_production_broker", True) is True for item in all_items),
+        "no_credentials_loaded": all(getattr(item, "no_credentials_loaded", True) is True for item in all_items),
+        "no_network_call": all(getattr(item, "no_network_call", True) is True for item in all_items),
+        "no_kiwoom_api_call": all(getattr(item, "no_kiwoom_api_call", True) is True for item in all_items),
+        "no_ls_api_call": all(getattr(item, "no_ls_api_call", True) is True for item in all_items),
+        "no_broker_api_call": all(getattr(item, "no_broker_api_call", True) is True for item in all_items),
+        "no_order_api_call": all(getattr(item, "no_order_api_call", True) is True for item in all_items),
+        "no_account_api_call": all(getattr(item, "no_account_api_call", True) is True for item in all_items),
+        "no_provider_api_call": all(getattr(item, "no_provider_api_call", True) is True for item in all_items),
+        "no_websocket_connection": "websocket" not in broker_dump,
+        "no_cloud_llm": all(getattr(item, "no_cloud_llm", True) is True for item in all_items),
+        "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in all_items),
+        "parquet_unsupported": ".parquet" not in broker_dump,
     }

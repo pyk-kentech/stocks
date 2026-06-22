@@ -230,13 +230,53 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_paper_trading_no_local_llm_runtime"] is True
     assert result["checks"]["historical_paper_trading_no_external_execution"] is True
     assert result["checks"]["historical_paper_trading_parquet_unsupported"] is True
+    assert result["checks"]["broker_mock_adapter_boundary_fixture_run"] is True
+    assert result["checks"]["broker_mock_adapter_boundary_run_generated"] is True
+    assert result["checks"]["broker_mock_adapter_capability_report_generated"] is True
+    assert result["checks"]["broker_mock_adapter_order_intent_generated"] is True
+    assert result["checks"]["broker_mock_adapter_order_request_generated"] is True
+    assert result["checks"]["broker_mock_adapter_order_response_generated"] is True
+    assert result["checks"]["broker_mock_adapter_execution_report_generated"] is True
+    assert result["checks"]["broker_mock_adapter_account_snapshot_generated"] is True
+    assert result["checks"]["broker_mock_adapter_position_snapshot_generated"] is True
+    assert result["checks"]["broker_mock_adapter_safety_report_generated"] is True
+    assert result["checks"]["broker_mock_adapter_gap_report_generated"] is True
+    assert result["checks"]["broker_mock_adapter_audit_record_generated"] is True
+    assert result["checks"]["broker_mock_adapter_mock_only"] is True
+    assert result["checks"]["broker_mock_adapter_paper_only"] is True
+    assert result["checks"]["broker_mock_adapter_disabled_by_default"] is True
+    assert result["checks"]["broker_mock_adapter_explicit_opt_in_required"] is True
+    assert result["checks"]["broker_mock_adapter_non_executable_by_default"] is True
+    assert result["checks"]["broker_mock_adapter_local_only"] is True
+    assert result["checks"]["broker_mock_adapter_offline_only"] is True
+    assert result["checks"]["broker_mock_adapter_no_real_order"] is True
+    assert result["checks"]["broker_mock_adapter_no_real_order_intent"] is True
+    assert result["checks"]["broker_mock_adapter_no_real_account_mutation"] is True
+    assert result["checks"]["broker_mock_adapter_no_live_trading"] is True
+    assert result["checks"]["broker_mock_adapter_no_live_prod"] is True
+    assert result["checks"]["broker_mock_adapter_no_production_broker"] is True
+    assert result["checks"]["broker_mock_adapter_no_credentials_loaded"] is True
+    assert result["checks"]["broker_mock_adapter_no_network_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_kiwoom_api_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_ls_api_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_broker_api_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_order_api_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_account_api_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_provider_api_call"] is True
+    assert result["checks"]["broker_mock_adapter_no_websocket_connection"] is True
+    assert result["checks"]["broker_mock_adapter_no_cloud_llm"] is True
+    assert result["checks"]["broker_mock_adapter_no_local_llm_runtime"] is True
+    assert result["checks"]["broker_mock_adapter_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
     assert result["checks"]["gemini_called"] is False
+    assert result["checks"]["kiwoom_mockapi_called"] is False
     assert result["checks"]["ls_api_called"] is False
     assert result["checks"]["account_api_called"] is False
     assert result["checks"]["order_api_called"] is False
+    assert result["checks"]["oauth_token_requested"] is False
+    assert result["checks"]["websocket_connected"] is False
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True
