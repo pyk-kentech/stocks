@@ -194,11 +194,49 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_signal_candidate_no_local_llm_runtime"] is True
     assert result["checks"]["historical_signal_candidate_no_buy_sell_order_execution"] is True
     assert result["checks"]["historical_signal_candidate_parquet_unsupported"] is True
+    assert result["checks"]["historical_paper_trading_fixture_run"] is True
+    assert result["checks"]["historical_paper_trading_run_generated"] is True
+    assert result["checks"]["historical_paper_trading_decision_generated"] is True
+    assert result["checks"]["historical_paper_trading_order_intent_generated"] is True
+    assert result["checks"]["historical_paper_trading_fill_generated"] is True
+    assert result["checks"]["historical_paper_trading_ledger_generated"] is True
+    assert result["checks"]["historical_paper_trading_position_generated"] is True
+    assert result["checks"]["historical_paper_trading_trade_generated"] is True
+    assert result["checks"]["historical_paper_trading_performance_report_generated"] is True
+    assert result["checks"]["historical_paper_trading_safety_report_generated"] is True
+    assert result["checks"]["historical_paper_trading_gap_report_generated"] is True
+    assert result["checks"]["historical_paper_trading_audit_record_generated"] is True
+    assert result["checks"]["historical_paper_trading_paper_only"] is True
+    assert result["checks"]["historical_paper_trading_simulated_only"] is True
+    assert result["checks"]["historical_paper_trading_non_executable"] is True
+    assert result["checks"]["historical_paper_trading_local_only"] is True
+    assert result["checks"]["historical_paper_trading_offline_only"] is True
+    assert result["checks"]["historical_paper_trading_read_only_input"] is True
+    assert result["checks"]["historical_paper_trading_no_real_order"] is True
+    assert result["checks"]["historical_paper_trading_no_real_order_intent"] is True
+    assert result["checks"]["historical_paper_trading_no_broker_api"] is True
+    assert result["checks"]["historical_paper_trading_no_account_api"] is True
+    assert result["checks"]["historical_paper_trading_no_order_api"] is True
+    assert result["checks"]["historical_paper_trading_no_kiwoom_api"] is True
+    assert result["checks"]["historical_paper_trading_no_ls_api"] is True
+    assert result["checks"]["historical_paper_trading_no_broker_mock_api"] is True
+    assert result["checks"]["historical_paper_trading_no_kiwoom_mock_api"] is True
+    assert result["checks"]["historical_paper_trading_no_ls_mock_api"] is True
+    assert result["checks"]["historical_paper_trading_no_live_trading"] is True
+    assert result["checks"]["historical_paper_trading_no_live_prod"] is True
+    assert result["checks"]["historical_paper_trading_no_network"] is True
+    assert result["checks"]["historical_paper_trading_no_provider_api"] is True
+    assert result["checks"]["historical_paper_trading_no_cloud_llm"] is True
+    assert result["checks"]["historical_paper_trading_no_local_llm_runtime"] is True
+    assert result["checks"]["historical_paper_trading_no_external_execution"] is True
+    assert result["checks"]["historical_paper_trading_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
     assert result["checks"]["gemini_called"] is False
     assert result["checks"]["ls_api_called"] is False
+    assert result["checks"]["account_api_called"] is False
+    assert result["checks"]["order_api_called"] is False
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True
     assert result["checks"]["prompt_pack_gap_report_run"] is True

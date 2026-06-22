@@ -137,6 +137,8 @@ from stock_risk_mcp.historical_model_experiment_engine import build_historical_m
 from stock_risk_mcp.historical_model_experiment_models import HistoricalModelExperimentRegistryInput
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
 from stock_risk_mcp.historical_signal_candidate_models import HistoricalSignalCandidateInput
+from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
+from stock_risk_mcp.historical_paper_trading_models import HistoricalPaperTradingInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2062,6 +2064,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     historical_model_training = _run_historical_model_training_smoke(output_dir)
     historical_model_experiment = _run_historical_model_experiment_smoke(output_dir)
     historical_signal_candidate = _run_historical_signal_candidate_smoke(output_dir)
+    historical_paper_trading = _run_historical_paper_trading_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2365,6 +2368,42 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_signal_candidate_no_local_llm_runtime": historical_signal_candidate["no_local_llm_runtime"],
             "historical_signal_candidate_no_buy_sell_order_execution": historical_signal_candidate["no_buy_sell_order_execution"],
             "historical_signal_candidate_parquet_unsupported": historical_signal_candidate["parquet_unsupported"],
+            "historical_paper_trading_fixture_run": historical_paper_trading["fixture_run"],
+            "historical_paper_trading_run_generated": historical_paper_trading["run_generated"],
+            "historical_paper_trading_decision_generated": historical_paper_trading["decision_generated"],
+            "historical_paper_trading_order_intent_generated": historical_paper_trading["order_intent_generated"],
+            "historical_paper_trading_fill_generated": historical_paper_trading["fill_generated"],
+            "historical_paper_trading_ledger_generated": historical_paper_trading["ledger_generated"],
+            "historical_paper_trading_position_generated": historical_paper_trading["position_generated"],
+            "historical_paper_trading_trade_generated": historical_paper_trading["trade_generated"],
+            "historical_paper_trading_performance_report_generated": historical_paper_trading["performance_report_generated"],
+            "historical_paper_trading_safety_report_generated": historical_paper_trading["safety_report_generated"],
+            "historical_paper_trading_gap_report_generated": historical_paper_trading["gap_report_generated"],
+            "historical_paper_trading_audit_record_generated": historical_paper_trading["audit_record_generated"],
+            "historical_paper_trading_paper_only": historical_paper_trading["paper_only"],
+            "historical_paper_trading_simulated_only": historical_paper_trading["simulated_only"],
+            "historical_paper_trading_non_executable": historical_paper_trading["non_executable"],
+            "historical_paper_trading_local_only": historical_paper_trading["local_only"],
+            "historical_paper_trading_offline_only": historical_paper_trading["offline_only"],
+            "historical_paper_trading_read_only_input": historical_paper_trading["read_only_input"],
+            "historical_paper_trading_no_real_order": historical_paper_trading["no_real_order"],
+            "historical_paper_trading_no_real_order_intent": historical_paper_trading["no_real_order_intent"],
+            "historical_paper_trading_no_broker_api": historical_paper_trading["no_broker_api"],
+            "historical_paper_trading_no_account_api": historical_paper_trading["no_account_api"],
+            "historical_paper_trading_no_order_api": historical_paper_trading["no_order_api"],
+            "historical_paper_trading_no_kiwoom_api": historical_paper_trading["no_kiwoom_api"],
+            "historical_paper_trading_no_ls_api": historical_paper_trading["no_ls_api"],
+            "historical_paper_trading_no_broker_mock_api": historical_paper_trading["no_broker_mock_api"],
+            "historical_paper_trading_no_kiwoom_mock_api": historical_paper_trading["no_kiwoom_mock_api"],
+            "historical_paper_trading_no_ls_mock_api": historical_paper_trading["no_ls_mock_api"],
+            "historical_paper_trading_no_live_trading": historical_paper_trading["no_live_trading"],
+            "historical_paper_trading_no_live_prod": historical_paper_trading["no_live_prod"],
+            "historical_paper_trading_no_network": historical_paper_trading["no_network"],
+            "historical_paper_trading_no_provider_api": historical_paper_trading["no_provider_api"],
+            "historical_paper_trading_no_cloud_llm": historical_paper_trading["no_cloud_llm"],
+            "historical_paper_trading_no_local_llm_runtime": historical_paper_trading["no_local_llm_runtime"],
+            "historical_paper_trading_no_external_execution": historical_paper_trading["no_external_execution"],
+            "historical_paper_trading_parquet_unsupported": historical_paper_trading["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -2372,6 +2411,8 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_api_called": False,
             "ls_api_called": False,
             "broker_api_called": False,
+            "account_api_called": False,
+            "order_api_called": False,
             "credentials_accessed": False,
             "external_network_calls": False,
             "domestic_shadow_outcome_fixture_run": domestic_shadow_outcome_labels.metadata_json["domestic_shadow_outcome_fixture_run"],
@@ -4644,4 +4685,328 @@ def _run_historical_signal_candidate_smoke(output_dir: Path) -> dict[str, bool]:
             for token in ("\"buy\"", "\"sell\"", "\"entry\"", "\"exit\"", "order_intent", "execution_approval")
         ),
         "parquet_unsupported": ".parquet" not in batch_dump,
+    }
+
+
+def _run_historical_paper_trading_smoke(output_dir: Path) -> dict[str, bool]:
+    signal_input = HistoricalSignalCandidateInput.model_validate_json(
+        (output_dir / "historical_signal_candidate_input.json").read_text(encoding="utf-8")
+    )
+    candidate = signal_input.candidate_batch.candidates[0]
+    fixture = HistoricalPaperTradingInput.model_validate(
+        {
+            "schema_version": "5.10-historical-paper-trading-input",
+            "paper_trading_input_id": "historical-paper-trading-input-smoke",
+            "paper_trading_config": {
+                "config_id": "historical-paper-trading-config-smoke",
+                "strategy_track": "DOMESTIC_KR",
+                "initial_cash": 1000000.0,
+                "slippage_bps": 5.0,
+                "fee_bps": 2.0,
+            },
+            "paper_policy": {
+                "policy_id": "historical-paper-policy-smoke",
+                "max_positions": 5,
+                "max_exposure": 500000.0,
+                "max_per_symbol_exposure": 150000.0,
+                "max_daily_loss": 50000.0,
+                "max_drawdown": 100000.0,
+                "default_holding_period_sessions": 5,
+                "stop_simulation_rule": "FIXED_PCT",
+                "take_profit_simulation_rule": "FIXED_PCT",
+            },
+            "paper_decision": {
+                "decision_id": "historical-paper-decision-smoke",
+                "signal_candidate_ref_id": candidate.candidate_id,
+                "paper_side": "PAPER_BUY",
+                "decision_timestamp": "2026-06-24T09:35:00+09:00",
+                "decision_reason": "Paper-only deterministic smoke decision.",
+            },
+            "paper_order_intent": {
+                "paper_order_intent_id": "historical-paper-order-intent-smoke",
+                "signal_candidate_ref_id": candidate.candidate_id,
+                "decision_id": "historical-paper-decision-smoke",
+                "paper_side": "PAPER_BUY",
+                "symbol": candidate.symbol,
+                "quantity": 2,
+                "decision_timestamp": "2026-06-24T09:35:00+09:00",
+                "intended_entry_session": "2026-06-25",
+            },
+            "paper_fill": {
+                "paper_fill_id": "historical-paper-fill-smoke",
+                "paper_order_intent_id": "historical-paper-order-intent-smoke",
+                "symbol": candidate.symbol,
+                "paper_side": "PAPER_BUY",
+                "fill_price": 100.0,
+                "fill_quantity": 2,
+                "fill_timestamp": "2026-06-25T09:05:00+09:00",
+                "slippage_cost": 0.0,
+                "fee_cost": 0.0,
+            },
+            "paper_ledger": {
+                "paper_ledger_id": "historical-paper-ledger-smoke",
+                "starting_cash": 1000000.0,
+                "cash_balance": 1000000.0,
+                "reserved_cash": 0.0,
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "fees_paid": 0.0,
+                "slippage_paid": 0.0,
+            },
+            "paper_position": {
+                "paper_position_id": "historical-paper-position-smoke",
+                "symbol": candidate.symbol,
+                "open_quantity": 0,
+                "average_entry_price": 0.0,
+                "market_value": 0.0,
+                "unrealized_pnl": 0.0,
+            },
+            "paper_trade": {
+                "paper_trade_id": "historical-paper-trade-smoke",
+                "symbol": candidate.symbol,
+                "entry_fill_id": "historical-paper-fill-smoke",
+                "entry_side": "PAPER_BUY",
+                "entry_price": 0.0,
+                "entry_quantity": 1,
+                "status": "OPEN",
+            },
+            "paper_risk_limit": {
+                "paper_risk_limit_id": "historical-paper-risk-limit-smoke",
+                "max_positions": 5,
+                "max_exposure": 500000.0,
+                "max_per_symbol_exposure": 150000.0,
+                "max_daily_loss": 50000.0,
+                "max_drawdown": 100000.0,
+            },
+            "paper_performance_report": {
+                "performance_report_id": "historical-paper-performance-report-smoke",
+                "total_return": 0.0,
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "max_drawdown": 0.0,
+                "win_rate": 0.0,
+                "profit_factor": 0.0,
+                "average_win": 0.0,
+                "average_loss": 0.0,
+                "turnover": 0.0,
+                "exposure_time": 0.0,
+                "fees": 0.0,
+                "slippage_cost": 0.0,
+                "number_of_trades": 0,
+            },
+            "safety_report": {
+                "safety_report_id": "historical-paper-trading-safety-report-smoke",
+                "paper_trading_input_id": "historical-paper-trading-input-smoke",
+            },
+            "gap_report": {
+                "gap_report_id": "historical-paper-trading-gap-report-smoke",
+                "paper_trading_input_id": "historical-paper-trading-input-smoke",
+                "gap_status": "NO_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "historical-paper-trading-audit-record-smoke",
+                    "paper_trading_input_id": "historical-paper-trading-input-smoke",
+                    "created_at": "2026-06-24T09:40:00+09:00",
+                    "operator_context": "SYSTEM_SMOKE",
+                    "source_path": str(output_dir / "historical_paper_trading_smoke_fixture.json"),
+                }
+            ],
+            "paper_runtime_context": {
+                "signal_candidate": {
+                    "candidate_id": candidate.candidate_id,
+                    "symbol": candidate.symbol,
+                    "score": candidate.score.score,
+                    "confidence_bucket": candidate.score.confidence_bucket.value,
+                    "predicted_outcome_label": candidate.score.predicted_outcome_label,
+                    "risk_review_blocked": False,
+                    "promotion_blocked": True,
+                },
+                "price_bars": [
+                    {
+                        "session": "2026-06-25",
+                        "open": 100.0,
+                        "high": 110.0,
+                        "low": 98.0,
+                        "close": 108.0,
+                        "volume": 100000,
+                    }
+                ],
+                "current_mark_price": 108.0,
+                "existing_position_count": 0,
+                "existing_symbol_exposure": 0.0,
+                "existing_total_exposure": 0.0,
+                "daily_loss": 0.0,
+                "drawdown": 0.0,
+            },
+        }
+    )
+    paper = run_historical_paper_trading(fixture)
+
+    (output_dir / "historical_paper_trading_input.json").write_text(
+        paper.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_paper_trading_order_intent.json").write_text(
+        paper.paper_order_intent.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_paper_trading_performance_report.json").write_text(
+        paper.paper_performance_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_paper_trading_safety_report.json").write_text(
+        paper.safety_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "historical_paper_trading_gap_report.json").write_text(
+        paper.gap_report.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    return {
+        "fixture_run": True,
+        "run_generated": paper.paper_order_intent.paper_order_intent_id.endswith("SMOKE"),
+        "decision_generated": paper.paper_decision.decision_id.endswith("SMOKE"),
+        "order_intent_generated": paper.paper_order_intent.paper_order_intent_id.endswith("SMOKE"),
+        "fill_generated": paper.paper_fill.paper_fill_id.endswith("SMOKE"),
+        "ledger_generated": paper.paper_ledger.paper_ledger_id.endswith("SMOKE"),
+        "position_generated": paper.paper_position.paper_position_id.endswith("SMOKE"),
+        "trade_generated": paper.paper_trade.paper_trade_id.endswith("SMOKE"),
+        "performance_report_generated": paper.paper_performance_report.performance_report_id.endswith("SMOKE"),
+        "safety_report_generated": paper.safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": paper.gap_report.gap_report_id.endswith("SMOKE"),
+        "audit_record_generated": len(paper.audit_records) == 1,
+        "paper_only": all(
+            getattr(item, "paper_only", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "simulated_only": all(
+            getattr(item, "simulated_only", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "non_executable": all(
+            getattr(item, "non_executable", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "local_only": all(
+            getattr(item, "local_file_only", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "offline_only": all(
+            getattr(item, "offline_only", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "read_only_input": all(
+            getattr(item, "read_only_input", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "no_real_order": all(
+            getattr(item, "no_real_order", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "no_real_order_intent": all(
+            getattr(item, "no_real_order_intent", True) is True
+            for item in (
+                paper.paper_decision,
+                paper.paper_order_intent,
+                paper.paper_fill,
+                paper.paper_ledger,
+                paper.paper_position,
+                paper.paper_trade,
+                paper.paper_performance_report,
+                paper.safety_report,
+                paper.gap_report,
+            )
+        ),
+        "no_broker_api": all(getattr(item, "no_broker_api", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_account_api": all(getattr(item, "no_account_api", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_order_api": all(getattr(item, "no_order_api", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_kiwoom_api": all(getattr(item, "no_kiwoom_api", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_ls_api": all(getattr(item, "no_ls_api", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_broker_mock_api": True,
+        "no_kiwoom_mock_api": True,
+        "no_ls_mock_api": True,
+        "no_live_trading": all(getattr(item, "no_live_trading", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_live_prod": all(getattr(item, "no_live_prod", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_network": all(getattr(item, "no_network", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_provider_api": all(getattr(item, "no_provider_api", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_cloud_llm": all(getattr(item, "no_cloud_llm", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "no_external_execution": all(getattr(item, "no_external_execution", True) is True for item in (paper.paper_decision, paper.paper_order_intent, paper.safety_report)),
+        "parquet_unsupported": ".parquet" not in paper.model_dump_json(indent=2).lower(),
     }
