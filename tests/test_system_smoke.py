@@ -304,6 +304,37 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_mock_adapter_no_cloud_llm"] is True
     assert result["checks"]["kiwoom_mock_adapter_no_local_llm_runtime"] is True
     assert result["checks"]["kiwoom_mock_adapter_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_credential_boundary_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_credential_boundary_check_generated"] is True
+    assert result["checks"]["kiwoom_mock_credential_domain_policy_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_credential_opt_in_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_credential_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_credential_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_credential_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_credential_mock_only"] is True
+    assert result["checks"]["kiwoom_mock_credential_boundary_only"] is True
+    assert result["checks"]["kiwoom_mock_credential_disabled_by_default"] is True
+    assert result["checks"]["kiwoom_mock_credential_explicit_opt_in_required"] is True
+    assert result["checks"]["kiwoom_mock_credential_local_only"] is True
+    assert result["checks"]["kiwoom_mock_credential_offline_only"] is True
+    assert result["checks"]["kiwoom_mock_credential_non_executable"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_credentials_loaded"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_environment_read"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_credential_file_read"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_token_issued"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_token_revoked"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_api_call"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_mockapi_call"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_websocket_connection"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_network_call"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_real_order"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_live_trading"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_live_prod"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_account_mutation"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_production_domain_execution"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_cloud_llm"] is True
+    assert result["checks"]["kiwoom_mock_credential_no_local_llm_runtime"] is True
+    assert result["checks"]["kiwoom_mock_credential_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
@@ -313,6 +344,9 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["account_api_called"] is False
     assert result["checks"]["order_api_called"] is False
     assert result["checks"]["oauth_token_requested"] is False
+    assert result["checks"]["oauth_token_revoked"] is False
+    assert result["checks"]["environment_variables_read"] is False
+    assert result["checks"]["credential_file_read"] is False
     assert result["checks"]["websocket_connected"] is False
     assert result["checks"]["prompt_pack_fixture_run"] is True
     assert result["checks"]["prompt_pack_validation_run"] is True

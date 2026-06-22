@@ -230,6 +230,12 @@ from stock_risk_mcp.broker_mock_adapter_engine import run_broker_mock_adapter_bo
 from stock_risk_mcp.broker_mock_adapter_fixture import load_broker_mock_adapter_fixture
 from stock_risk_mcp.kiwoom_mock_adapter_engine import run_kiwoom_mock_adapter_draft_mapping
 from stock_risk_mcp.kiwoom_mock_adapter_fixture import load_kiwoom_mock_adapter_fixture
+from stock_risk_mcp.kiwoom_mock_credential_boundary_engine import (
+    run_kiwoom_mock_credential_boundary_evaluation,
+)
+from stock_risk_mcp.kiwoom_mock_credential_boundary_fixture import (
+    load_kiwoom_mock_credential_boundary_fixture,
+)
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -942,6 +948,21 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_adapter_gap_report = subparsers.add_parser("kiwoom-mock-adapter-gap-report")
     kiwoom_mock_adapter_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_adapter_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_credential_boundary_check = subparsers.add_parser("kiwoom-mock-credential-boundary-check")
+    kiwoom_mock_credential_boundary_check.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_credential_boundary_check.add_argument("--output-file", type=Path)
+    kiwoom_mock_credential_domain_policy_report = subparsers.add_parser("kiwoom-mock-credential-domain-policy-report")
+    kiwoom_mock_credential_domain_policy_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_credential_domain_policy_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_credential_opt_in_report = subparsers.add_parser("kiwoom-mock-credential-opt-in-report")
+    kiwoom_mock_credential_opt_in_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_credential_opt_in_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_credential_safety_report = subparsers.add_parser("kiwoom-mock-credential-safety-report")
+    kiwoom_mock_credential_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_credential_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_credential_gap_report = subparsers.add_parser("kiwoom-mock-credential-gap-report")
+    kiwoom_mock_credential_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_credential_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -1979,6 +2000,11 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-adapter-response-draft-report",
         "kiwoom-mock-adapter-safety-report",
         "kiwoom-mock-adapter-gap-report",
+        "kiwoom-mock-credential-boundary-check",
+        "kiwoom-mock-credential-domain-policy-report",
+        "kiwoom-mock-credential-opt-in-report",
+        "kiwoom-mock-credential-safety-report",
+        "kiwoom-mock-credential-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3659,6 +3685,77 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-credential-boundary-check":
+        try:
+            result = _run_kiwoom_mock_credential_boundary(args.fixture_file)
+            output = {
+                "mock_only": True,
+                "credential_boundary_only": True,
+                "disabled_by_default": True,
+                "explicit_opt_in_required": True,
+                "local_file_only": True,
+                "offline_only": True,
+                "non_executable": True,
+                "no_credentials_loaded": True,
+                "no_environment_read": True,
+                "no_credential_file_read": True,
+                "no_token_issued": True,
+                "no_token_revoked": True,
+                "no_api_call": True,
+                "no_mockapi_call": True,
+                "no_websocket_connection": True,
+                "no_network_call": True,
+                "no_real_order": True,
+                "no_live_trading": True,
+                "no_live_prod": True,
+                "no_account_mutation": True,
+                "no_production_domain_execution": True,
+                "no_cloud_llm": True,
+                "no_local_llm_runtime": True,
+                "credential_boundary": result.model_dump(mode="json"),
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(output, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return output
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-credential-domain-policy-report":
+        try:
+            result = _run_kiwoom_mock_credential_boundary(args.fixture_file).domain_policy
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "domain_policy_id": result.domain_policy_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-credential-opt-in-report":
+        try:
+            result = _run_kiwoom_mock_credential_boundary(args.fixture_file).opt_in_gate
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "opt_in_gate_id": result.opt_in_gate_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-credential-safety-report":
+        try:
+            result = _run_kiwoom_mock_credential_boundary(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-credential-gap-report":
+        try:
+            result = _run_kiwoom_mock_credential_boundary(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4388,6 +4485,15 @@ def _load_kiwoom_mock_adapter_fixture_or_raise(fixture_file: Path):
 def _run_kiwoom_mock_adapter_draft_mapping(fixture_file: Path):
     fixture = _load_kiwoom_mock_adapter_fixture_or_raise(fixture_file)
     return run_kiwoom_mock_adapter_draft_mapping(fixture)
+
+
+def _load_kiwoom_mock_credential_boundary_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_credential_boundary_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_credential_boundary(fixture_file: Path):
+    fixture = _load_kiwoom_mock_credential_boundary_fixture_or_raise(fixture_file)
+    return run_kiwoom_mock_credential_boundary_evaluation(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
