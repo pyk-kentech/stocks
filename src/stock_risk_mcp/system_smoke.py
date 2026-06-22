@@ -149,6 +149,8 @@ from stock_risk_mcp.kiwoom_mock_credential_boundary_engine import (
 from stock_risk_mcp.kiwoom_mock_credential_boundary_models import (
     KiwoomMockCredentialBoundaryConfig,
 )
+from stock_risk_mcp.kiwoom_mock_oauth_draft_engine import run_kiwoom_mock_oauth_draft_boundary
+from stock_risk_mcp.kiwoom_mock_oauth_draft_models import KiwoomMockOAuthDraftConfig
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2078,6 +2080,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     broker_mock_adapter = _run_broker_mock_adapter_smoke(output_dir)
     kiwoom_mock_adapter = _run_kiwoom_mock_adapter_smoke(output_dir)
     kiwoom_mock_credential_boundary = _run_kiwoom_mock_credential_boundary_smoke(output_dir)
+    kiwoom_mock_oauth_draft = _run_kiwoom_mock_oauth_draft_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2522,6 +2525,38 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_mock_credential_no_cloud_llm": kiwoom_mock_credential_boundary["no_cloud_llm"],
             "kiwoom_mock_credential_no_local_llm_runtime": kiwoom_mock_credential_boundary["no_local_llm_runtime"],
             "kiwoom_mock_credential_parquet_unsupported": kiwoom_mock_credential_boundary["parquet_unsupported"],
+            "kiwoom_mock_oauth_draft_fixture_run": kiwoom_mock_oauth_draft["fixture_run"],
+            "kiwoom_mock_oauth_token_request_draft_generated": kiwoom_mock_oauth_draft["token_request_draft_generated"],
+            "kiwoom_mock_oauth_token_response_draft_generated": kiwoom_mock_oauth_draft["token_response_draft_generated"],
+            "kiwoom_mock_oauth_token_revoke_draft_generated": kiwoom_mock_oauth_draft["token_revoke_draft_generated"],
+            "kiwoom_mock_oauth_token_lifecycle_report_generated": kiwoom_mock_oauth_draft["token_lifecycle_report_generated"],
+            "kiwoom_mock_oauth_safety_report_generated": kiwoom_mock_oauth_draft["safety_report_generated"],
+            "kiwoom_mock_oauth_gap_report_generated": kiwoom_mock_oauth_draft["gap_report_generated"],
+            "kiwoom_mock_oauth_audit_record_generated": kiwoom_mock_oauth_draft["audit_record_generated"],
+            "kiwoom_mock_oauth_mock_only": kiwoom_mock_oauth_draft["mock_only"],
+            "kiwoom_mock_oauth_draft_only": kiwoom_mock_oauth_draft["oauth_draft_only"],
+            "kiwoom_mock_oauth_credential_boundary_only": kiwoom_mock_oauth_draft["credential_boundary_only"],
+            "kiwoom_mock_oauth_disabled_by_default": kiwoom_mock_oauth_draft["disabled_by_default"],
+            "kiwoom_mock_oauth_explicit_opt_in_required": kiwoom_mock_oauth_draft["explicit_opt_in_required"],
+            "kiwoom_mock_oauth_local_only": kiwoom_mock_oauth_draft["local_only"],
+            "kiwoom_mock_oauth_offline_only": kiwoom_mock_oauth_draft["offline_only"],
+            "kiwoom_mock_oauth_non_executable": kiwoom_mock_oauth_draft["non_executable"],
+            "kiwoom_mock_oauth_no_credentials_loaded": kiwoom_mock_oauth_draft["no_credentials_loaded"],
+            "kiwoom_mock_oauth_no_env_read": kiwoom_mock_oauth_draft["no_env_read"],
+            "kiwoom_mock_oauth_no_token_issued": kiwoom_mock_oauth_draft["no_token_issued"],
+            "kiwoom_mock_oauth_no_token_revoked": kiwoom_mock_oauth_draft["no_token_revoked"],
+            "kiwoom_mock_oauth_no_api_call": kiwoom_mock_oauth_draft["no_api_call"],
+            "kiwoom_mock_oauth_no_mockapi_call": kiwoom_mock_oauth_draft["no_mockapi_call"],
+            "kiwoom_mock_oauth_no_websocket_connection": kiwoom_mock_oauth_draft["no_websocket_connection"],
+            "kiwoom_mock_oauth_no_network_call": kiwoom_mock_oauth_draft["no_network_call"],
+            "kiwoom_mock_oauth_no_real_order": kiwoom_mock_oauth_draft["no_real_order"],
+            "kiwoom_mock_oauth_no_live_trading": kiwoom_mock_oauth_draft["no_live_trading"],
+            "kiwoom_mock_oauth_no_live_prod": kiwoom_mock_oauth_draft["no_live_prod"],
+            "kiwoom_mock_oauth_no_account_mutation": kiwoom_mock_oauth_draft["no_account_mutation"],
+            "kiwoom_mock_oauth_no_production_domain_execution": kiwoom_mock_oauth_draft["no_production_domain_execution"],
+            "kiwoom_mock_oauth_no_cloud_llm": kiwoom_mock_oauth_draft["no_cloud_llm"],
+            "kiwoom_mock_oauth_no_local_llm_runtime": kiwoom_mock_oauth_draft["no_local_llm_runtime"],
+            "kiwoom_mock_oauth_parquet_unsupported": kiwoom_mock_oauth_draft["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -5687,6 +5722,171 @@ def _run_kiwoom_mock_credential_boundary_smoke(output_dir: Path) -> dict[str, bo
         "no_credentials_loaded": all(getattr(item, "no_credentials_loaded", True) is True for item in all_items),
         "no_environment_read": all(getattr(item, "no_environment_read", True) is True for item in all_items),
         "no_credential_file_read": all(getattr(item, "no_credential_file_read", True) is True for item in all_items),
+        "no_token_issued": all(getattr(item, "no_token_issued", True) is True for item in all_items),
+        "no_token_revoked": all(getattr(item, "no_token_revoked", True) is True for item in all_items),
+        "no_api_call": all(getattr(item, "no_api_call", True) is True for item in all_items),
+        "no_mockapi_call": all(getattr(item, "no_mockapi_call", True) is True for item in all_items),
+        "no_websocket_connection": all(getattr(item, "no_websocket_connection", True) is True for item in all_items),
+        "no_network_call": all(getattr(item, "no_network_call", True) is True for item in all_items),
+        "no_real_order": all(getattr(item, "no_real_order", True) is True for item in all_items),
+        "no_live_trading": all(getattr(item, "no_live_trading", True) is True for item in all_items),
+        "no_live_prod": all(getattr(item, "no_live_prod", True) is True for item in all_items),
+        "no_account_mutation": all(getattr(item, "no_account_mutation", True) is True for item in all_items),
+        "no_production_domain_execution": all(
+            getattr(item, "no_production_domain_execution", True) is True for item in all_items
+        ),
+        "no_cloud_llm": all(getattr(item, "no_cloud_llm", True) is True for item in all_items),
+        "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in all_items),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_mock_oauth_draft_smoke(output_dir: Path) -> dict[str, bool]:
+    fixture = KiwoomMockOAuthDraftConfig.model_validate(
+        {
+            "schema_version": "v6.5-kiwoom-mock-oauth-draft-boundary",
+            "fixture_format": "json",
+            "config_id": "kiwoom-mock-oauth-draft-config-smoke",
+            "endpoint_refs": [
+                {
+                    "endpoint_ref_id": "kiwoom-mock-token-issue-endpoint-smoke",
+                    "documented_purpose": "TOKEN_ISSUE",
+                    "method": "POST",
+                    "domain": "https://mockapi.kiwoom.com",
+                    "path": "/oauth2/token",
+                    "evidence_only": True,
+                    "executable": False,
+                    "production_domain_blocked": True,
+                    "krx_only": True,
+                },
+                {
+                    "endpoint_ref_id": "kiwoom-mock-token-revoke-endpoint-smoke",
+                    "documented_purpose": "TOKEN_REVOKE",
+                    "method": "POST",
+                    "domain": "https://mockapi.kiwoom.com",
+                    "path": "/oauth2/revoke",
+                    "evidence_only": True,
+                    "executable": False,
+                    "production_domain_blocked": True,
+                    "krx_only": True,
+                },
+            ],
+            "token_request_draft": {
+                "draft_id": "kiwoom-mock-token-request-draft-smoke",
+                "endpoint_ref_id": "KIWOOM-MOCK-TOKEN-ISSUE-ENDPOINT-SMOKE",
+                "credential_ref_ids": ["KIWOOM_MOCK_APP_KEY_REF", "KIWOOM_MOCK_SECRET_KEY_REF"],
+                "request_field_names": ["grant_type", "appkey", "secretkey"],
+                "response_field_names": ["expires_dt", "token_type", "token"],
+                "credential_ref_only": True,
+                "authorization_header_available": False,
+                "request_execution_enabled": False,
+            },
+            "token_response_draft": {
+                "response_draft_id": "kiwoom-mock-token-response-draft-smoke",
+                "documented_response_field_names": ["expires_dt", "token_type", "token"],
+                "stores_real_token": False,
+                "token_storage_enabled": False,
+                "token_refresh_enabled": False,
+            },
+            "token_revoke_draft": {
+                "draft_id": "kiwoom-mock-token-revoke-draft-smoke",
+                "endpoint_ref_id": "KIWOOM-MOCK-TOKEN-REVOKE-ENDPOINT-SMOKE",
+                "credential_ref_ids": ["KIWOOM_MOCK_APP_KEY_REF", "KIWOOM_MOCK_SECRET_KEY_REF"],
+                "token_reference_label": "MASKED_TOKEN_REF",
+                "request_field_names": ["appkey", "secretkey", "token"],
+                "credential_ref_only": True,
+                "request_execution_enabled": False,
+            },
+            "token_lifecycle_policy": {
+                "policy_id": "kiwoom-mock-token-lifecycle-policy-smoke",
+                "issue_execution_allowed": False,
+                "revoke_execution_allowed": False,
+                "refresh_execution_allowed": False,
+                "storage_execution_allowed": False,
+                "documented_lifetime_field_name": "expires_dt",
+                "token_value_retained": False,
+            },
+            "safety_report": {
+                "safety_report_id": "kiwoom-mock-oauth-safety-report-smoke",
+                "blocked_capabilities": ["TOKEN_ISSUE_EXECUTION_BLOCKED"],
+                "findings": [],
+            },
+            "gap_report": {
+                "gap_report_id": "kiwoom-mock-oauth-gap-report-smoke",
+                "gap_status": "UNRESOLVED_IMPLEMENTATION_GAPS",
+                "gap_categories": [],
+                "blocking_gap_count": 0,
+                "report_only_gap_count": 0,
+                "gaps": [],
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "kiwoom-mock-oauth-audit-record-smoke",
+                    "created_at": "2026-06-25T09:13:00+09:00",
+                    "source_path": str(output_dir / "kiwoom_mock_oauth_draft_smoke_fixture.json"),
+                    "redaction_applied": True,
+                    "contains_secret_material": False,
+                    "evidence_refs": ["KIWOOM-REST-EVIDENCE-PACK", "KIWOOM-CAPABILITY-MATRIX"],
+                }
+            ],
+        }
+    )
+    evaluated = run_kiwoom_mock_oauth_draft_boundary(
+        fixture,
+        explicit_opt_in_ack=True,
+        credential_boundary_ref="docs/superpowers/plans/2026-06-18-kiwoom-mock-credential-environment-boundary-design.md",
+    )
+
+    (output_dir / "kiwoom_mock_oauth_token_request_draft.json").write_text(
+        evaluated.token_request_draft.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_token_response_draft.json").write_text(
+        evaluated.token_response_draft.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_token_revoke_draft.json").write_text(
+        evaluated.token_revoke_draft.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_token_lifecycle_report.json").write_text(
+        evaluated.token_lifecycle_policy.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_safety_report.json").write_text(
+        evaluated.safety_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_gap_report.json").write_text(
+        evaluated.gap_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+    all_items = (
+        evaluated,
+        *evaluated.endpoint_refs,
+        evaluated.token_request_draft,
+        evaluated.token_response_draft,
+        evaluated.token_revoke_draft,
+        evaluated.token_lifecycle_policy,
+        evaluated.safety_report,
+        evaluated.gap_report,
+        evaluated.audit_records[0],
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "token_request_draft_generated": evaluated.token_request_draft.draft_id.endswith("SMOKE"),
+        "token_response_draft_generated": evaluated.token_response_draft.response_draft_id.endswith("SMOKE"),
+        "token_revoke_draft_generated": evaluated.token_revoke_draft.draft_id.endswith("SMOKE"),
+        "token_lifecycle_report_generated": evaluated.token_lifecycle_policy.policy_id.endswith("SMOKE"),
+        "safety_report_generated": evaluated.safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": evaluated.gap_report.gap_report_id.endswith("SMOKE"),
+        "audit_record_generated": len(evaluated.audit_records) == 1,
+        "mock_only": all(getattr(item, "mock_only", True) is True for item in all_items),
+        "oauth_draft_only": all(getattr(item, "oauth_draft_only", True) is True for item in all_items),
+        "credential_boundary_only": all(getattr(item, "credential_boundary_only", True) is True for item in all_items),
+        "disabled_by_default": all(getattr(item, "disabled_by_default", True) is True for item in all_items),
+        "explicit_opt_in_required": all(getattr(item, "explicit_opt_in_required", True) is True for item in all_items),
+        "local_only": all(getattr(item, "local_file_only", True) is True for item in all_items),
+        "offline_only": all(getattr(item, "offline_only", True) is True for item in all_items),
+        "non_executable": all(getattr(item, "non_executable", True) is True for item in all_items),
+        "no_credentials_loaded": all(getattr(item, "no_credentials_loaded", True) is True for item in all_items),
+        "no_env_read": all(getattr(item, "no_env_read", True) is True for item in all_items),
         "no_token_issued": all(getattr(item, "no_token_issued", True) is True for item in all_items),
         "no_token_revoked": all(getattr(item, "no_token_revoked", True) is True for item in all_items),
         "no_api_call": all(getattr(item, "no_api_call", True) is True for item in all_items),

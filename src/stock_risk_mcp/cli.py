@@ -236,6 +236,8 @@ from stock_risk_mcp.kiwoom_mock_credential_boundary_engine import (
 from stock_risk_mcp.kiwoom_mock_credential_boundary_fixture import (
     load_kiwoom_mock_credential_boundary_fixture,
 )
+from stock_risk_mcp.kiwoom_mock_oauth_draft_engine import run_kiwoom_mock_oauth_draft_boundary
+from stock_risk_mcp.kiwoom_mock_oauth_draft_fixture import load_kiwoom_mock_oauth_draft_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -963,6 +965,24 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_credential_gap_report = subparsers.add_parser("kiwoom-mock-credential-gap-report")
     kiwoom_mock_credential_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_credential_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_request_draft = subparsers.add_parser("kiwoom-mock-oauth-token-request-draft")
+    kiwoom_mock_oauth_token_request_draft.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_token_request_draft.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_response_draft_report = subparsers.add_parser("kiwoom-mock-oauth-token-response-draft-report")
+    kiwoom_mock_oauth_token_response_draft_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_token_response_draft_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_revoke_draft = subparsers.add_parser("kiwoom-mock-oauth-token-revoke-draft")
+    kiwoom_mock_oauth_token_revoke_draft.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_token_revoke_draft.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_lifecycle_report = subparsers.add_parser("kiwoom-mock-oauth-token-lifecycle-report")
+    kiwoom_mock_oauth_token_lifecycle_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_token_lifecycle_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_safety_report = subparsers.add_parser("kiwoom-mock-oauth-safety-report")
+    kiwoom_mock_oauth_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_gap_report = subparsers.add_parser("kiwoom-mock-oauth-gap-report")
+    kiwoom_mock_oauth_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2005,6 +2025,12 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-credential-opt-in-report",
         "kiwoom-mock-credential-safety-report",
         "kiwoom-mock-credential-gap-report",
+        "kiwoom-mock-oauth-token-request-draft",
+        "kiwoom-mock-oauth-token-response-draft-report",
+        "kiwoom-mock-oauth-token-revoke-draft",
+        "kiwoom-mock-oauth-token-lifecycle-report",
+        "kiwoom-mock-oauth-safety-report",
+        "kiwoom-mock-oauth-gap-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3756,6 +3782,60 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-token-request-draft":
+        try:
+            result = _run_kiwoom_mock_oauth_draft_boundary(args.fixture_file).token_request_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "draft_id": result.draft_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-token-response-draft-report":
+        try:
+            result = _run_kiwoom_mock_oauth_draft_boundary(args.fixture_file).token_response_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "response_draft_id": result.response_draft_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-token-revoke-draft":
+        try:
+            result = _run_kiwoom_mock_oauth_draft_boundary(args.fixture_file).token_revoke_draft
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "draft_id": result.draft_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-token-lifecycle-report":
+        try:
+            result = _run_kiwoom_mock_oauth_draft_boundary(args.fixture_file).token_lifecycle_policy
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "policy_id": result.policy_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-safety-report":
+        try:
+            result = _run_kiwoom_mock_oauth_draft_boundary(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-gap-report":
+        try:
+            result = _run_kiwoom_mock_oauth_draft_boundary(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4494,6 +4574,19 @@ def _load_kiwoom_mock_credential_boundary_fixture_or_raise(fixture_file: Path):
 def _run_kiwoom_mock_credential_boundary(fixture_file: Path):
     fixture = _load_kiwoom_mock_credential_boundary_fixture_or_raise(fixture_file)
     return run_kiwoom_mock_credential_boundary_evaluation(fixture)
+
+
+def _load_kiwoom_mock_oauth_draft_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_oauth_draft_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_oauth_draft_boundary(fixture_file: Path):
+    fixture = _load_kiwoom_mock_oauth_draft_fixture_or_raise(fixture_file)
+    return run_kiwoom_mock_oauth_draft_boundary(
+        fixture,
+        explicit_opt_in_ack=True,
+        credential_boundary_ref="docs/superpowers/plans/2026-06-18-kiwoom-mock-credential-environment-boundary-design.md",
+    )
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

@@ -335,6 +335,38 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_mock_credential_no_cloud_llm"] is True
     assert result["checks"]["kiwoom_mock_credential_no_local_llm_runtime"] is True
     assert result["checks"]["kiwoom_mock_credential_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_oauth_draft_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_oauth_token_request_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_token_response_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_token_revoke_draft_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_token_lifecycle_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_mock_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_draft_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_credential_boundary_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_disabled_by_default"] is True
+    assert result["checks"]["kiwoom_mock_oauth_explicit_opt_in_required"] is True
+    assert result["checks"]["kiwoom_mock_oauth_local_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_offline_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_non_executable"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_credentials_loaded"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_env_read"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_token_issued"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_token_revoked"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_api_call"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_mockapi_call"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_websocket_connection"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_network_call"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_real_order"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_live_trading"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_live_prod"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_account_mutation"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_production_domain_execution"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_cloud_llm"] is True
+    assert result["checks"]["kiwoom_mock_oauth_no_local_llm_runtime"] is True
+    assert result["checks"]["kiwoom_mock_oauth_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
