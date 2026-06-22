@@ -401,6 +401,40 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_mock_api_transport_no_live_trading"] is True
     assert result["checks"]["kiwoom_mock_api_transport_no_live_prod"] is True
     assert result["checks"]["kiwoom_mock_api_transport_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_check_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_readiness_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_local_only"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_offline_only"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_non_executable"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_quote_draft_ready"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_gap_status_supported"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_oauth_blocked"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_account_blocked"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_order_blocked"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_websocket_blocked"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_unknown_rejected"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_prod_blocked_or_rejected"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_token_loading"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_token_usage"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_token_refresh"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_authorization_header"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_http_client"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_http_session"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_transport"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_api_call"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_mockapi_call"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_websocket_connection"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_network_call"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_account_read"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_account_mutation"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_real_order"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_live_trading"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_no_live_prod"] is True
+    assert result["checks"]["kiwoom_mock_api_preflight_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

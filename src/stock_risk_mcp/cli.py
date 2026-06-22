@@ -244,6 +244,12 @@ from stock_risk_mcp.kiwoom_mock_api_transport_draft_engine import (
 from stock_risk_mcp.kiwoom_mock_api_transport_draft_fixture import (
     load_kiwoom_mock_api_transport_draft_fixture,
 )
+from stock_risk_mcp.kiwoom_mock_api_preflight_gate_engine import (
+    run_kiwoom_mock_api_preflight_gate,
+)
+from stock_risk_mcp.kiwoom_mock_api_preflight_gate_fixture import (
+    load_kiwoom_mock_api_preflight_gate_fixture,
+)
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1011,6 +1017,25 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_api_transport_gap_report = subparsers.add_parser("kiwoom-mock-api-transport-gap-report")
     kiwoom_mock_api_transport_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_api_transport_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_preflight_check = subparsers.add_parser("kiwoom-mock-api-preflight-check")
+    kiwoom_mock_api_preflight_check.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_preflight_check.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_preflight_readiness_report = subparsers.add_parser(
+        "kiwoom-mock-api-preflight-readiness-report"
+    )
+    kiwoom_mock_api_preflight_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_preflight_readiness_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_preflight_safety_report = subparsers.add_parser(
+        "kiwoom-mock-api-preflight-safety-report"
+    )
+    kiwoom_mock_api_preflight_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_preflight_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_preflight_gap_report = subparsers.add_parser("kiwoom-mock-api-preflight-gap-report")
+    kiwoom_mock_api_preflight_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_preflight_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_api_preflight_audit_report = subparsers.add_parser("kiwoom-mock-api-preflight-audit-report")
+    kiwoom_mock_api_preflight_audit_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_api_preflight_audit_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2065,6 +2090,11 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-api-error-response-draft-report",
         "kiwoom-mock-api-transport-safety-report",
         "kiwoom-mock-api-transport-gap-report",
+        "kiwoom-mock-api-preflight-check",
+        "kiwoom-mock-api-preflight-readiness-report",
+        "kiwoom-mock-api-preflight-safety-report",
+        "kiwoom-mock-api-preflight-gap-report",
+        "kiwoom-mock-api-preflight-audit-report",
         "create-order-intent",
         "order-intents-list",
         "evaluate-order-intents",
@@ -3932,6 +3962,59 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-preflight-check":
+        try:
+            result = _run_kiwoom_mock_api_preflight_gate(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-preflight-readiness-report":
+        try:
+            result = _run_kiwoom_mock_api_preflight_gate(args.fixture_file).readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "readiness_report_id": result.readiness_report_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-preflight-safety-report":
+        try:
+            result = _run_kiwoom_mock_api_preflight_gate(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "safety_report_id": result.safety_report_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-preflight-gap-report":
+        try:
+            result = _run_kiwoom_mock_api_preflight_gate(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-api-preflight-audit-report":
+        try:
+            result = _run_kiwoom_mock_api_preflight_gate(args.fixture_file).audit_records[0]
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "audit_record_id": result.audit_record_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4695,6 +4778,15 @@ def _run_kiwoom_mock_api_transport_draft_boundary(fixture_file: Path):
         fixture,
         oauth_draft_boundary_ref="docs/superpowers/plans/2026-06-18-kiwoom-mock-oauth-token-draft-boundary-design.md",
     )
+
+
+def _load_kiwoom_mock_api_preflight_gate_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_api_preflight_gate_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_api_preflight_gate(fixture_file: Path):
+    fixture = _load_kiwoom_mock_api_preflight_gate_fixture_or_raise(fixture_file)
+    return run_kiwoom_mock_api_preflight_gate(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

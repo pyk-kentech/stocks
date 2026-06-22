@@ -157,6 +157,13 @@ from stock_risk_mcp.kiwoom_mock_api_transport_draft_engine import (
 from stock_risk_mcp.kiwoom_mock_api_transport_draft_models import (
     KiwoomMockApiTransportDraftConfig,
 )
+from stock_risk_mcp.kiwoom_mock_api_preflight_gate_engine import (
+    run_kiwoom_mock_api_preflight_gate,
+)
+from stock_risk_mcp.kiwoom_mock_api_preflight_gate_models import (
+    KiwoomMockApiExecutionReadiness,
+    KiwoomMockApiPreflightGateConfig,
+)
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2088,6 +2095,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_mock_credential_boundary = _run_kiwoom_mock_credential_boundary_smoke(output_dir)
     kiwoom_mock_oauth_draft = _run_kiwoom_mock_oauth_draft_smoke(output_dir)
     kiwoom_mock_api_transport_draft = _run_kiwoom_mock_api_transport_draft_smoke(output_dir)
+    kiwoom_mock_api_preflight_gate = _run_kiwoom_mock_api_preflight_gate_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2628,6 +2636,62 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_mock_api_transport_no_live_trading": kiwoom_mock_api_transport_draft["no_live_trading"],
             "kiwoom_mock_api_transport_no_live_prod": kiwoom_mock_api_transport_draft["no_live_prod"],
             "kiwoom_mock_api_transport_parquet_unsupported": kiwoom_mock_api_transport_draft[
+                "parquet_unsupported"
+            ],
+            "kiwoom_mock_api_preflight_fixture_run": kiwoom_mock_api_preflight_gate["fixture_run"],
+            "kiwoom_mock_api_preflight_check_generated": kiwoom_mock_api_preflight_gate["preflight_check_generated"],
+            "kiwoom_mock_api_preflight_readiness_report_generated": kiwoom_mock_api_preflight_gate[
+                "readiness_report_generated"
+            ],
+            "kiwoom_mock_api_preflight_safety_report_generated": kiwoom_mock_api_preflight_gate[
+                "safety_report_generated"
+            ],
+            "kiwoom_mock_api_preflight_gap_report_generated": kiwoom_mock_api_preflight_gate[
+                "gap_report_generated"
+            ],
+            "kiwoom_mock_api_preflight_audit_record_generated": kiwoom_mock_api_preflight_gate[
+                "audit_record_generated"
+            ],
+            "kiwoom_mock_api_preflight_local_only": kiwoom_mock_api_preflight_gate["local_only"],
+            "kiwoom_mock_api_preflight_offline_only": kiwoom_mock_api_preflight_gate["offline_only"],
+            "kiwoom_mock_api_preflight_non_executable": kiwoom_mock_api_preflight_gate["non_executable"],
+            "kiwoom_mock_api_preflight_quote_draft_ready": kiwoom_mock_api_preflight_gate["quote_draft_ready"],
+            "kiwoom_mock_api_preflight_gap_status_supported": kiwoom_mock_api_preflight_gate[
+                "gap_status_supported"
+            ],
+            "kiwoom_mock_api_preflight_oauth_blocked": kiwoom_mock_api_preflight_gate["oauth_blocked"],
+            "kiwoom_mock_api_preflight_account_blocked": kiwoom_mock_api_preflight_gate["account_blocked"],
+            "kiwoom_mock_api_preflight_order_blocked": kiwoom_mock_api_preflight_gate["order_blocked"],
+            "kiwoom_mock_api_preflight_websocket_blocked": kiwoom_mock_api_preflight_gate[
+                "websocket_blocked"
+            ],
+            "kiwoom_mock_api_preflight_unknown_rejected": kiwoom_mock_api_preflight_gate["unknown_rejected"],
+            "kiwoom_mock_api_preflight_prod_blocked_or_rejected": kiwoom_mock_api_preflight_gate[
+                "prod_blocked_or_rejected"
+            ],
+            "kiwoom_mock_api_preflight_no_token_loading": kiwoom_mock_api_preflight_gate["no_token_loading"],
+            "kiwoom_mock_api_preflight_no_token_usage": kiwoom_mock_api_preflight_gate["no_token_usage"],
+            "kiwoom_mock_api_preflight_no_token_refresh": kiwoom_mock_api_preflight_gate["no_token_refresh"],
+            "kiwoom_mock_api_preflight_no_authorization_header": kiwoom_mock_api_preflight_gate[
+                "no_authorization_header"
+            ],
+            "kiwoom_mock_api_preflight_no_http_client": kiwoom_mock_api_preflight_gate["no_http_client"],
+            "kiwoom_mock_api_preflight_no_http_session": kiwoom_mock_api_preflight_gate["no_http_session"],
+            "kiwoom_mock_api_preflight_no_transport": kiwoom_mock_api_preflight_gate["no_transport"],
+            "kiwoom_mock_api_preflight_no_api_call": kiwoom_mock_api_preflight_gate["no_api_call"],
+            "kiwoom_mock_api_preflight_no_mockapi_call": kiwoom_mock_api_preflight_gate["no_mockapi_call"],
+            "kiwoom_mock_api_preflight_no_websocket_connection": kiwoom_mock_api_preflight_gate[
+                "no_websocket_connection"
+            ],
+            "kiwoom_mock_api_preflight_no_network_call": kiwoom_mock_api_preflight_gate["no_network_call"],
+            "kiwoom_mock_api_preflight_no_account_read": kiwoom_mock_api_preflight_gate["no_account_read"],
+            "kiwoom_mock_api_preflight_no_account_mutation": kiwoom_mock_api_preflight_gate[
+                "no_account_mutation"
+            ],
+            "kiwoom_mock_api_preflight_no_real_order": kiwoom_mock_api_preflight_gate["no_real_order"],
+            "kiwoom_mock_api_preflight_no_live_trading": kiwoom_mock_api_preflight_gate["no_live_trading"],
+            "kiwoom_mock_api_preflight_no_live_prod": kiwoom_mock_api_preflight_gate["no_live_prod"],
+            "kiwoom_mock_api_preflight_parquet_unsupported": kiwoom_mock_api_preflight_gate[
                 "parquet_unsupported"
             ],
             "investing_crawler_called": False,
@@ -6190,6 +6254,260 @@ def _run_kiwoom_mock_api_transport_draft_smoke(output_dir: Path) -> dict[str, bo
         "no_http_client": evaluated.no_http_client_created and evaluated.request_envelope_draft.http_client_available is False,
         "no_http_session": evaluated.no_http_session_created and evaluated.request_envelope_draft.http_session_available is False,
         "no_transport": evaluated.no_network_call and evaluated.request_envelope_draft.network_execution_enabled is False,
+        "no_api_call": evaluated.no_api_call,
+        "no_mockapi_call": evaluated.no_mockapi_call,
+        "no_websocket_connection": evaluated.no_websocket_connection,
+        "no_network_call": evaluated.no_network_call,
+        "no_account_read": evaluated.no_account_read,
+        "no_account_mutation": evaluated.no_account_mutation,
+        "no_real_order": evaluated.no_real_order,
+        "no_live_trading": evaluated.no_live_trading,
+        "no_live_prod": evaluated.no_live_prod,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_mock_api_preflight_gate_smoke(output_dir: Path) -> dict[str, bool]:
+    def _payload(*, category: str, path: str, domain: str = "https://mockapi.kiwoom.com") -> dict[str, object]:
+        return {
+            "schema_version": "v6.7-kiwoom-mock-api-preflight-gate",
+            "fixture_format": "json",
+            "config_id": "kiwoom-mock-api-preflight-gate-smoke",
+            "credential_boundary_ref": {
+                "ref_id": "kiwoom-mock-credential-boundary-ref-smoke",
+                "ref_kind": "KIWOOM_MOCK_CREDENTIAL_BOUNDARY",
+                "local_path": "docs/superpowers/plans/2026-06-18-kiwoom-mock-credential-environment-boundary-design.md",
+            },
+            "oauth_draft_boundary_ref": {
+                "ref_id": "kiwoom-mock-oauth-draft-ref-smoke",
+                "ref_kind": "KIWOOM_MOCK_OAUTH_DRAFT_BOUNDARY",
+                "local_path": "docs/superpowers/plans/2026-06-18-kiwoom-mock-oauth-token-draft-boundary-design.md",
+            },
+            "transport_draft_ref": {
+                "ref_id": "kiwoom-mock-transport-draft-ref-smoke",
+                "ref_kind": "KIWOOM_MOCK_API_TRANSPORT_DRAFT_BOUNDARY",
+                "local_path": "docs/superpowers/plans/2026-06-18-kiwoom-mock-api-transport-request-envelope-boundary-design.md",
+            },
+            "transport_draft_config": {
+                "schema_version": "v6.6-kiwoom-mock-api-transport-draft-boundary",
+                "fixture_format": "json",
+                "config_id": "kiwoom-mock-api-transport-draft-config-smoke",
+                "endpoint_evidence_ref": {
+                    "endpoint_ref_id": "kiwoom-mock-endpoint-smoke",
+                    "source_evidence_document_id": "KIWOOM-REST-EVIDENCE-PACK",
+                    "documented_api_id": "KT00017",
+                    "documented_category": category,
+                    "documented_method": "POST",
+                    "documented_path": path,
+                    "documented_mock_domain": domain,
+                    "documented_production_domain": "https://api.kiwoom.com",
+                    "documented_mock_support": True,
+                    "documented_krx_only_note": "KRX only",
+                    "evidence_only": True,
+                    "executable": False,
+                    "production_domain_blocked": True,
+                },
+                "request_envelope_draft": {
+                    "draft_id": "kiwoom-mock-api-request-envelope-smoke",
+                    "endpoint_ref_id": "KIWOOM-MOCK-ENDPOINT-SMOKE",
+                    "documented_method": "POST",
+                    "mock_domain_reference": "MOCK_DOMAIN_REF",
+                    "request_path": path,
+                    "credential_ref_ids": ["KIWOOM_MOCK_APP_KEY_REF", "KIWOOM_MOCK_SECRET_KEY_REF"],
+                    "token_ref_id": "KIWOOM_MOCK_TOKEN_REF",
+                    "headers": [
+                        {
+                            "header_name": "content-type",
+                            "required": True,
+                            "value_source": "LITERAL_SAFE",
+                            "value_preview": "application/json;charset=UTF-8",
+                            "redaction_applied": False,
+                        },
+                        {
+                            "header_name": "authorization",
+                            "required": True,
+                            "value_source": "TOKEN_REF_BLOCKED",
+                            "value_preview": "TOKEN_REF_ONLY",
+                            "redaction_applied": True,
+                        },
+                    ],
+                    "query_params": [],
+                    "path_params": [],
+                    "body_draft": {
+                        "field_names": ["appkey", "secretkey", "stk_cd"],
+                        "field_value_sources": {
+                            "appkey": "CREDENTIAL_REF_ONLY",
+                            "secretkey": "CREDENTIAL_REF_ONLY",
+                            "stk_cd": "LITERAL_SAFE",
+                        },
+                        "field_value_previews": {
+                            "appkey": "KIWOOM_MOCK_APP_KEY_REF",
+                            "secretkey": "KIWOOM_MOCK_SECRET_KEY_REF",
+                            "stk_cd": "005930",
+                        },
+                        "redaction_applied": True,
+                        "serializable_report_only": True,
+                    },
+                    "authorization_header_generation_available": False,
+                    "http_client_available": False,
+                    "http_session_available": False,
+                    "network_execution_enabled": False,
+                },
+                "transport_policy": {
+                    "policy_id": "kiwoom-mock-api-transport-policy-smoke",
+                    "allowed_mock_rest_domain": "https://mockapi.kiwoom.com",
+                    "forbidden_production_rest_domain": "https://api.kiwoom.com",
+                    "krx_only": True,
+                    "disabled_by_default": True,
+                    "explicit_opt_in_required": True,
+                },
+                "retry_timeout_policy": {
+                    "policy_id": "kiwoom-mock-api-retry-timeout-policy-smoke",
+                    "request_timeout_class": "DOCUMENTED_ONLY",
+                    "retry_policy_class": "DOCUMENTED_ONLY",
+                    "rate_limit_note_ref": "KIWOOM-RATE-LIMIT-NOTE-REF",
+                    "timeout_execution_enabled": False,
+                    "retry_loop_enabled": False,
+                    "sleep_backoff_enabled": False,
+                },
+                "error_response_draft": {
+                    "error_draft_id": "kiwoom-mock-api-error-response-draft-smoke",
+                    "documented_error_fields": ["return_code", "return_msg"],
+                    "captures_live_response": False,
+                    "wraps_transport_exception": False,
+                    "contains_credential_material": False,
+                },
+                "safety_report": {
+                    "safety_report_id": "kiwoom-mock-api-transport-safety-report-smoke",
+                    "blocked_capabilities": [
+                        "AUTHORIZATION_HEADER_GENERATION_BLOCKED",
+                        "TOKEN_LOADING_BLOCKED",
+                        "HTTP_CLIENT_CREATION_BLOCKED",
+                        "HTTP_SESSION_CREATION_BLOCKED",
+                        "NETWORK_EXECUTION_BLOCKED",
+                        "PRODUCTION_DOMAIN_EXECUTION_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+                "gap_report": {
+                    "gap_report_id": "kiwoom-mock-api-transport-gap-report-smoke",
+                    "gap_status": "UNRESOLVED_IMPLEMENTATION_GAPS",
+                    "gap_categories": [],
+                    "blocking_gap_count": 0,
+                    "report_only_gap_count": 0,
+                    "gaps": [],
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "kiwoom-mock-api-transport-audit-record-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "kiwoom_mock_api_transport_draft_smoke_fixture.json"),
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "evidence_refs": [
+                            "KIWOOM-REST-EVIDENCE-PACK",
+                            "KIWOOM-CAPABILITY-MATRIX",
+                            "V6.5-OAUTH-DRAFT-BOUNDARY",
+                        ],
+                    }
+                ],
+            },
+        }
+
+    quote_ready = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(
+            _payload(category="QUOTE", path="/api/dostk/mrkcond")
+        )
+    )
+    quote_gap = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(
+            _payload(category="QUOTE", path="/api/dostk/mrkcond/detail")
+        )
+    )
+    oauth = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(_payload(category="QUOTE", path="/oauth2/token"))
+    )
+    account = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(_payload(category="ACCOUNT", path="/api/dostk/acnt"))
+    )
+    order = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(_payload(category="ORDER", path="/api/dostk/ordr"))
+    )
+    websocket = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(
+            _payload(category="WEBSOCKET", path="/api/websocket/quote")
+        )
+    )
+    unknown = run_kiwoom_mock_api_preflight_gate(
+        KiwoomMockApiPreflightGateConfig.model_validate(_payload(category="MISC", path="/api/unknown"))
+    )
+    try:
+        KiwoomMockApiPreflightGateConfig.model_validate(
+            _payload(category="QUOTE", path="/api/dostk/mrkcond", domain="https://api.kiwoom.com")
+        )
+        prod_blocked_or_rejected = False
+    except ValueError:
+        prod_blocked_or_rejected = True
+
+    evaluated = quote_ready
+    (output_dir / "kiwoom_mock_api_preflight_check.json").write_text(
+        evaluated.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_api_preflight_readiness_report.json").write_text(
+        evaluated.readiness_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_api_preflight_safety_report.json").write_text(
+        evaluated.safety_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_api_preflight_gap_report.json").write_text(
+        evaluated.gap_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_api_preflight_audit_report.json").write_text(
+        evaluated.audit_records[0].model_dump_json(indent=2), encoding="utf-8"
+    )
+
+    all_items = (
+        evaluated,
+        evaluated.credential_boundary_ref,
+        evaluated.oauth_draft_boundary_ref,
+        evaluated.transport_draft_ref,
+        evaluated.readiness_report,
+        evaluated.safety_report,
+        evaluated.gap_report,
+        evaluated.audit_records[0],
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "preflight_check_generated": evaluated.config_id.endswith("SMOKE"),
+        "readiness_report_generated": evaluated.readiness_report.readiness_report_id.endswith("READINESS"),
+        "safety_report_generated": evaluated.safety_report.safety_report_id.endswith("SAFETY"),
+        "gap_report_generated": evaluated.gap_report.gap_report_id.endswith("GAP"),
+        "audit_record_generated": len(evaluated.audit_records) == 1,
+        "local_only": all(getattr(item, "local_file_only", True) is True for item in all_items),
+        "offline_only": all(getattr(item, "offline_only", True) is True for item in all_items),
+        "non_executable": all(getattr(item, "non_executable", True) is True for item in all_items),
+        "quote_draft_ready": (
+            quote_ready.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.DRAFT_READY
+        ),
+        "gap_status_supported": (
+            quote_gap.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.GAP
+        ),
+        "oauth_blocked": oauth.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.BLOCKED,
+        "account_blocked": account.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.BLOCKED,
+        "order_blocked": order.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.BLOCKED,
+        "websocket_blocked": (
+            websocket.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.BLOCKED
+        ),
+        "unknown_rejected": unknown.readiness_report.readiness_decision == KiwoomMockApiExecutionReadiness.REJECTED,
+        "prod_blocked_or_rejected": prod_blocked_or_rejected,
+        "no_token_loading": evaluated.no_token_loaded,
+        "no_token_usage": evaluated.no_token_used,
+        "no_token_refresh": evaluated.no_token_refreshed,
+        "no_authorization_header": evaluated.no_authorization_header_generated,
+        "no_http_client": evaluated.no_http_client_created,
+        "no_http_session": evaluated.no_http_session_created,
+        "no_transport": evaluated.no_transport_created,
         "no_api_call": evaluated.no_api_call,
         "no_mockapi_call": evaluated.no_mockapi_call,
         "no_websocket_connection": evaluated.no_websocket_connection,
