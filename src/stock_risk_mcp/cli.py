@@ -238,6 +238,14 @@ from stock_risk_mcp.kiwoom_mock_credential_boundary_fixture import (
 )
 from stock_risk_mcp.kiwoom_mock_oauth_draft_engine import run_kiwoom_mock_oauth_draft_boundary
 from stock_risk_mcp.kiwoom_mock_oauth_draft_fixture import load_kiwoom_mock_oauth_draft_fixture
+from stock_risk_mcp.kiwoom_mock_oauth_execution_engine import (
+    build_kiwoom_mock_oauth_execution_gap_report,
+    build_kiwoom_mock_oauth_execution_safety_report,
+    execute_kiwoom_mock_oauth,
+)
+from stock_risk_mcp.kiwoom_mock_oauth_execution_fixture import (
+    load_kiwoom_mock_oauth_execution_fixture,
+)
 from stock_risk_mcp.kiwoom_mock_api_transport_draft_engine import (
     run_kiwoom_mock_api_transport_draft_boundary,
 )
@@ -995,6 +1003,27 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_oauth_gap_report = subparsers.add_parser("kiwoom-mock-oauth-gap-report")
     kiwoom_mock_oauth_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_oauth_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_request_execute = subparsers.add_parser("kiwoom-mock-oauth-token-request-execute")
+    kiwoom_mock_oauth_token_request_execute.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_token_request_execute.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_request_execute.add_argument("--mock-domain", action="store_true")
+    kiwoom_mock_oauth_token_request_execute.add_argument("--execute", action="store_true")
+    kiwoom_mock_oauth_token_request_execute.add_argument("--acknowledge-mock-oauth-execution", action="store_true")
+    kiwoom_mock_oauth_token_revoke_execute = subparsers.add_parser("kiwoom-mock-oauth-token-revoke-execute")
+    kiwoom_mock_oauth_token_revoke_execute.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_token_revoke_execute.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_token_revoke_execute.add_argument("--mock-domain", action="store_true")
+    kiwoom_mock_oauth_token_revoke_execute.add_argument("--execute", action="store_true")
+    kiwoom_mock_oauth_token_revoke_execute.add_argument("--acknowledge-mock-oauth-execution", action="store_true")
+    kiwoom_mock_oauth_execution_safety_report = subparsers.add_parser("kiwoom-mock-oauth-execution-safety-report")
+    kiwoom_mock_oauth_execution_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_execution_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_execution_gap_report = subparsers.add_parser("kiwoom-mock-oauth-execution-gap-report")
+    kiwoom_mock_oauth_execution_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_execution_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_oauth_execution_audit_report = subparsers.add_parser("kiwoom-mock-oauth-execution-audit-report")
+    kiwoom_mock_oauth_execution_audit_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_oauth_execution_audit_report.add_argument("--output-file", type=Path)
     kiwoom_mock_api_transport_request_envelope_draft = subparsers.add_parser(
         "kiwoom-mock-api-transport-request-envelope-draft"
     )
@@ -2084,6 +2113,11 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-oauth-token-lifecycle-report",
         "kiwoom-mock-oauth-safety-report",
         "kiwoom-mock-oauth-gap-report",
+        "kiwoom-mock-oauth-token-request-execute",
+        "kiwoom-mock-oauth-token-revoke-execute",
+        "kiwoom-mock-oauth-execution-safety-report",
+        "kiwoom-mock-oauth-execution-gap-report",
+        "kiwoom-mock-oauth-execution-audit-report",
         "kiwoom-mock-api-transport-request-envelope-draft",
         "kiwoom-mock-api-transport-policy-report",
         "kiwoom-mock-api-retry-timeout-report",
@@ -3900,6 +3934,65 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-token-request-execute":
+        try:
+            result = _run_kiwoom_mock_oauth_execution(
+                args.fixture_file,
+                execute=args.execute,
+                acknowledge_mock_oauth_execution=args.acknowledge_mock_oauth_execution,
+                mock_domain=args.mock_domain,
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "execution_result_id": result.execution_result_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-token-revoke-execute":
+        try:
+            result = _run_kiwoom_mock_oauth_execution(
+                args.fixture_file,
+                execute=args.execute,
+                acknowledge_mock_oauth_execution=args.acknowledge_mock_oauth_execution,
+                mock_domain=args.mock_domain,
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "execution_result_id": result.execution_result_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-execution-safety-report":
+        try:
+            result = build_kiwoom_mock_oauth_execution_safety_report(
+                _load_kiwoom_mock_oauth_execution_fixture_or_raise(args.fixture_file)
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-execution-gap-report":
+        try:
+            result = build_kiwoom_mock_oauth_execution_gap_report(
+                _load_kiwoom_mock_oauth_execution_fixture_or_raise(args.fixture_file)
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-oauth-execution-audit-report":
+        try:
+            result = _load_kiwoom_mock_oauth_execution_fixture_or_raise(args.fixture_file).audit_records[0]
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "audit_record_id": result.audit_record_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "kiwoom-mock-api-transport-request-envelope-draft":
         try:
             result = _run_kiwoom_mock_api_transport_draft_boundary(args.fixture_file).request_envelope_draft
@@ -4765,6 +4858,26 @@ def _run_kiwoom_mock_oauth_draft_boundary(fixture_file: Path):
         fixture,
         explicit_opt_in_ack=True,
         credential_boundary_ref="docs/superpowers/plans/2026-06-18-kiwoom-mock-credential-environment-boundary-design.md",
+    )
+
+
+def _load_kiwoom_mock_oauth_execution_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_oauth_execution_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_oauth_execution(
+    fixture_file: Path,
+    *,
+    execute: bool,
+    acknowledge_mock_oauth_execution: bool,
+    mock_domain: bool,
+):
+    fixture = _load_kiwoom_mock_oauth_execution_fixture_or_raise(fixture_file)
+    return execute_kiwoom_mock_oauth(
+        fixture,
+        execute=execute,
+        acknowledge_mock_oauth_execution=acknowledge_mock_oauth_execution,
+        mock_domain=mock_domain,
     )
 
 

@@ -20,13 +20,20 @@ def test_kiwoom_modules_have_no_network_sdk_secret_or_execution_integration() ->
         if not path.name.startswith("kiwoom_real_")
     ]
     forbidden_imports = ("urllib", "requests", "httpx", "pykiwoom", "win32com")
+    allowed_network_import_modules = {"kiwoom_mock_oauth_execution_client.py"}
+    allowed_env_modules = {"kiwoom_mock_oauth_execution_engine.py"}
     for module in modules:
         text = module.read_text(encoding="utf-8").lower()
-        assert all(f"import {item}" not in text for item in forbidden_imports)
-        assert all(f"from {item}" not in text for item in forbidden_imports)
+        if module.name in allowed_network_import_modules:
+            assert all(f"import {item}" not in text for item in forbidden_imports if item != "urllib")
+            assert all(f"from {item}" not in text for item in forbidden_imports if item != "urllib")
+        else:
+            assert all(f"import {item}" not in text for item in forbidden_imports)
+            assert all(f"from {item}" not in text for item in forbidden_imports)
         assert "api_key_kiwoom" not in text
-        assert "os.environ" not in text
-        assert "getenv(" not in text
+        if module.name not in allowed_env_modules:
+            assert "os.environ" not in text
+            assert "getenv(" not in text
     for name in ("strategy_optimizer.py", "execution_gate.py", "broker_adapter_service.py"):
         assert "kiwoom_readonly" not in (root / "src" / "stock_risk_mcp" / name).read_text(encoding="utf-8")
 

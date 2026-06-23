@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 from pathlib import Path
 
@@ -151,6 +152,15 @@ from stock_risk_mcp.kiwoom_mock_credential_boundary_models import (
 )
 from stock_risk_mcp.kiwoom_mock_oauth_draft_engine import run_kiwoom_mock_oauth_draft_boundary
 from stock_risk_mcp.kiwoom_mock_oauth_draft_models import KiwoomMockOAuthDraftConfig
+from stock_risk_mcp.kiwoom_mock_oauth_execution_engine import (
+    build_kiwoom_mock_oauth_execution_gap_report,
+    build_kiwoom_mock_oauth_execution_safety_report,
+    execute_kiwoom_mock_oauth,
+)
+from stock_risk_mcp.kiwoom_mock_oauth_execution_models import (
+    KiwoomMockOAuthExecutionConfig,
+    KiwoomMockOAuthExecutionMode,
+)
 from stock_risk_mcp.kiwoom_mock_api_transport_draft_engine import (
     run_kiwoom_mock_api_transport_draft_boundary,
 )
@@ -2094,6 +2104,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_mock_adapter = _run_kiwoom_mock_adapter_smoke(output_dir)
     kiwoom_mock_credential_boundary = _run_kiwoom_mock_credential_boundary_smoke(output_dir)
     kiwoom_mock_oauth_draft = _run_kiwoom_mock_oauth_draft_smoke(output_dir)
+    kiwoom_mock_oauth_execution = _run_kiwoom_mock_oauth_execution_smoke(output_dir)
     kiwoom_mock_api_transport_draft = _run_kiwoom_mock_api_transport_draft_smoke(output_dir)
     kiwoom_mock_api_preflight_gate = _run_kiwoom_mock_api_preflight_gate_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
@@ -2572,6 +2583,24 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_mock_oauth_no_cloud_llm": kiwoom_mock_oauth_draft["no_cloud_llm"],
             "kiwoom_mock_oauth_no_local_llm_runtime": kiwoom_mock_oauth_draft["no_local_llm_runtime"],
             "kiwoom_mock_oauth_parquet_unsupported": kiwoom_mock_oauth_draft["parquet_unsupported"],
+            "kiwoom_mock_oauth_execution_fixture_run": kiwoom_mock_oauth_execution["fixture_run"],
+            "kiwoom_mock_oauth_execution_request_generated": kiwoom_mock_oauth_execution["request_generated"],
+            "kiwoom_mock_oauth_execution_revoke_generated": kiwoom_mock_oauth_execution["revoke_generated"],
+            "kiwoom_mock_oauth_execution_safety_report_generated": kiwoom_mock_oauth_execution["safety_report_generated"],
+            "kiwoom_mock_oauth_execution_gap_report_generated": kiwoom_mock_oauth_execution["gap_report_generated"],
+            "kiwoom_mock_oauth_execution_audit_record_generated": kiwoom_mock_oauth_execution["audit_record_generated"],
+            "kiwoom_mock_oauth_execution_mock_only": kiwoom_mock_oauth_execution["mock_only"],
+            "kiwoom_mock_oauth_execution_local_only": kiwoom_mock_oauth_execution["local_only"],
+            "kiwoom_mock_oauth_execution_redacted_output_only": kiwoom_mock_oauth_execution["redacted_output_only"],
+            "kiwoom_mock_oauth_execution_no_raw_secret_token_output": kiwoom_mock_oauth_execution["no_raw_secret_token_output"],
+            "kiwoom_mock_oauth_execution_no_token_persistence": kiwoom_mock_oauth_execution["no_token_persistence"],
+            "kiwoom_mock_oauth_execution_no_real_network_in_smoke": kiwoom_mock_oauth_execution["no_real_network_in_smoke"],
+            "kiwoom_mock_oauth_execution_no_production_path": kiwoom_mock_oauth_execution["no_production_path"],
+            "kiwoom_mock_oauth_execution_no_account_path": kiwoom_mock_oauth_execution["no_account_path"],
+            "kiwoom_mock_oauth_execution_no_order_path": kiwoom_mock_oauth_execution["no_order_path"],
+            "kiwoom_mock_oauth_execution_no_quote_path": kiwoom_mock_oauth_execution["no_quote_path"],
+            "kiwoom_mock_oauth_execution_no_websocket_path": kiwoom_mock_oauth_execution["no_websocket_path"],
+            "kiwoom_mock_oauth_execution_no_live_prod": kiwoom_mock_oauth_execution["no_live_prod"],
             "kiwoom_mock_api_transport_draft_fixture_run": kiwoom_mock_api_transport_draft["fixture_run"],
             "kiwoom_mock_api_transport_request_envelope_draft_generated": kiwoom_mock_api_transport_draft[
                 "request_envelope_draft_generated"
@@ -6040,6 +6069,130 @@ def _run_kiwoom_mock_oauth_draft_smoke(output_dir: Path) -> dict[str, bool]:
         "no_cloud_llm": all(getattr(item, "no_cloud_llm", True) is True for item in all_items),
         "no_local_llm_runtime": all(getattr(item, "no_local_llm_runtime", True) is True for item in all_items),
         "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_mock_oauth_execution_smoke(output_dir: Path) -> dict[str, bool]:
+    fixture = KiwoomMockOAuthExecutionConfig.model_validate(
+        {
+            "schema_version": "v6.8-kiwoom-mock-oauth-execution-adapter",
+            "fixture_format": "json",
+            "config_id": "kiwoom-mock-oauth-execution-config-smoke",
+            "execution_mode": "TOKEN_REQUEST",
+            "mock_domain": "https://mockapi.kiwoom.com",
+            "allowed_env_var_names": ["KIWOOM_MOCK_APP_KEY", "KIWOOM_MOCK_SECRET_KEY"],
+            "timeout_seconds": 5,
+            "max_retry_count": 1,
+            "retry_backoff_seconds": 0.0,
+            "allow_env_read": True,
+            "explicit_opt_in_required": True,
+            "redact_output": True,
+            "persist_token_to_disk": False,
+            "allow_token_refresh": False,
+            "credential_boundary_ref": "docs/superpowers/plans/2026-06-18-kiwoom-mock-credential-environment-boundary-design.md",
+            "oauth_draft_boundary_ref": "docs/superpowers/plans/2026-06-18-kiwoom-mock-oauth-token-draft-boundary-design.md",
+            "transport_boundary_ref": "docs/superpowers/plans/2026-06-18-kiwoom-mock-api-transport-request-envelope-boundary-design.md",
+            "preflight_boundary_ref": "docs/superpowers/plans/2026-06-18-kiwoom-mock-api-execution-readiness-preflight-gate-design.md",
+            "safety_report": {
+                "safety_report_id": "kiwoom-mock-oauth-execution-safety-report-smoke",
+                "blocked_capabilities": ["PRODUCTION_DOMAIN_BLOCKED"],
+                "findings": [],
+            },
+            "gap_report": {
+                "gap_report_id": "kiwoom-mock-oauth-execution-gap-report-smoke",
+                "gap_status": "UNRESOLVED_FUTURE_STAGES",
+                "gap_categories": [
+                    "MOCK_QUOTE_API_STAGE_NOT_IMPLEMENTED",
+                    "MOCK_ACCOUNT_API_STAGE_NOT_IMPLEMENTED",
+                    "MOCK_ORDER_API_STAGE_NOT_IMPLEMENTED",
+                ],
+                "blocking_gap_count": 3,
+                "report_only_gap_count": 0,
+                "gaps": ["quote", "account", "order"],
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "kiwoom-mock-oauth-execution-audit-record-smoke",
+                    "created_at": "2026-06-25T09:13:00+09:00",
+                    "source_path": str(output_dir / "kiwoom_mock_oauth_execution_smoke_fixture.json"),
+                    "redaction_applied": True,
+                    "contains_secret_material": False,
+                    "contains_token_material": False,
+                    "evidence_refs": ["KIWOOM-REST-EVIDENCE-PACK", "KIWOOM-CAPABILITY-MATRIX"],
+                }
+            ],
+        }
+    )
+    previous_app = os.environ.get("KIWOOM_MOCK_APP_KEY")
+    previous_secret = os.environ.get("KIWOOM_MOCK_SECRET_KEY")
+    os.environ["KIWOOM_MOCK_APP_KEY"] = "smoke-app-key"
+    os.environ["KIWOOM_MOCK_SECRET_KEY"] = "smoke-secret-key"
+    try:
+        request_result = execute_kiwoom_mock_oauth(
+            fixture,
+            execute=True,
+            acknowledge_mock_oauth_execution=True,
+            mock_domain=True,
+            transport=lambda request: {
+                "token_type": "bearer",
+                "token": "smoke-token-value",
+                "expires_dt": "20260623010000",
+            },
+        )
+        revoke_fixture = fixture.model_copy(
+            update={"execution_mode": KiwoomMockOAuthExecutionMode.TOKEN_REVOKE}
+        )
+        revoke_result = execute_kiwoom_mock_oauth(
+            revoke_fixture,
+            execute=True,
+            acknowledge_mock_oauth_execution=True,
+            mock_domain=True,
+            transport=lambda request: {"return_code": 0, "return_msg": "revoked"},
+        )
+    finally:
+        if previous_app is None:
+            os.environ.pop("KIWOOM_MOCK_APP_KEY", None)
+        else:
+            os.environ["KIWOOM_MOCK_APP_KEY"] = previous_app
+        if previous_secret is None:
+            os.environ.pop("KIWOOM_MOCK_SECRET_KEY", None)
+        else:
+            os.environ["KIWOOM_MOCK_SECRET_KEY"] = previous_secret
+
+    safety_report = build_kiwoom_mock_oauth_execution_safety_report(fixture)
+    gap_report = build_kiwoom_mock_oauth_execution_gap_report(fixture)
+    (output_dir / "kiwoom_mock_oauth_execution_request.json").write_text(
+        request_result.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_execution_revoke.json").write_text(
+        revoke_result.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_execution_safety_report.json").write_text(
+        safety_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "kiwoom_mock_oauth_execution_gap_report.json").write_text(
+        gap_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    dumped = json.dumps(request_result.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "request_generated": request_result.executed,
+        "revoke_generated": revoke_result.executed,
+        "safety_report_generated": safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": gap_report.gap_report_id.endswith("SMOKE"),
+        "audit_record_generated": len(request_result.audit_records) == 1,
+        "mock_only": request_result.mock_only,
+        "local_only": True,
+        "redacted_output_only": request_result.redact_output,
+        "no_raw_secret_token_output": "smoke-token-value" not in dumped and "smoke-secret-key" not in dumped,
+        "no_token_persistence": request_result.token_result.persisted_to_disk is False,
+        "no_real_network_in_smoke": request_result.real_network_performed is False and revoke_result.real_network_performed is False,
+        "no_production_path": request_result.no_production_domain_execution,
+        "no_account_path": request_result.no_account_path,
+        "no_order_path": request_result.no_order_path,
+        "no_quote_path": request_result.no_quote_path,
+        "no_websocket_path": request_result.no_websocket_path,
+        "no_live_prod": request_result.no_live_prod,
     }
 
 

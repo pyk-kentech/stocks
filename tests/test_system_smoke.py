@@ -367,6 +367,24 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_mock_oauth_no_cloud_llm"] is True
     assert result["checks"]["kiwoom_mock_oauth_no_local_llm_runtime"] is True
     assert result["checks"]["kiwoom_mock_oauth_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_request_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_revoke_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_mock_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_local_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_redacted_output_only"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_raw_secret_token_output"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_token_persistence"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_real_network_in_smoke"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_production_path"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_account_path"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_order_path"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_quote_path"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_websocket_path"] is True
+    assert result["checks"]["kiwoom_mock_oauth_execution_no_live_prod"] is True
     assert result["checks"]["kiwoom_mock_api_transport_draft_fixture_run"] is True
     assert result["checks"]["kiwoom_mock_api_transport_request_envelope_draft_generated"] is True
     assert result["checks"]["kiwoom_mock_api_transport_policy_report_generated"] is True
