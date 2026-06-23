@@ -199,6 +199,8 @@ from stock_risk_mcp.allocation_policy_training_engine import build_allocation_po
 from stock_risk_mcp.allocation_policy_training_models import AllocationPolicyCandidateInput
 from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
 from stock_risk_mcp.cnn_fear_greed_models import CNNFearGreedCollectorConfig
+from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
+from stock_risk_mcp.risk_adjusted_paper_eval_models import RiskAdjustedPaperEvalInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2141,6 +2143,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     regime_allocation_learning = _run_regime_allocation_learning_smoke(output_dir)
     allocation_policy_training = _run_allocation_policy_training_smoke(output_dir)
     cnn_fear_greed = _run_cnn_fear_greed_smoke(output_dir)
+    risk_adjusted_paper_eval = _run_risk_adjusted_paper_eval_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2944,6 +2947,26 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "cnn_fear_greed_no_real_network_called": cnn_fear_greed["no_real_network_called"],
             "cnn_fear_greed_no_trading_order_account_broker_path": cnn_fear_greed["no_trading_order_account_broker_path"],
             "cnn_fear_greed_parquet_unsupported": cnn_fear_greed["parquet_unsupported"],
+            "risk_adjusted_paper_eval_fixture_run": risk_adjusted_paper_eval["fixture_run"],
+            "risk_adjusted_paper_eval_summary_report_generated": risk_adjusted_paper_eval["summary_report_generated"],
+            "risk_adjusted_paper_eval_virtual_portfolio_report_generated": risk_adjusted_paper_eval["portfolio_report_generated"],
+            "risk_adjusted_paper_eval_trade_ledger_report_generated": risk_adjusted_paper_eval["ledger_report_generated"],
+            "risk_adjusted_paper_eval_cost_report_generated": risk_adjusted_paper_eval["cost_report_generated"],
+            "risk_adjusted_paper_eval_risk_adjusted_report_generated": risk_adjusted_paper_eval["risk_adjusted_report_generated"],
+            "risk_adjusted_paper_eval_drawdown_report_generated": risk_adjusted_paper_eval["drawdown_report_generated"],
+            "risk_adjusted_paper_eval_bucket_report_generated": risk_adjusted_paper_eval["bucket_report_generated"],
+            "risk_adjusted_paper_eval_readiness_report_generated": risk_adjusted_paper_eval["readiness_report_generated"],
+            "risk_adjusted_paper_eval_local_only": risk_adjusted_paper_eval["local_only"],
+            "risk_adjusted_paper_eval_offline_only": risk_adjusted_paper_eval["offline_only"],
+            "risk_adjusted_paper_eval_report_only": risk_adjusted_paper_eval["report_only"],
+            "risk_adjusted_paper_eval_non_executable": risk_adjusted_paper_eval["non_executable"],
+            "risk_adjusted_paper_eval_no_live_path": risk_adjusted_paper_eval["no_live_path"],
+            "risk_adjusted_paper_eval_no_order_path": risk_adjusted_paper_eval["no_order_path"],
+            "risk_adjusted_paper_eval_no_account_mutation": risk_adjusted_paper_eval["no_account_mutation"],
+            "risk_adjusted_paper_eval_no_network": risk_adjusted_paper_eval["no_network"],
+            "risk_adjusted_paper_eval_paper_evaluated_or_pass": risk_adjusted_paper_eval["paper_evaluated_or_pass"],
+            "risk_adjusted_paper_eval_fear_feature_used": risk_adjusted_paper_eval["fear_feature_used"],
+            "risk_adjusted_paper_eval_parquet_unsupported": risk_adjusted_paper_eval["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -7908,5 +7931,102 @@ def _run_cnn_fear_greed_smoke(output_dir: Path) -> dict[str, bool]:
             and "order intent" not in dumped
             and "account_number" not in dumped
         ),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_risk_adjusted_paper_eval_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_risk_adjusted_paper_evaluation(
+        RiskAdjustedPaperEvalInput.model_validate(
+            {
+                "evaluation_id": "risk-adjusted-paper-eval-smoke",
+                "allocation_policy_candidate_ref": "allocation-policy-smoke",
+                "policy_promotion_decision": "PAPER_CANDIDATE",
+                "point_in_time_dataset_ref": "pit-dataset-ref-smoke",
+                "walk_forward_split_ref": "walk-forward-ref-smoke",
+                "ensemble_candidate_ref": "ensemble-ref-smoke",
+                "regime_feature_refs": ["REGIME-FEATURE-SMOKE-1", "REGIME-FEATURE-SMOKE-2"],
+                "cnn_fear_greed_feature_ref": "cnn-fear-greed-ref-smoke",
+                "market_data_fixture_ref": "market-data-ref-smoke",
+                "fee_tax_slippage_assumptions_ref": "cost-ref-smoke",
+                "initial_cash": 1000000.0,
+                "evaluation_window_start": "2026-06-20T09:00:00+09:00",
+                "evaluation_window_end": "2026-06-24T15:30:00+09:00",
+                "benchmark_ref": "kospi-benchmark-ref-smoke",
+                "symbol": "005930",
+                "quantity": 10,
+                "decision_timestamp": "2026-06-20T09:00:00+09:00",
+                "simulated_fill_timestamp": "2026-06-20T09:05:00+09:00",
+                "simulated_fill_price": 70000.0,
+                "benchmark_return": 0.01,
+                "end_price": 76000.0,
+                "volatility": 0.05,
+                "max_drawdown_limit": 0.15,
+                "daily_loss_limit": 0.05,
+                "max_gross_exposure": 1.0,
+                "max_single_action_exposure": 0.8,
+                "max_inverse_hedge_exposure": 0.2,
+                "turnover_limit": 0.8,
+                "inverse_hedge_exposure": 0.05,
+                "turnover": 0.25,
+                "fee_bps": 5.0,
+                "tax_bps": 1.0,
+                "slippage_bps": 4.0,
+                "future_price_leakage_detected": False,
+                "future_regime_fear_leakage_detected": False,
+                "available_at_safe_market_data": True,
+                "regime_bucket_name": "RISK_OFF",
+                "fear_bucket_name": "FEAR",
+                "policy_score": 0.71,
+                "safety_report": {
+                    "safety_report_id": "risk-adjusted-paper-eval-safety-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "KIWOOM_API_BLOCKED",
+                        "WEBSOCKET_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "risk-adjusted-paper-eval-audit-smoke",
+                        "created_at": "2026-06-24T16:00:00+09:00",
+                        "source_path": str(output_dir / "risk_adjusted_paper_eval_smoke_fixture.json"),
+                        "operator_context": "offline risk adjusted paper evaluation smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": evaluated.summary_report.report_id.endswith("REPORT"),
+        "portfolio_report_generated": evaluated.virtual_portfolio_report.report_id.endswith("REPORT"),
+        "ledger_report_generated": evaluated.virtual_trade_ledger_report.report_id.endswith("REPORT"),
+        "cost_report_generated": evaluated.cost_slippage_report.report_id.endswith("REPORT"),
+        "risk_adjusted_report_generated": evaluated.risk_adjusted_performance_report.report_id.endswith("REPORT"),
+        "drawdown_report_generated": evaluated.drawdown_exposure_report.report_id.endswith("REPORT"),
+        "bucket_report_generated": evaluated.regime_fear_bucket_report.report_id.endswith("REPORT"),
+        "readiness_report_generated": evaluated.pass_readiness_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.pass_readiness_report.local_file_only,
+        "offline_only": evaluated.pass_readiness_report.offline_only,
+        "report_only": evaluated.pass_readiness_report.report_only,
+        "non_executable": evaluated.pass_readiness_report.non_executable,
+        "no_live_path": evaluated.pass_readiness_report.no_live_prod and evaluated.pass_readiness_report.no_autonomous_trading,
+        "no_order_path": evaluated.pass_readiness_report.no_order and "order intent" not in dumped,
+        "no_account_mutation": evaluated.pass_readiness_report.no_account_mutation,
+        "no_network": evaluated.pass_readiness_report.no_network,
+        "paper_evaluated_or_pass": evaluated.pass_readiness_report.decision.value in {"PAPER_EVALUATED", "PAPER_PASS"},
+        "fear_feature_used": evaluated.regime_fear_bucket_report.cnn_fear_greed_feature_used,
         "parquet_unsupported": ".parquet" not in dumped,
     }

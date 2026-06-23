@@ -260,6 +260,8 @@ from stock_risk_mcp.kiwoom_mock_api_preflight_gate_fixture import (
 )
 from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
 from stock_risk_mcp.cnn_fear_greed_fixture import load_cnn_fear_greed_fixture
+from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
+from stock_risk_mcp.risk_adjusted_paper_eval_fixture import load_risk_adjusted_paper_eval_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1290,6 +1292,33 @@ def build_command_parser() -> argparse.ArgumentParser:
     cnn_fear_greed_audit_report = subparsers.add_parser("cnn-fear-greed-audit-report")
     cnn_fear_greed_audit_report.add_argument("--fixture-file", type=Path, required=True)
     cnn_fear_greed_audit_report.add_argument("--output-file", type=Path)
+    risk_adjusted_paper_eval_check = subparsers.add_parser("risk-adjusted-paper-eval-check")
+    risk_adjusted_paper_eval_check.add_argument("--fixture-file", type=Path, required=True)
+    risk_adjusted_paper_eval_check.add_argument("--output-file", type=Path)
+    paper_evaluation_summary_report = subparsers.add_parser("paper-evaluation-summary-report")
+    paper_evaluation_summary_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_summary_report.add_argument("--output-file", type=Path)
+    virtual_portfolio_report = subparsers.add_parser("virtual-portfolio-report")
+    virtual_portfolio_report.add_argument("--fixture-file", type=Path, required=True)
+    virtual_portfolio_report.add_argument("--output-file", type=Path)
+    virtual_trade_ledger_report = subparsers.add_parser("virtual-trade-ledger-report")
+    virtual_trade_ledger_report.add_argument("--fixture-file", type=Path, required=True)
+    virtual_trade_ledger_report.add_argument("--output-file", type=Path)
+    paper_cost_slippage_report = subparsers.add_parser("paper-cost-slippage-report")
+    paper_cost_slippage_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_cost_slippage_report.add_argument("--output-file", type=Path)
+    paper_risk_adjusted_performance_report = subparsers.add_parser("paper-risk-adjusted-performance-report")
+    paper_risk_adjusted_performance_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_risk_adjusted_performance_report.add_argument("--output-file", type=Path)
+    paper_drawdown_exposure_report = subparsers.add_parser("paper-drawdown-exposure-report")
+    paper_drawdown_exposure_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_drawdown_exposure_report.add_argument("--output-file", type=Path)
+    paper_regime_fear_bucket_report = subparsers.add_parser("paper-regime-fear-bucket-report")
+    paper_regime_fear_bucket_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_regime_fear_bucket_report.add_argument("--output-file", type=Path)
+    paper_pass_readiness_report = subparsers.add_parser("paper-pass-readiness-report")
+    paper_pass_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_pass_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2561,6 +2590,15 @@ def main(argv: list[str] | None = None) -> None:
         "cnn-fear-greed-feature-integration-report",
         "cnn-fear-greed-source-health-report",
         "cnn-fear-greed-audit-report",
+        "risk-adjusted-paper-eval-check",
+        "paper-evaluation-summary-report",
+        "virtual-portfolio-report",
+        "virtual-trade-ledger-report",
+        "paper-cost-slippage-report",
+        "paper-risk-adjusted-performance-report",
+        "paper-drawdown-exposure-report",
+        "paper-regime-fear-bucket-report",
+        "paper-pass-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5004,6 +5042,87 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "risk-adjusted-paper-eval-check":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).pass_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-summary-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "virtual-portfolio-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).virtual_portfolio_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "virtual-trade-ledger-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).virtual_trade_ledger_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-cost-slippage-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).cost_slippage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-risk-adjusted-performance-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).risk_adjusted_performance_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-drawdown-exposure-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).drawdown_exposure_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-regime-fear-bucket-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).regime_fear_bucket_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-pass-readiness-report":
+        try:
+            result = _run_risk_adjusted_paper_eval(args.fixture_file).pass_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5903,6 +6022,15 @@ def _run_cnn_fear_greed_collection(
             }
         )
     return run_cnn_fear_greed_collection(fixture)
+
+
+def _load_risk_adjusted_paper_eval_fixture_or_raise(fixture_file: Path):
+    return load_risk_adjusted_paper_eval_fixture(fixture_file)
+
+
+def _run_risk_adjusted_paper_eval(fixture_file: Path):
+    fixture = _load_risk_adjusted_paper_eval_fixture_or_raise(fixture_file)
+    return build_risk_adjusted_paper_evaluation(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

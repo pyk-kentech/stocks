@@ -610,6 +610,26 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["cnn_fear_greed_no_real_network_called"] is True
     assert result["checks"]["cnn_fear_greed_no_trading_order_account_broker_path"] is True
     assert result["checks"]["cnn_fear_greed_parquet_unsupported"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_fixture_run"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_summary_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_virtual_portfolio_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_trade_ledger_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_cost_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_risk_adjusted_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_drawdown_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_bucket_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_readiness_report_generated"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_local_only"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_offline_only"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_report_only"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_non_executable"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_no_live_path"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_no_order_path"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_no_account_mutation"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_no_network"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_paper_evaluated_or_pass"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_fear_feature_used"] is True
+    assert result["checks"]["risk_adjusted_paper_eval_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
