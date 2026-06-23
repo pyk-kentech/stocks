@@ -187,6 +187,8 @@ from stock_risk_mcp.quant_strategy_robustness_engine import build_quant_strategy
 from stock_risk_mcp.quant_strategy_robustness_models import QuantStrategyRobustnessInput
 from stock_risk_mcp.point_in_time_universe_engine import build_point_in_time_universe_gate
 from stock_risk_mcp.point_in_time_universe_models import PointInTimeUniverseInput
+from stock_risk_mcp.walk_forward_validation_engine import build_walk_forward_validation
+from stock_risk_mcp.walk_forward_validation_models import WalkForwardValidationInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2123,6 +2125,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_mock_market_data_execution = _run_kiwoom_mock_market_data_execution_smoke(output_dir)
     quant_strategy_robustness = _run_quant_strategy_robustness_smoke(output_dir)
     point_in_time_universe = _run_point_in_time_universe_smoke(output_dir)
+    walk_forward_validation = _run_walk_forward_validation_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2822,6 +2825,24 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "point_in_time_universe_no_account_mutation": point_in_time_universe["no_account_mutation"],
             "point_in_time_universe_no_network": point_in_time_universe["no_network"],
             "point_in_time_universe_parquet_unsupported": point_in_time_universe["parquet_unsupported"],
+            "walk_forward_validation_fixture_run": walk_forward_validation["fixture_run"],
+            "walk_forward_split_report_generated": walk_forward_validation["split_report_generated"],
+            "walk_forward_data_snooping_report_generated": walk_forward_validation["data_snooping_report_generated"],
+            "walk_forward_experiment_lineage_report_generated": walk_forward_validation["lineage_report_generated"],
+            "walk_forward_parameter_search_pressure_report_generated": walk_forward_validation["pressure_report_generated"],
+            "walk_forward_final_test_contamination_report_generated": walk_forward_validation["contamination_report_generated"],
+            "walk_forward_stability_report_generated": walk_forward_validation["stability_report_generated"],
+            "walk_forward_promotion_readiness_report_generated": walk_forward_validation["promotion_report_generated"],
+            "walk_forward_validation_local_only": walk_forward_validation["local_only"],
+            "walk_forward_validation_offline_only": walk_forward_validation["offline_only"],
+            "walk_forward_validation_report_only": walk_forward_validation["report_only"],
+            "walk_forward_validation_non_executable": walk_forward_validation["non_executable"],
+            "walk_forward_validation_ready_for_validation_or_paper": walk_forward_validation["ready_for_validation_or_paper"],
+            "walk_forward_validation_no_live_path": walk_forward_validation["no_live_path"],
+            "walk_forward_validation_no_order_path": walk_forward_validation["no_order_path"],
+            "walk_forward_validation_no_account_mutation": walk_forward_validation["no_account_mutation"],
+            "walk_forward_validation_no_network": walk_forward_validation["no_network"],
+            "walk_forward_validation_parquet_unsupported": walk_forward_validation["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -7127,6 +7148,116 @@ def _run_point_in_time_universe_smoke(output_dir: Path) -> dict[str, bool]:
         "report_only": evaluated.dataset_promotion_readiness_report.report_only,
         "non_executable": evaluated.dataset_promotion_readiness_report.non_executable,
         "training_ready": evaluated.dataset_promotion_readiness_report.decision.value == "TRAINING_READY",
+        "no_live_path": evaluated.config.no_live_prod and evaluated.config.no_autonomous_trading,
+        "no_order_path": evaluated.config.no_order and "real order" not in dumped,
+        "no_account_mutation": evaluated.config.no_account_mutation,
+        "no_network": evaluated.config.no_network,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_walk_forward_validation_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_walk_forward_validation(
+        WalkForwardValidationInput.model_validate(
+            {
+                "input_id": "wf-validation-input-smoke",
+                "config": {
+                    "config_id": "wf-validation-config-smoke",
+                    "fixture_format": "json",
+                    "max_parameter_search_count": 20,
+                    "max_hidden_failed_trials": 10,
+                    "paper_ready_requires_forward_window": True,
+                },
+                "split": {
+                    "split_id": "wf-split-smoke",
+                    "mode": "ROLLING",
+                    "train_window": {
+                        "start_at": "2024-01-01T00:00:00+09:00",
+                        "end_at": "2024-06-30T00:00:00+09:00",
+                    },
+                    "validation_window": {
+                        "start_at": "2024-07-01T00:00:00+09:00",
+                        "end_at": "2024-09-30T00:00:00+09:00",
+                    },
+                    "test_window": {
+                        "start_at": "2024-10-01T00:00:00+09:00",
+                        "end_at": "2024-12-31T00:00:00+09:00",
+                    },
+                    "forward_paper_window": {
+                        "start_at": "2025-01-01T00:00:00+09:00",
+                        "end_at": "2025-03-31T00:00:00+09:00",
+                    },
+                },
+                "experiment_lineage": {
+                    "experiment_id": "exp-smoke",
+                    "dataset_id": "dataset-smoke",
+                    "feature_set_id": "feature-set-smoke",
+                    "strategy_id": "strategy-smoke",
+                    "parameter_set_id": "param-set-smoke",
+                    "search_run_id": "search-run-smoke",
+                    "parent_experiment_refs": ["EXP-PARENT-SMOKE"],
+                    "final_test_access_count": 1,
+                    "validation_reuse_count": 1,
+                    "registered_parameter_mutations": ["MUT-1"],
+                    "unregistered_parameter_mutation_detected": False,
+                },
+                "stability_evidence": {
+                    "fold_count": 4,
+                    "stable_fold_count": 3,
+                    "drawdown_stable": True,
+                    "hit_rate_stable": True,
+                    "return_stable": True,
+                    "risk_adjusted_metric_stable": True,
+                    "single_period_only_success": False,
+                    "regime_bucket_reference_present": True,
+                },
+                "parameter_search_count": 6,
+                "hidden_failed_trial_count": 2,
+                "test_period_cherry_picking_detected": False,
+                "regime_bucket_reference_present": True,
+                "source_manifest_ids": ["MANIFEST-1"],
+                "audit_records": [
+                    {
+                        "audit_record_id": "wf-audit-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "walk_forward_validation_smoke_fixture.json"),
+                        "operator_context": "offline walk forward validation smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+                "safety_report": {
+                    "safety_report_id": "wf-validation-safety-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+            }
+        )
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "split_report_generated": evaluated.walk_forward_split_report.report_id.endswith("REPORT"),
+        "data_snooping_report_generated": evaluated.data_snooping_report.report_id.endswith("REPORT"),
+        "lineage_report_generated": evaluated.experiment_lineage_report.report_id.endswith("REPORT"),
+        "pressure_report_generated": evaluated.parameter_search_pressure_report.report_id.endswith("REPORT"),
+        "contamination_report_generated": evaluated.final_test_contamination_report.report_id.endswith("REPORT"),
+        "stability_report_generated": evaluated.stability_report.report_id.endswith("REPORT"),
+        "promotion_report_generated": evaluated.promotion_readiness_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.config.local_file_only,
+        "offline_only": evaluated.config.offline_only,
+        "report_only": evaluated.promotion_readiness_report.report_only,
+        "non_executable": evaluated.promotion_readiness_report.non_executable,
+        "ready_for_validation_or_paper": evaluated.promotion_readiness_report.decision.value in {"VALIDATION_READY", "PAPER_READY"},
         "no_live_path": evaluated.config.no_live_prod and evaluated.config.no_autonomous_trading,
         "no_order_path": evaluated.config.no_order and "real order" not in dumped,
         "no_account_mutation": evaluated.config.no_account_mutation,

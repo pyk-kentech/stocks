@@ -506,6 +506,24 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["point_in_time_universe_no_account_mutation"] is True
     assert result["checks"]["point_in_time_universe_no_network"] is True
     assert result["checks"]["point_in_time_universe_parquet_unsupported"] is True
+    assert result["checks"]["walk_forward_validation_fixture_run"] is True
+    assert result["checks"]["walk_forward_split_report_generated"] is True
+    assert result["checks"]["walk_forward_data_snooping_report_generated"] is True
+    assert result["checks"]["walk_forward_experiment_lineage_report_generated"] is True
+    assert result["checks"]["walk_forward_parameter_search_pressure_report_generated"] is True
+    assert result["checks"]["walk_forward_final_test_contamination_report_generated"] is True
+    assert result["checks"]["walk_forward_stability_report_generated"] is True
+    assert result["checks"]["walk_forward_promotion_readiness_report_generated"] is True
+    assert result["checks"]["walk_forward_validation_local_only"] is True
+    assert result["checks"]["walk_forward_validation_offline_only"] is True
+    assert result["checks"]["walk_forward_validation_report_only"] is True
+    assert result["checks"]["walk_forward_validation_non_executable"] is True
+    assert result["checks"]["walk_forward_validation_ready_for_validation_or_paper"] is True
+    assert result["checks"]["walk_forward_validation_no_live_path"] is True
+    assert result["checks"]["walk_forward_validation_no_order_path"] is True
+    assert result["checks"]["walk_forward_validation_no_account_mutation"] is True
+    assert result["checks"]["walk_forward_validation_no_network"] is True
+    assert result["checks"]["walk_forward_validation_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

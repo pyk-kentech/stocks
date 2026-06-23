@@ -271,6 +271,8 @@ from stock_risk_mcp.quant_strategy_robustness_engine import build_quant_strategy
 from stock_risk_mcp.quant_strategy_robustness_fixture import load_quant_strategy_robustness_fixture
 from stock_risk_mcp.point_in_time_universe_engine import build_point_in_time_universe_gate
 from stock_risk_mcp.point_in_time_universe_fixture import load_point_in_time_universe_fixture
+from stock_risk_mcp.walk_forward_validation_engine import build_walk_forward_validation
+from stock_risk_mcp.walk_forward_validation_fixture import load_walk_forward_validation_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1138,6 +1140,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     dataset_promotion_readiness_report = subparsers.add_parser("dataset-promotion-readiness-report")
     dataset_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     dataset_promotion_readiness_report.add_argument("--output-file", type=Path)
+    walk_forward_validation_check = subparsers.add_parser("walk-forward-validation-check")
+    walk_forward_validation_check.add_argument("--fixture-file", type=Path, required=True)
+    walk_forward_validation_check.add_argument("--output-file", type=Path)
+    walk_forward_split_report = subparsers.add_parser("walk-forward-split-report")
+    walk_forward_split_report.add_argument("--fixture-file", type=Path, required=True)
+    walk_forward_split_report.add_argument("--output-file", type=Path)
+    data_snooping_report = subparsers.add_parser("data-snooping-report")
+    data_snooping_report.add_argument("--fixture-file", type=Path, required=True)
+    data_snooping_report.add_argument("--output-file", type=Path)
+    experiment_lineage_report = subparsers.add_parser("experiment-lineage-report")
+    experiment_lineage_report.add_argument("--fixture-file", type=Path, required=True)
+    experiment_lineage_report.add_argument("--output-file", type=Path)
+    parameter_search_pressure_report = subparsers.add_parser("parameter-search-pressure-report")
+    parameter_search_pressure_report.add_argument("--fixture-file", type=Path, required=True)
+    parameter_search_pressure_report.add_argument("--output-file", type=Path)
+    final_test_contamination_report = subparsers.add_parser("final-test-contamination-report")
+    final_test_contamination_report.add_argument("--fixture-file", type=Path, required=True)
+    final_test_contamination_report.add_argument("--output-file", type=Path)
+    strategy_stability_report = subparsers.add_parser("strategy-stability-report")
+    strategy_stability_report.add_argument("--fixture-file", type=Path, required=True)
+    strategy_stability_report.add_argument("--output-file", type=Path)
+    validation_promotion_readiness_report = subparsers.add_parser("validation-promotion-readiness-report")
+    validation_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    validation_promotion_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2363,6 +2389,14 @@ def main(argv: list[str] | None = None) -> None:
         "security-lifecycle-coverage-report",
         "dataset-leakage-report",
         "dataset-promotion-readiness-report",
+        "walk-forward-validation-check",
+        "walk-forward-split-report",
+        "data-snooping-report",
+        "experiment-lineage-report",
+        "parameter-search-pressure-report",
+        "final-test-contamination-report",
+        "strategy-stability-report",
+        "validation-promotion-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4388,6 +4422,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "walk-forward-validation-check":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "walk-forward-split-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).walk_forward_split_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "data-snooping-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).data_snooping_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "experiment-lineage-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).experiment_lineage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "parameter-search-pressure-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).parameter_search_pressure_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "final-test-contamination-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).final_test_contamination_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-stability-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).stability_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "validation-promotion-readiness-report":
+        try:
+            result = _run_walk_forward_validation(args.fixture_file).promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5219,6 +5325,15 @@ def _load_point_in_time_universe_fixture_or_raise(fixture_file: Path):
 def _run_point_in_time_universe_gate(fixture_file: Path):
     fixture = _load_point_in_time_universe_fixture_or_raise(fixture_file)
     return build_point_in_time_universe_gate(fixture)
+
+
+def _load_walk_forward_validation_fixture_or_raise(fixture_file: Path):
+    return load_walk_forward_validation_fixture(fixture_file)
+
+
+def _run_walk_forward_validation(fixture_file: Path):
+    fixture = _load_walk_forward_validation_fixture_or_raise(fixture_file)
+    return build_walk_forward_validation(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
