@@ -490,6 +490,22 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["quant_strategy_robustness_no_account_mutation"] is True
     assert result["checks"]["quant_strategy_robustness_no_network"] is True
     assert result["checks"]["quant_strategy_robustness_parquet_unsupported"] is True
+    assert result["checks"]["point_in_time_universe_fixture_run"] is True
+    assert result["checks"]["point_in_time_universe_report_generated"] is True
+    assert result["checks"]["survivorship_bias_dataset_report_generated"] is True
+    assert result["checks"]["security_lifecycle_coverage_report_generated"] is True
+    assert result["checks"]["dataset_leakage_report_generated"] is True
+    assert result["checks"]["dataset_promotion_readiness_report_generated"] is True
+    assert result["checks"]["point_in_time_universe_local_only"] is True
+    assert result["checks"]["point_in_time_universe_offline_only"] is True
+    assert result["checks"]["point_in_time_universe_report_only"] is True
+    assert result["checks"]["point_in_time_universe_non_executable"] is True
+    assert result["checks"]["point_in_time_universe_training_ready"] is True
+    assert result["checks"]["point_in_time_universe_no_live_path"] is True
+    assert result["checks"]["point_in_time_universe_no_order_path"] is True
+    assert result["checks"]["point_in_time_universe_no_account_mutation"] is True
+    assert result["checks"]["point_in_time_universe_no_network"] is True
+    assert result["checks"]["point_in_time_universe_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

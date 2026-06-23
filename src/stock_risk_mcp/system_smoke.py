@@ -185,6 +185,8 @@ from stock_risk_mcp.kiwoom_mock_market_data_execution_models import (
 )
 from stock_risk_mcp.quant_strategy_robustness_engine import build_quant_strategy_robustness
 from stock_risk_mcp.quant_strategy_robustness_models import QuantStrategyRobustnessInput
+from stock_risk_mcp.point_in_time_universe_engine import build_point_in_time_universe_gate
+from stock_risk_mcp.point_in_time_universe_models import PointInTimeUniverseInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2120,6 +2122,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_mock_api_preflight_gate = _run_kiwoom_mock_api_preflight_gate_smoke(output_dir)
     kiwoom_mock_market_data_execution = _run_kiwoom_mock_market_data_execution_smoke(output_dir)
     quant_strategy_robustness = _run_quant_strategy_robustness_smoke(output_dir)
+    point_in_time_universe = _run_point_in_time_universe_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2803,6 +2806,22 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "quant_strategy_robustness_no_account_mutation": quant_strategy_robustness["no_account_mutation"],
             "quant_strategy_robustness_no_network": quant_strategy_robustness["no_network"],
             "quant_strategy_robustness_parquet_unsupported": quant_strategy_robustness["parquet_unsupported"],
+            "point_in_time_universe_fixture_run": point_in_time_universe["fixture_run"],
+            "point_in_time_universe_report_generated": point_in_time_universe["point_in_time_report_generated"],
+            "survivorship_bias_dataset_report_generated": point_in_time_universe["survivorship_report_generated"],
+            "security_lifecycle_coverage_report_generated": point_in_time_universe["lifecycle_report_generated"],
+            "dataset_leakage_report_generated": point_in_time_universe["leakage_report_generated"],
+            "dataset_promotion_readiness_report_generated": point_in_time_universe["promotion_report_generated"],
+            "point_in_time_universe_local_only": point_in_time_universe["local_only"],
+            "point_in_time_universe_offline_only": point_in_time_universe["offline_only"],
+            "point_in_time_universe_report_only": point_in_time_universe["report_only"],
+            "point_in_time_universe_non_executable": point_in_time_universe["non_executable"],
+            "point_in_time_universe_training_ready": point_in_time_universe["training_ready"],
+            "point_in_time_universe_no_live_path": point_in_time_universe["no_live_path"],
+            "point_in_time_universe_no_order_path": point_in_time_universe["no_order_path"],
+            "point_in_time_universe_no_account_mutation": point_in_time_universe["no_account_mutation"],
+            "point_in_time_universe_no_network": point_in_time_universe["no_network"],
+            "point_in_time_universe_parquet_unsupported": point_in_time_universe["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -6990,6 +7009,124 @@ def _run_quant_strategy_robustness_smoke(output_dir: Path) -> dict[str, bool]:
         "report_only": evaluated.robustness_readiness_report.report_only,
         "non_executable": evaluated.robustness_readiness_report.non_executable,
         "training_ready": evaluated.robustness_readiness_report.decision.value == "TRAINING_READY",
+        "no_live_path": evaluated.config.no_live_prod and evaluated.config.no_autonomous_trading,
+        "no_order_path": evaluated.config.no_order and "real order" not in dumped,
+        "no_account_mutation": evaluated.config.no_account_mutation,
+        "no_network": evaluated.config.no_network,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_point_in_time_universe_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_point_in_time_universe_gate(
+        PointInTimeUniverseInput.model_validate(
+            {
+                "input_id": "pit-universe-input-smoke",
+                "config": {
+                    "config_id": "pit-universe-config-smoke",
+                    "fixture_format": "json",
+                },
+                "universe_source": "POINT_IN_TIME_UNIVERSE",
+                "universe_snapshots": [
+                    {
+                        "snapshot_id": "pit-snapshot-smoke",
+                        "trading_date": "2026-06-20",
+                        "market": "KRX",
+                        "symbol_universe": ["005930", "000660"],
+                        "inclusion_reason": "index constituent snapshot",
+                        "exclusion_reason": "",
+                        "index_membership_ref": "KOSPI200-20260620",
+                        "tradability_status": "TRADABLE",
+                        "available_at": "2026-06-20T08:00:00+09:00",
+                    }
+                ],
+                "security_lifecycle_records": [
+                    {
+                        "record_id": "life-smoke-1",
+                        "symbol": "005930",
+                        "status": "LISTED",
+                        "event_date": "2026-06-20",
+                        "available_at": "2026-06-20T08:00:00+09:00",
+                        "coverage_present": True,
+                    },
+                    {
+                        "record_id": "life-smoke-2",
+                        "symbol": "OLD1",
+                        "status": "DELISTED",
+                        "event_date": "2026-03-01",
+                        "available_at": "2026-03-01T08:00:00+09:00",
+                        "coverage_present": True,
+                    },
+                    {
+                        "record_id": "life-smoke-3",
+                        "symbol": "000660",
+                        "status": "SUSPENDED",
+                        "event_date": "2026-04-01",
+                        "available_at": "2026-04-01T08:00:00+09:00",
+                        "coverage_present": True,
+                    },
+                    {
+                        "record_id": "life-smoke-4",
+                        "symbol": "REN1",
+                        "status": "RENAMED",
+                        "event_date": "2026-02-01",
+                        "available_at": "2026-02-01T08:00:00+09:00",
+                        "coverage_present": True,
+                    },
+                ],
+                "available_at_coverage_complete": True,
+                "corporate_action_coverage_complete": True,
+                "index_membership_coverage_complete": True,
+                "tradability_coverage_complete": True,
+                "missing_date_gap_coverage_complete": True,
+                "future_index_membership_leakage_detected": False,
+                "current_constituent_replay_leakage_detected": False,
+                "future_delisting_knowledge_leakage_detected": False,
+                "symbol_survivorship_leakage_detected": False,
+                "source_manifest_ids": ["MANIFEST-1"],
+                "audit_records": [
+                    {
+                        "audit_record_id": "pit-audit-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "point_in_time_universe_smoke_fixture.json"),
+                        "operator_context": "offline point in time universe smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+                "safety_report": {
+                    "safety_report_id": "pit-universe-safety-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+            }
+        )
+    )
+    (output_dir / "point_in_time_universe_report.json").write_text(
+        evaluated.point_in_time_universe_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "point_in_time_report_generated": evaluated.point_in_time_universe_report.report_id.endswith("REPORT"),
+        "survivorship_report_generated": evaluated.survivorship_bias_report.report_id.endswith("REPORT"),
+        "lifecycle_report_generated": evaluated.security_lifecycle_coverage_report.report_id.endswith("REPORT"),
+        "leakage_report_generated": evaluated.leakage_report.report_id.endswith("REPORT"),
+        "promotion_report_generated": evaluated.dataset_promotion_readiness_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.config.local_file_only,
+        "offline_only": evaluated.config.offline_only,
+        "report_only": evaluated.dataset_promotion_readiness_report.report_only,
+        "non_executable": evaluated.dataset_promotion_readiness_report.non_executable,
+        "training_ready": evaluated.dataset_promotion_readiness_report.decision.value == "TRAINING_READY",
         "no_live_path": evaluated.config.no_live_prod and evaluated.config.no_autonomous_trading,
         "no_order_path": evaluated.config.no_order and "real order" not in dumped,
         "no_account_mutation": evaluated.config.no_account_mutation,

@@ -269,6 +269,8 @@ from stock_risk_mcp.kiwoom_mock_market_data_execution_fixture import (
 )
 from stock_risk_mcp.quant_strategy_robustness_engine import build_quant_strategy_robustness
 from stock_risk_mcp.quant_strategy_robustness_fixture import load_quant_strategy_robustness_fixture
+from stock_risk_mcp.point_in_time_universe_engine import build_point_in_time_universe_gate
+from stock_risk_mcp.point_in_time_universe_fixture import load_point_in_time_universe_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1118,6 +1120,24 @@ def build_command_parser() -> argparse.ArgumentParser:
     quant_regime_readiness_report = subparsers.add_parser("quant-regime-readiness-report")
     quant_regime_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     quant_regime_readiness_report.add_argument("--output-file", type=Path)
+    point_in_time_universe_check = subparsers.add_parser("point-in-time-universe-check")
+    point_in_time_universe_check.add_argument("--fixture-file", type=Path, required=True)
+    point_in_time_universe_check.add_argument("--output-file", type=Path)
+    point_in_time_universe_report = subparsers.add_parser("point-in-time-universe-report")
+    point_in_time_universe_report.add_argument("--fixture-file", type=Path, required=True)
+    point_in_time_universe_report.add_argument("--output-file", type=Path)
+    survivorship_bias_dataset_report = subparsers.add_parser("survivorship-bias-dataset-report")
+    survivorship_bias_dataset_report.add_argument("--fixture-file", type=Path, required=True)
+    survivorship_bias_dataset_report.add_argument("--output-file", type=Path)
+    security_lifecycle_coverage_report = subparsers.add_parser("security-lifecycle-coverage-report")
+    security_lifecycle_coverage_report.add_argument("--fixture-file", type=Path, required=True)
+    security_lifecycle_coverage_report.add_argument("--output-file", type=Path)
+    dataset_leakage_report = subparsers.add_parser("dataset-leakage-report")
+    dataset_leakage_report.add_argument("--fixture-file", type=Path, required=True)
+    dataset_leakage_report.add_argument("--output-file", type=Path)
+    dataset_promotion_readiness_report = subparsers.add_parser("dataset-promotion-readiness-report")
+    dataset_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    dataset_promotion_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2337,6 +2357,12 @@ def main(argv: list[str] | None = None) -> None:
         "quant-data-snooping-report",
         "quant-strategy-diversification-report",
         "quant-regime-readiness-report",
+        "point-in-time-universe-check",
+        "point-in-time-universe-report",
+        "survivorship-bias-dataset-report",
+        "security-lifecycle-coverage-report",
+        "dataset-leakage-report",
+        "dataset-promotion-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4308,6 +4334,60 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "point-in-time-universe-check":
+        try:
+            result = _run_point_in_time_universe_gate(args.fixture_file).dataset_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "point-in-time-universe-report":
+        try:
+            result = _run_point_in_time_universe_gate(args.fixture_file).point_in_time_universe_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "survivorship-bias-dataset-report":
+        try:
+            result = _run_point_in_time_universe_gate(args.fixture_file).survivorship_bias_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "security-lifecycle-coverage-report":
+        try:
+            result = _run_point_in_time_universe_gate(args.fixture_file).security_lifecycle_coverage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "dataset-leakage-report":
+        try:
+            result = _run_point_in_time_universe_gate(args.fixture_file).leakage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "dataset-promotion-readiness-report":
+        try:
+            result = _run_point_in_time_universe_gate(args.fixture_file).dataset_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5130,6 +5210,15 @@ def _load_quant_strategy_robustness_fixture_or_raise(fixture_file: Path):
 def _run_quant_strategy_robustness(fixture_file: Path):
     fixture = _load_quant_strategy_robustness_fixture_or_raise(fixture_file)
     return build_quant_strategy_robustness(fixture)
+
+
+def _load_point_in_time_universe_fixture_or_raise(fixture_file: Path):
+    return load_point_in_time_universe_fixture(fixture_file)
+
+
+def _run_point_in_time_universe_gate(fixture_file: Path):
+    fixture = _load_point_in_time_universe_fixture_or_raise(fixture_file)
+    return build_point_in_time_universe_gate(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
