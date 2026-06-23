@@ -197,6 +197,8 @@ from stock_risk_mcp.regime_allocation_learning_engine import build_regime_alloca
 from stock_risk_mcp.regime_allocation_learning_models import RegimeAllocationLearningInput
 from stock_risk_mcp.allocation_policy_training_engine import build_allocation_policy_training_sandbox
 from stock_risk_mcp.allocation_policy_training_models import AllocationPolicyCandidateInput
+from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
+from stock_risk_mcp.cnn_fear_greed_models import CNNFearGreedCollectorConfig
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2138,6 +2140,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     strategy_ensemble_alpha = _run_strategy_ensemble_alpha_smoke(output_dir)
     regime_allocation_learning = _run_regime_allocation_learning_smoke(output_dir)
     allocation_policy_training = _run_allocation_policy_training_smoke(output_dir)
+    cnn_fear_greed = _run_cnn_fear_greed_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2929,6 +2932,18 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "allocation_policy_training_no_network": allocation_policy_training["no_network"],
             "allocation_policy_training_artifact_local_only": allocation_policy_training["artifact_local_only"],
             "allocation_policy_training_parquet_unsupported": allocation_policy_training["parquet_unsupported"],
+            "cnn_fear_greed_fixture_run": cnn_fear_greed["fixture_run"],
+            "cnn_fear_greed_snapshot_generated": cnn_fear_greed["snapshot_generated"],
+            "cnn_fear_greed_history_report_generated": cnn_fear_greed["history_report_generated"],
+            "cnn_fear_greed_feature_integration_report_generated": cnn_fear_greed["feature_integration_report_generated"],
+            "cnn_fear_greed_source_health_report_generated": cnn_fear_greed["source_health_report_generated"],
+            "cnn_fear_greed_audit_report_generated": cnn_fear_greed["audit_report_generated"],
+            "cnn_fear_greed_safe_default_dry_run": cnn_fear_greed["safe_default_dry_run"],
+            "cnn_fear_greed_mocked_transport_default": cnn_fear_greed["mocked_transport_default"],
+            "cnn_fear_greed_real_network_opt_in_required": cnn_fear_greed["real_network_opt_in_required"],
+            "cnn_fear_greed_no_real_network_called": cnn_fear_greed["no_real_network_called"],
+            "cnn_fear_greed_no_trading_order_account_broker_path": cnn_fear_greed["no_trading_order_account_broker_path"],
+            "cnn_fear_greed_parquet_unsupported": cnn_fear_greed["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -7830,5 +7845,68 @@ def _run_allocation_policy_training_smoke(output_dir: Path) -> dict[str, bool]:
         "no_account_mutation": evaluated.policy_promotion_readiness_report.no_account_mutation,
         "no_network": evaluated.policy_promotion_readiness_report.no_network,
         "artifact_local_only": evaluated.model_artifact_policy_report.local_only and evaluated.model_artifact_policy_report.offline_only and evaluated.model_artifact_policy_report.non_production,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_cnn_fear_greed_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = run_cnn_fear_greed_collection(
+        CNNFearGreedCollectorConfig.model_validate(
+            {
+                "config_id": "cnn-fear-greed-smoke",
+                "source_url": "https://edition.cnn.com/markets/fear-and-greed",
+                "enabled": False,
+                "execute_collection": False,
+                "acknowledge_collection": False,
+                "allow_real_network": False,
+                "transport_mode": "MOCKED_HTTP",
+                "timeout_seconds": 5,
+                "max_retry_count": 1,
+                "max_requests_per_run": 1,
+                "min_collection_interval_seconds": 3600,
+                "cache_metadata_policy": "REPORT_ONLY",
+                "source_health_reporting": True,
+                "mock_payload": {
+                    "score": 22,
+                    "label": "Extreme Fear",
+                    "as_of": "2026-06-24T09:00:00+09:00",
+                    "available_at": "2026-06-24T09:05:00+09:00",
+                    "components": {
+                        "stock_price_strength": 31,
+                        "stock_price_breadth": 27,
+                    },
+                    "history": [
+                        {"as_of": "2026-06-23T09:00:00+09:00", "score": 30},
+                        {"as_of": "2026-06-24T09:00:00+09:00", "score": 22},
+                    ],
+                    "schema_version": "cnn-fg-v1",
+                },
+            }
+        )
+    )
+    (output_dir / "cnn_fear_greed_smoke_input.json").write_text(
+        evaluated.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "snapshot_generated": evaluated.snapshot_report.report_id.endswith("REPORT"),
+        "history_report_generated": evaluated.history_report.report_id.endswith("REPORT"),
+        "feature_integration_report_generated": evaluated.feature_integration_report.report_id.endswith("REPORT"),
+        "source_health_report_generated": evaluated.source_health_report.report_id.endswith("REPORT"),
+        "audit_report_generated": evaluated.audit_report.audit_record_id.endswith("REPORT"),
+        "safe_default_dry_run": not evaluated.enabled and not evaluated.execute_collection and not evaluated.allow_real_network,
+        "mocked_transport_default": evaluated.transport_mode.value == "MOCKED_HTTP",
+        "real_network_opt_in_required": not evaluated.allow_real_network and not evaluated.execute_collection,
+        "no_real_network_called": evaluated.transport_mode.value != "REAL_HTTP",
+        "no_trading_order_account_broker_path": (
+            evaluated.no_trading_path
+            and evaluated.no_order
+            and evaluated.no_account_mutation
+            and evaluated.no_broker_api
+            and "order intent" not in dumped
+            and "account_number" not in dumped
+        ),
         "parquet_unsupported": ".parquet" not in dumped,
     }

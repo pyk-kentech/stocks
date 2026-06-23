@@ -598,6 +598,18 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["allocation_policy_training_no_network"] is True
     assert result["checks"]["allocation_policy_training_artifact_local_only"] is True
     assert result["checks"]["allocation_policy_training_parquet_unsupported"] is True
+    assert result["checks"]["cnn_fear_greed_fixture_run"] is True
+    assert result["checks"]["cnn_fear_greed_snapshot_generated"] is True
+    assert result["checks"]["cnn_fear_greed_history_report_generated"] is True
+    assert result["checks"]["cnn_fear_greed_feature_integration_report_generated"] is True
+    assert result["checks"]["cnn_fear_greed_source_health_report_generated"] is True
+    assert result["checks"]["cnn_fear_greed_audit_report_generated"] is True
+    assert result["checks"]["cnn_fear_greed_safe_default_dry_run"] is True
+    assert result["checks"]["cnn_fear_greed_mocked_transport_default"] is True
+    assert result["checks"]["cnn_fear_greed_real_network_opt_in_required"] is True
+    assert result["checks"]["cnn_fear_greed_no_real_network_called"] is True
+    assert result["checks"]["cnn_fear_greed_no_trading_order_account_broker_path"] is True
+    assert result["checks"]["cnn_fear_greed_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

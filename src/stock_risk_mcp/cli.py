@@ -258,6 +258,8 @@ from stock_risk_mcp.kiwoom_mock_api_preflight_gate_engine import (
 from stock_risk_mcp.kiwoom_mock_api_preflight_gate_fixture import (
     load_kiwoom_mock_api_preflight_gate_fixture,
 )
+from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
+from stock_risk_mcp.cnn_fear_greed_fixture import load_cnn_fear_greed_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1268,6 +1270,26 @@ def build_command_parser() -> argparse.ArgumentParser:
     allocation_policy_artifact_report = subparsers.add_parser("allocation-policy-artifact-report")
     allocation_policy_artifact_report.add_argument("--fixture-file", type=Path, required=True)
     allocation_policy_artifact_report.add_argument("--output-file", type=Path)
+    cnn_fear_greed_collect = subparsers.add_parser("cnn-fear-greed-collect")
+    cnn_fear_greed_collect.add_argument("--fixture-file", type=Path, required=True)
+    cnn_fear_greed_collect.add_argument("--output-file", type=Path)
+    cnn_fear_greed_collect.add_argument("--execute", action="store_true")
+    cnn_fear_greed_collect.add_argument("--acknowledge-cnn-fear-greed-collection", action="store_true")
+    cnn_fear_greed_snapshot_report = subparsers.add_parser("cnn-fear-greed-snapshot-report")
+    cnn_fear_greed_snapshot_report.add_argument("--fixture-file", type=Path, required=True)
+    cnn_fear_greed_snapshot_report.add_argument("--output-file", type=Path)
+    cnn_fear_greed_history_report = subparsers.add_parser("cnn-fear-greed-history-report")
+    cnn_fear_greed_history_report.add_argument("--fixture-file", type=Path, required=True)
+    cnn_fear_greed_history_report.add_argument("--output-file", type=Path)
+    cnn_fear_greed_feature_integration_report = subparsers.add_parser("cnn-fear-greed-feature-integration-report")
+    cnn_fear_greed_feature_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    cnn_fear_greed_feature_integration_report.add_argument("--output-file", type=Path)
+    cnn_fear_greed_source_health_report = subparsers.add_parser("cnn-fear-greed-source-health-report")
+    cnn_fear_greed_source_health_report.add_argument("--fixture-file", type=Path, required=True)
+    cnn_fear_greed_source_health_report.add_argument("--output-file", type=Path)
+    cnn_fear_greed_audit_report = subparsers.add_parser("cnn-fear-greed-audit-report")
+    cnn_fear_greed_audit_report.add_argument("--fixture-file", type=Path, required=True)
+    cnn_fear_greed_audit_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2533,6 +2555,12 @@ def main(argv: list[str] | None = None) -> None:
         "allocation-policy-drawdown-stability-report",
         "allocation-policy-promotion-readiness-report",
         "allocation-policy-artifact-report",
+        "cnn-fear-greed-collect",
+        "cnn-fear-greed-snapshot-report",
+        "cnn-fear-greed-history-report",
+        "cnn-fear-greed-feature-integration-report",
+        "cnn-fear-greed-source-health-report",
+        "cnn-fear-greed-audit-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4918,6 +4946,64 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cnn-fear-greed-collect":
+        try:
+            result = _run_cnn_fear_greed_collection(
+                args.fixture_file,
+                execute=args.execute,
+                acknowledge_collection=args.acknowledge_cnn_fear_greed_collection,
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "config_id": result.config_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cnn-fear-greed-snapshot-report":
+        try:
+            result = _run_cnn_fear_greed_collection(args.fixture_file).snapshot_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cnn-fear-greed-history-report":
+        try:
+            result = _run_cnn_fear_greed_collection(args.fixture_file).history_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cnn-fear-greed-feature-integration-report":
+        try:
+            result = _run_cnn_fear_greed_collection(args.fixture_file).feature_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cnn-fear-greed-source-health-report":
+        try:
+            result = _run_cnn_fear_greed_collection(args.fixture_file).source_health_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cnn-fear-greed-audit-report":
+        try:
+            result = _run_cnn_fear_greed_collection(args.fixture_file).audit_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "audit_record_id": result.audit_record_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5794,6 +5880,29 @@ def _load_allocation_policy_training_fixture_or_raise(fixture_file: Path):
 def _run_allocation_policy_training_sandbox(fixture_file: Path):
     fixture = _load_allocation_policy_training_fixture_or_raise(fixture_file)
     return build_allocation_policy_training_sandbox(fixture)
+
+
+def _load_cnn_fear_greed_fixture_or_raise(fixture_file: Path):
+    return load_cnn_fear_greed_fixture(fixture_file)
+
+
+def _run_cnn_fear_greed_collection(
+    fixture_file: Path,
+    *,
+    execute: bool = False,
+    acknowledge_collection: bool = False,
+):
+    fixture = _load_cnn_fear_greed_fixture_or_raise(fixture_file)
+    if execute or acknowledge_collection:
+        fixture = fixture.model_copy(
+            update={
+                "enabled": execute or fixture.enabled,
+                "execute_collection": execute,
+                "acknowledge_collection": acknowledge_collection,
+                "allow_real_network": execute and acknowledge_collection,
+            }
+        )
+    return run_cnn_fear_greed_collection(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
