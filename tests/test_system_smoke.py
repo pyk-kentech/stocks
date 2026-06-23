@@ -453,6 +453,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_mock_api_preflight_no_live_trading"] is True
     assert result["checks"]["kiwoom_mock_api_preflight_no_live_prod"] is True
     assert result["checks"]["kiwoom_mock_api_preflight_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_fixture_run"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_request_generated"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_response_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_audit_record_generated"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_mock_only"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_local_only"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_read_only_market_data_only"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_redacted_output_only"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_raw_secret_token_output"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_token_persistence"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_token_refresh"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_real_network_in_smoke"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_production_path"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_account_path"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_order_path"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_websocket_path"] is True
+    assert result["checks"]["kiwoom_mock_market_data_execution_no_live_prod"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

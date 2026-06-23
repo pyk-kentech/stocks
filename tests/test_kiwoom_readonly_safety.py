@@ -20,7 +20,10 @@ def test_kiwoom_modules_have_no_network_sdk_secret_or_execution_integration() ->
         if not path.name.startswith("kiwoom_real_")
     ]
     forbidden_imports = ("urllib", "requests", "httpx", "pykiwoom", "win32com")
-    allowed_network_import_modules = {"kiwoom_mock_oauth_execution_client.py"}
+    allowed_network_import_modules = {
+        "kiwoom_mock_oauth_execution_client.py",
+        "kiwoom_mock_market_data_execution_client.py",
+    }
     allowed_env_modules = {"kiwoom_mock_oauth_execution_engine.py"}
     for module in modules:
         text = module.read_text(encoding="utf-8").lower()

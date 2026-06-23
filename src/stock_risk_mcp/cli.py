@@ -258,6 +258,15 @@ from stock_risk_mcp.kiwoom_mock_api_preflight_gate_engine import (
 from stock_risk_mcp.kiwoom_mock_api_preflight_gate_fixture import (
     load_kiwoom_mock_api_preflight_gate_fixture,
 )
+from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
+    build_kiwoom_mock_market_data_execution_gap_report,
+    build_kiwoom_mock_market_data_execution_safety_report,
+    build_kiwoom_mock_market_data_response_report,
+    execute_kiwoom_mock_market_data,
+)
+from stock_risk_mcp.kiwoom_mock_market_data_execution_fixture import (
+    load_kiwoom_mock_market_data_execution_fixture,
+)
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1065,6 +1074,27 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_api_preflight_audit_report = subparsers.add_parser("kiwoom-mock-api-preflight-audit-report")
     kiwoom_mock_api_preflight_audit_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_api_preflight_audit_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_market_data_request_execute = subparsers.add_parser("kiwoom-mock-market-data-request-execute")
+    kiwoom_mock_market_data_request_execute.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_market_data_request_execute.add_argument("--output-file", type=Path)
+    kiwoom_mock_market_data_request_execute.add_argument("--mock-domain", action="store_true")
+    kiwoom_mock_market_data_request_execute.add_argument("--execute", action="store_true")
+    kiwoom_mock_market_data_request_execute.add_argument(
+        "--acknowledge-mock-market-data-execution",
+        action="store_true",
+    )
+    kiwoom_mock_market_data_response_report = subparsers.add_parser("kiwoom-mock-market-data-response-report")
+    kiwoom_mock_market_data_response_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_market_data_response_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_market_data_safety_report = subparsers.add_parser("kiwoom-mock-market-data-safety-report")
+    kiwoom_mock_market_data_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_market_data_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_market_data_gap_report = subparsers.add_parser("kiwoom-mock-market-data-gap-report")
+    kiwoom_mock_market_data_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_market_data_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_mock_market_data_audit_report = subparsers.add_parser("kiwoom-mock-market-data-audit-report")
+    kiwoom_mock_market_data_audit_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_mock_market_data_audit_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2272,6 +2302,11 @@ def main(argv: list[str] | None = None) -> None:
         "scan-to-replay-snapshot",
         "ingest-signals",
         "signals",
+        "kiwoom-mock-market-data-request-execute",
+        "kiwoom-mock-market-data-response-report",
+        "kiwoom-mock-market-data-safety-report",
+        "kiwoom-mock-market-data-gap-report",
+        "kiwoom-mock-market-data-audit-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4108,6 +4143,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-market-data-request-execute":
+        try:
+            result = _run_kiwoom_mock_market_data_execution(
+                args.fixture_file,
+                execute=args.execute,
+                acknowledge_mock_market_data_execution=args.acknowledge_mock_market_data_execution,
+                mock_domain=args.mock_domain,
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "execution_result_id": result.execution_result_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-market-data-response-report":
+        try:
+            result = build_kiwoom_mock_market_data_response_report(
+                _load_kiwoom_mock_market_data_execution_fixture_or_raise(args.fixture_file)
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "response_object_id": result.response_object_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-market-data-safety-report":
+        try:
+            result = build_kiwoom_mock_market_data_execution_safety_report(
+                _load_kiwoom_mock_market_data_execution_fixture_or_raise(args.fixture_file)
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "safety_report_id": result.safety_report_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-market-data-gap-report":
+        try:
+            result = build_kiwoom_mock_market_data_execution_gap_report(
+                _load_kiwoom_mock_market_data_execution_fixture_or_raise(args.fixture_file)
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-mock-market-data-audit-report":
+        try:
+            result = _load_kiwoom_mock_market_data_execution_fixture_or_raise(args.fixture_file).audit_records[0]
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {
+                    "status": "COMPLETED",
+                    "output_file": str(args.output_file),
+                    "audit_record_id": result.audit_record_id,
+                }
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -4900,6 +5007,27 @@ def _load_kiwoom_mock_api_preflight_gate_fixture_or_raise(fixture_file: Path):
 def _run_kiwoom_mock_api_preflight_gate(fixture_file: Path):
     fixture = _load_kiwoom_mock_api_preflight_gate_fixture_or_raise(fixture_file)
     return run_kiwoom_mock_api_preflight_gate(fixture)
+
+
+def _load_kiwoom_mock_market_data_execution_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_mock_market_data_execution_fixture(fixture_file)
+
+
+def _run_kiwoom_mock_market_data_execution(
+    fixture_file: Path,
+    *,
+    execute: bool,
+    acknowledge_mock_market_data_execution: bool,
+    mock_domain: bool,
+):
+    fixture = _load_kiwoom_mock_market_data_execution_fixture_or_raise(fixture_file)
+    return execute_kiwoom_mock_market_data(
+        fixture,
+        execute=execute,
+        acknowledge_mock_market_data_execution=acknowledge_mock_market_data_execution,
+        mock_domain=mock_domain,
+        access_token="redacted-cli-in-memory-token",
+    )
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
