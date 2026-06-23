@@ -183,6 +183,8 @@ from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
 from stock_risk_mcp.kiwoom_mock_market_data_execution_models import (
     KiwoomMockMarketDataExecutionConfig,
 )
+from stock_risk_mcp.quant_strategy_robustness_engine import build_quant_strategy_robustness
+from stock_risk_mcp.quant_strategy_robustness_models import QuantStrategyRobustnessInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2117,6 +2119,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_mock_api_transport_draft = _run_kiwoom_mock_api_transport_draft_smoke(output_dir)
     kiwoom_mock_api_preflight_gate = _run_kiwoom_mock_api_preflight_gate_smoke(output_dir)
     kiwoom_mock_market_data_execution = _run_kiwoom_mock_market_data_execution_smoke(output_dir)
+    quant_strategy_robustness = _run_quant_strategy_robustness_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2782,6 +2785,24 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
                 "no_websocket_path"
             ],
             "kiwoom_mock_market_data_execution_no_live_prod": kiwoom_mock_market_data_execution["no_live_prod"],
+            "quant_strategy_robustness_fixture_run": quant_strategy_robustness["fixture_run"],
+            "quant_strategy_robustness_report_generated": quant_strategy_robustness["report_generated"],
+            "quant_strategy_survivorship_bias_report_generated": quant_strategy_robustness["survivorship_report_generated"],
+            "quant_strategy_point_in_time_report_generated": quant_strategy_robustness["point_in_time_report_generated"],
+            "quant_strategy_walk_forward_report_generated": quant_strategy_robustness["walk_forward_report_generated"],
+            "quant_strategy_data_snooping_report_generated": quant_strategy_robustness["data_snooping_report_generated"],
+            "quant_strategy_diversification_report_generated": quant_strategy_robustness["diversification_report_generated"],
+            "quant_strategy_regime_readiness_report_generated": quant_strategy_robustness["regime_report_generated"],
+            "quant_strategy_robustness_local_only": quant_strategy_robustness["local_only"],
+            "quant_strategy_robustness_offline_only": quant_strategy_robustness["offline_only"],
+            "quant_strategy_robustness_report_only": quant_strategy_robustness["report_only"],
+            "quant_strategy_robustness_non_executable": quant_strategy_robustness["non_executable"],
+            "quant_strategy_robustness_training_ready": quant_strategy_robustness["training_ready"],
+            "quant_strategy_robustness_no_live_path": quant_strategy_robustness["no_live_path"],
+            "quant_strategy_robustness_no_order_path": quant_strategy_robustness["no_order_path"],
+            "quant_strategy_robustness_no_account_mutation": quant_strategy_robustness["no_account_mutation"],
+            "quant_strategy_robustness_no_network": quant_strategy_robustness["no_network"],
+            "quant_strategy_robustness_parquet_unsupported": quant_strategy_robustness["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -6845,4 +6866,133 @@ def _run_kiwoom_mock_market_data_execution_smoke(output_dir: Path) -> dict[str, 
         "no_order_path": result.no_order_path,
         "no_websocket_path": result.no_websocket_path,
         "no_live_prod": result.no_live_prod,
+    }
+
+
+def _run_quant_strategy_robustness_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_quant_strategy_robustness(
+        QuantStrategyRobustnessInput.model_validate(
+            {
+                "input_id": "quant-robustness-input-smoke",
+                "config": {
+                    "config_id": "quant-robustness-config-smoke",
+                    "fixture_format": "json",
+                },
+                "universe_policy": {
+                    "universe_mode": "POINT_IN_TIME_HISTORICAL",
+                    "historical_universe_snapshots_required": True,
+                    "historical_universe_snapshots_available": True,
+                    "delisted_handled": True,
+                    "suspended_handled": True,
+                    "merged_handled": True,
+                    "renamed_handled": True,
+                    "index_removed_handled": True,
+                },
+                "point_in_time_policy": {
+                    "available_at_required": True,
+                    "price_features_have_available_at": True,
+                    "fundamental_features_have_available_at": True,
+                    "index_features_have_available_at": True,
+                    "macro_features_have_available_at": True,
+                    "event_features_have_available_at": True,
+                    "future_data_leakage_blocked": True,
+                    "corporate_action_policy_present": True,
+                    "split_policy_present": True,
+                    "dividend_policy_present": True,
+                    "symbol_change_policy_present": True,
+                    "delisting_policy_present": True,
+                },
+                "walk_forward_policy": {
+                    "walk_forward_mode": "ROLLING",
+                    "train_window_count": 4,
+                    "validation_window_count": 2,
+                    "test_window_count": 1,
+                    "forward_paper_window_count": 1,
+                    "repeated_final_test_tuning_count": 0,
+                    "parameter_search_count": 4,
+                    "max_parameter_search_count": 20,
+                    "final_test_period_reused_for_tuning": False,
+                    "period_stability_metrics_present": True,
+                },
+                "diversification_policy": {
+                    "alpha_candidate_families": [
+                        "MOMENTUM",
+                        "MEAN_REVERSION",
+                        "BREAKOUT",
+                        "VOLUME_SHOCK",
+                    ],
+                    "max_pairwise_strategy_correlation": 0.45,
+                    "max_drawdown_comovement": 0.35,
+                },
+                "regime_policy": {
+                    "regime_buckets": [
+                        "INDEX_TREND",
+                        "VOLATILITY",
+                        "FX",
+                        "RATE_LIQUIDITY",
+                        "SECTOR_BREADTH",
+                        "MACRO_EVENT_CALENDAR",
+                    ],
+                    "required_bucket_count": 6,
+                    "evaluated_bucket_count": 6,
+                },
+                "experiment_registry_ref": "docs/superpowers/plans/2026-06-18-quant-strategy-robustness-training-readiness-foundation.md",
+                "source_manifest_ids": ["MANIFEST-1"],
+                "audit_records": [
+                    {
+                        "audit_record_id": "quant-robustness-audit-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "quant_strategy_robustness_smoke_fixture.json"),
+                        "operator_context": "offline robustness smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                        "experiment_registry_ref": "docs/superpowers/plans/2026-06-18-quant-strategy-robustness-training-readiness-foundation.md",
+                    }
+                ],
+                "robustness_safety_report": {
+                    "safety_report_id": "quant-robustness-safety-report-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+            }
+        )
+    )
+    (output_dir / "quant_strategy_robustness_report.json").write_text(
+        evaluated.robustness_readiness_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "quant_strategy_survivorship_bias_report.json").write_text(
+        evaluated.survivorship_bias_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_dir / "quant_strategy_point_in_time_report.json").write_text(
+        evaluated.point_in_time_leakage_report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "report_generated": evaluated.robustness_readiness_report.readiness_report_id.endswith("REPORT"),
+        "survivorship_report_generated": evaluated.survivorship_bias_report.report_id.endswith("REPORT"),
+        "point_in_time_report_generated": evaluated.point_in_time_leakage_report.report_id.endswith("REPORT"),
+        "walk_forward_report_generated": evaluated.walk_forward_policy_report.report_id.endswith("REPORT"),
+        "data_snooping_report_generated": evaluated.data_snooping_report.report_id.endswith("REPORT"),
+        "diversification_report_generated": evaluated.strategy_diversification_report.report_id.endswith("REPORT"),
+        "regime_report_generated": evaluated.regime_readiness_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.config.local_file_only,
+        "offline_only": evaluated.config.offline_only,
+        "report_only": evaluated.robustness_readiness_report.report_only,
+        "non_executable": evaluated.robustness_readiness_report.non_executable,
+        "training_ready": evaluated.robustness_readiness_report.decision.value == "TRAINING_READY",
+        "no_live_path": evaluated.config.no_live_prod and evaluated.config.no_autonomous_trading,
+        "no_order_path": evaluated.config.no_order and "real order" not in dumped,
+        "no_account_mutation": evaluated.config.no_account_mutation,
+        "no_network": evaluated.config.no_network,
+        "parquet_unsupported": ".parquet" not in dumped,
     }

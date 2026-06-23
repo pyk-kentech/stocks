@@ -267,6 +267,8 @@ from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
 from stock_risk_mcp.kiwoom_mock_market_data_execution_fixture import (
     load_kiwoom_mock_market_data_execution_fixture,
 )
+from stock_risk_mcp.quant_strategy_robustness_engine import build_quant_strategy_robustness
+from stock_risk_mcp.quant_strategy_robustness_fixture import load_quant_strategy_robustness_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1095,6 +1097,27 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_mock_market_data_audit_report = subparsers.add_parser("kiwoom-mock-market-data-audit-report")
     kiwoom_mock_market_data_audit_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_mock_market_data_audit_report.add_argument("--output-file", type=Path)
+    quant_robustness_check = subparsers.add_parser("quant-robustness-check")
+    quant_robustness_check.add_argument("--fixture-file", type=Path, required=True)
+    quant_robustness_check.add_argument("--output-file", type=Path)
+    quant_survivorship_bias_report = subparsers.add_parser("quant-survivorship-bias-report")
+    quant_survivorship_bias_report.add_argument("--fixture-file", type=Path, required=True)
+    quant_survivorship_bias_report.add_argument("--output-file", type=Path)
+    quant_point_in_time_leakage_report = subparsers.add_parser("quant-point-in-time-leakage-report")
+    quant_point_in_time_leakage_report.add_argument("--fixture-file", type=Path, required=True)
+    quant_point_in_time_leakage_report.add_argument("--output-file", type=Path)
+    quant_walk_forward_policy_report = subparsers.add_parser("quant-walk-forward-policy-report")
+    quant_walk_forward_policy_report.add_argument("--fixture-file", type=Path, required=True)
+    quant_walk_forward_policy_report.add_argument("--output-file", type=Path)
+    quant_data_snooping_report = subparsers.add_parser("quant-data-snooping-report")
+    quant_data_snooping_report.add_argument("--fixture-file", type=Path, required=True)
+    quant_data_snooping_report.add_argument("--output-file", type=Path)
+    quant_strategy_diversification_report = subparsers.add_parser("quant-strategy-diversification-report")
+    quant_strategy_diversification_report.add_argument("--fixture-file", type=Path, required=True)
+    quant_strategy_diversification_report.add_argument("--output-file", type=Path)
+    quant_regime_readiness_report = subparsers.add_parser("quant-regime-readiness-report")
+    quant_regime_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    quant_regime_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2307,6 +2330,13 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-mock-market-data-safety-report",
         "kiwoom-mock-market-data-gap-report",
         "kiwoom-mock-market-data-audit-report",
+        "quant-robustness-check",
+        "quant-survivorship-bias-report",
+        "quant-point-in-time-leakage-report",
+        "quant-walk-forward-policy-report",
+        "quant-data-snooping-report",
+        "quant-strategy-diversification-report",
+        "quant-regime-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4215,6 +4245,69 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-robustness-check":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).robustness_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_report_id": result.readiness_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-survivorship-bias-report":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).survivorship_bias_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-point-in-time-leakage-report":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).point_in_time_leakage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-walk-forward-policy-report":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).walk_forward_policy_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-data-snooping-report":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).data_snooping_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-strategy-diversification-report":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).strategy_diversification_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "quant-regime-readiness-report":
+        try:
+            result = _run_quant_strategy_robustness(args.fixture_file).regime_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5028,6 +5121,15 @@ def _run_kiwoom_mock_market_data_execution(
         mock_domain=mock_domain,
         access_token="redacted-cli-in-memory-token",
     )
+
+
+def _load_quant_strategy_robustness_fixture_or_raise(fixture_file: Path):
+    return load_quant_strategy_robustness_fixture(fixture_file)
+
+
+def _run_quant_strategy_robustness(fixture_file: Path):
+    fixture = _load_quant_strategy_robustness_fixture_or_raise(fixture_file)
+    return build_quant_strategy_robustness(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
