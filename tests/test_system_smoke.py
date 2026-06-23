@@ -524,6 +524,23 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["walk_forward_validation_no_account_mutation"] is True
     assert result["checks"]["walk_forward_validation_no_network"] is True
     assert result["checks"]["walk_forward_validation_parquet_unsupported"] is True
+    assert result["checks"]["training_pipeline_promotion_fixture_run"] is True
+    assert result["checks"]["training_dataset_eligibility_report_generated"] is True
+    assert result["checks"]["training_dependency_report_generated"] is True
+    assert result["checks"]["training_leakage_overfit_risk_report_generated"] is True
+    assert result["checks"]["training_reproducibility_report_generated"] is True
+    assert result["checks"]["training_model_artifact_policy_report_generated"] is True
+    assert result["checks"]["training_model_promotion_readiness_report_generated"] is True
+    assert result["checks"]["training_pipeline_promotion_local_only"] is True
+    assert result["checks"]["training_pipeline_promotion_offline_only"] is True
+    assert result["checks"]["training_pipeline_promotion_report_only"] is True
+    assert result["checks"]["training_pipeline_promotion_non_executable"] is True
+    assert result["checks"]["training_pipeline_promotion_training_ready_or_paper_candidate"] is True
+    assert result["checks"]["training_pipeline_promotion_no_live_path"] is True
+    assert result["checks"]["training_pipeline_promotion_no_order_path"] is True
+    assert result["checks"]["training_pipeline_promotion_no_account_mutation"] is True
+    assert result["checks"]["training_pipeline_promotion_no_network"] is True
+    assert result["checks"]["training_pipeline_promotion_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

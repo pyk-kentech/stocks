@@ -273,6 +273,8 @@ from stock_risk_mcp.point_in_time_universe_engine import build_point_in_time_uni
 from stock_risk_mcp.point_in_time_universe_fixture import load_point_in_time_universe_fixture
 from stock_risk_mcp.walk_forward_validation_engine import build_walk_forward_validation
 from stock_risk_mcp.walk_forward_validation_fixture import load_walk_forward_validation_fixture
+from stock_risk_mcp.training_pipeline_promotion_engine import build_training_pipeline_promotion
+from stock_risk_mcp.training_pipeline_promotion_fixture import load_training_pipeline_promotion_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1164,6 +1166,27 @@ def build_command_parser() -> argparse.ArgumentParser:
     validation_promotion_readiness_report = subparsers.add_parser("validation-promotion-readiness-report")
     validation_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     validation_promotion_readiness_report.add_argument("--output-file", type=Path)
+    training_pipeline_promotion_check = subparsers.add_parser("training-pipeline-promotion-check")
+    training_pipeline_promotion_check.add_argument("--fixture-file", type=Path, required=True)
+    training_pipeline_promotion_check.add_argument("--output-file", type=Path)
+    training_dataset_eligibility_report = subparsers.add_parser("training-dataset-eligibility-report")
+    training_dataset_eligibility_report.add_argument("--fixture-file", type=Path, required=True)
+    training_dataset_eligibility_report.add_argument("--output-file", type=Path)
+    training_dependency_report = subparsers.add_parser("training-dependency-report")
+    training_dependency_report.add_argument("--fixture-file", type=Path, required=True)
+    training_dependency_report.add_argument("--output-file", type=Path)
+    training_leakage_overfit_risk_report = subparsers.add_parser("training-leakage-overfit-risk-report")
+    training_leakage_overfit_risk_report.add_argument("--fixture-file", type=Path, required=True)
+    training_leakage_overfit_risk_report.add_argument("--output-file", type=Path)
+    training_reproducibility_report = subparsers.add_parser("training-reproducibility-report")
+    training_reproducibility_report.add_argument("--fixture-file", type=Path, required=True)
+    training_reproducibility_report.add_argument("--output-file", type=Path)
+    model_artifact_policy_report = subparsers.add_parser("model-artifact-policy-report")
+    model_artifact_policy_report.add_argument("--fixture-file", type=Path, required=True)
+    model_artifact_policy_report.add_argument("--output-file", type=Path)
+    model_promotion_readiness_report = subparsers.add_parser("model-promotion-readiness-report")
+    model_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    model_promotion_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2397,6 +2420,13 @@ def main(argv: list[str] | None = None) -> None:
         "final-test-contamination-report",
         "strategy-stability-report",
         "validation-promotion-readiness-report",
+        "training-pipeline-promotion-check",
+        "training-dataset-eligibility-report",
+        "training-dependency-report",
+        "training-leakage-overfit-risk-report",
+        "training-reproducibility-report",
+        "model-artifact-policy-report",
+        "model-promotion-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4494,6 +4524,69 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "training-pipeline-promotion-check":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).model_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "training-dataset-eligibility-report":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).training_eligibility_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "training-dependency-report":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).dependency_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "training-leakage-overfit-risk-report":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).leakage_overfit_risk_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "training-reproducibility-report":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).reproducibility_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "model-artifact-policy-report":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).model_artifact_policy_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "model-promotion-readiness-report":
+        try:
+            result = _run_training_pipeline_promotion(args.fixture_file).model_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5334,6 +5427,15 @@ def _load_walk_forward_validation_fixture_or_raise(fixture_file: Path):
 def _run_walk_forward_validation(fixture_file: Path):
     fixture = _load_walk_forward_validation_fixture_or_raise(fixture_file)
     return build_walk_forward_validation(fixture)
+
+
+def _load_training_pipeline_promotion_fixture_or_raise(fixture_file: Path):
+    return load_training_pipeline_promotion_fixture(fixture_file)
+
+
+def _run_training_pipeline_promotion(fixture_file: Path):
+    fixture = _load_training_pipeline_promotion_fixture_or_raise(fixture_file)
+    return build_training_pipeline_promotion(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

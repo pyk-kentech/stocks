@@ -189,6 +189,8 @@ from stock_risk_mcp.point_in_time_universe_engine import build_point_in_time_uni
 from stock_risk_mcp.point_in_time_universe_models import PointInTimeUniverseInput
 from stock_risk_mcp.walk_forward_validation_engine import build_walk_forward_validation
 from stock_risk_mcp.walk_forward_validation_models import WalkForwardValidationInput
+from stock_risk_mcp.training_pipeline_promotion_engine import build_training_pipeline_promotion
+from stock_risk_mcp.training_pipeline_promotion_models import TrainingPipelinePromotionInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2126,6 +2128,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     quant_strategy_robustness = _run_quant_strategy_robustness_smoke(output_dir)
     point_in_time_universe = _run_point_in_time_universe_smoke(output_dir)
     walk_forward_validation = _run_walk_forward_validation_smoke(output_dir)
+    training_pipeline_promotion = _run_training_pipeline_promotion_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2843,6 +2846,23 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "walk_forward_validation_no_account_mutation": walk_forward_validation["no_account_mutation"],
             "walk_forward_validation_no_network": walk_forward_validation["no_network"],
             "walk_forward_validation_parquet_unsupported": walk_forward_validation["parquet_unsupported"],
+            "training_pipeline_promotion_fixture_run": training_pipeline_promotion["fixture_run"],
+            "training_dataset_eligibility_report_generated": training_pipeline_promotion["training_eligibility_report_generated"],
+            "training_dependency_report_generated": training_pipeline_promotion["dependency_report_generated"],
+            "training_leakage_overfit_risk_report_generated": training_pipeline_promotion["leakage_overfit_risk_report_generated"],
+            "training_reproducibility_report_generated": training_pipeline_promotion["reproducibility_report_generated"],
+            "training_model_artifact_policy_report_generated": training_pipeline_promotion["model_artifact_policy_report_generated"],
+            "training_model_promotion_readiness_report_generated": training_pipeline_promotion["model_promotion_readiness_report_generated"],
+            "training_pipeline_promotion_local_only": training_pipeline_promotion["local_only"],
+            "training_pipeline_promotion_offline_only": training_pipeline_promotion["offline_only"],
+            "training_pipeline_promotion_report_only": training_pipeline_promotion["report_only"],
+            "training_pipeline_promotion_non_executable": training_pipeline_promotion["non_executable"],
+            "training_pipeline_promotion_training_ready_or_paper_candidate": training_pipeline_promotion["training_ready_or_paper_candidate"],
+            "training_pipeline_promotion_no_live_path": training_pipeline_promotion["no_live_path"],
+            "training_pipeline_promotion_no_order_path": training_pipeline_promotion["no_order_path"],
+            "training_pipeline_promotion_no_account_mutation": training_pipeline_promotion["no_account_mutation"],
+            "training_pipeline_promotion_no_network": training_pipeline_promotion["no_network"],
+            "training_pipeline_promotion_parquet_unsupported": training_pipeline_promotion["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -7262,5 +7282,98 @@ def _run_walk_forward_validation_smoke(output_dir: Path) -> dict[str, bool]:
         "no_order_path": evaluated.config.no_order and "real order" not in dumped,
         "no_account_mutation": evaluated.config.no_account_mutation,
         "no_network": evaluated.config.no_network,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_training_pipeline_promotion_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_training_pipeline_promotion(
+        TrainingPipelinePromotionInput.model_validate(
+            {
+                "input_id": "training-promotion-input-smoke",
+                "dataset_eligibility": {
+                    "dataset_id": "dataset-smoke",
+                    "point_in_time_gate_decision": "TRAINING_READY",
+                    "survivorship_safety_ref": "pit-report-smoke",
+                    "available_at_discipline_ref": "available-at-ref-smoke",
+                    "leakage_audit_ref": "leakage-audit-ref-smoke",
+                    "feature_set_id": "feature-set-smoke",
+                    "label_horizon": "5D",
+                    "target_type": "OUTCOME_LABEL",
+                    "train_split_ref": "TRAIN-SPLIT-SMOKE",
+                    "validation_split_ref": "VALIDATION-SPLIT-SMOKE",
+                    "test_split_ref": "TEST-SPLIT-SMOKE",
+                    "forward_paper_split_ref": "FORWARD-PAPER-SPLIT-SMOKE",
+                    "label_leakage_detected": False,
+                },
+                "training_run_candidate": {
+                    "training_run_id": "training-run-smoke",
+                    "model_family": "DUMMY_MAJORITY",
+                    "hyperparameter_set_id": "hyperparam-smoke",
+                    "feature_set_id": "feature-set-smoke",
+                    "dataset_id": "dataset-smoke",
+                    "experiment_id": "experiment-smoke",
+                    "random_seed_policy_present": True,
+                    "reproducibility_hash": "repro-hash-smoke",
+                    "training_window_refs": ["TRAIN-WINDOW-SMOKE"],
+                    "validation_window_refs": ["VALIDATION-WINDOW-SMOKE"],
+                    "test_window_refs": ["TEST-WINDOW-SMOKE"],
+                    "forward_paper_window_refs": ["FORWARD-PAPER-WINDOW-SMOKE"],
+                },
+                "v71_dataset_decision": "TRAINING_READY",
+                "v72_validation_decision": "PAPER_READY",
+                "v70_robustness_decision": "TRAINING_READY",
+                "excessive_parameter_search_flagged": False,
+                "final_test_contamination_detected": False,
+                "leakage_detected": False,
+                "snooping_detected": False,
+                "model_artifact_metadata_reproducible": True,
+                "config_read_only_flags": {"report_only": True},
+                "source_manifest_ids": ["MANIFEST-SMOKE"],
+                "audit_records": [
+                    {
+                        "audit_record_id": "training-promotion-audit-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "training_pipeline_promotion_smoke_fixture.json"),
+                        "operator_context": "offline training pipeline promotion smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+                "safety_report": {
+                    "safety_report_id": "training-promotion-safety-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+            }
+        )
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "training_eligibility_report_generated": evaluated.training_eligibility_report.report_id.endswith("REPORT"),
+        "dependency_report_generated": evaluated.dependency_report.report_id.endswith("REPORT"),
+        "leakage_overfit_risk_report_generated": evaluated.leakage_overfit_risk_report.report_id.endswith("REPORT"),
+        "reproducibility_report_generated": evaluated.reproducibility_report.report_id.endswith("REPORT"),
+        "model_artifact_policy_report_generated": evaluated.model_artifact_policy_report.report_id.endswith("REPORT"),
+        "model_promotion_readiness_report_generated": evaluated.model_promotion_readiness_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.training_eligibility_report.local_file_only,
+        "offline_only": evaluated.training_eligibility_report.offline_only,
+        "report_only": evaluated.model_promotion_readiness_report.report_only,
+        "non_executable": evaluated.model_promotion_readiness_report.non_executable,
+        "training_ready_or_paper_candidate": evaluated.model_promotion_readiness_report.decision.value in {"TRAINING_READY", "PAPER_CANDIDATE"},
+        "no_live_path": evaluated.model_promotion_readiness_report.no_live_prod and evaluated.model_promotion_readiness_report.no_autonomous_trading,
+        "no_order_path": evaluated.model_promotion_readiness_report.no_order and "order intent" not in dumped,
+        "no_account_mutation": evaluated.model_promotion_readiness_report.no_account_mutation,
+        "no_network": evaluated.model_promotion_readiness_report.no_network,
         "parquet_unsupported": ".parquet" not in dumped,
     }
