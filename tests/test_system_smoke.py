@@ -559,6 +559,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["strategy_ensemble_alpha_no_account_mutation"] is True
     assert result["checks"]["strategy_ensemble_alpha_no_network"] is True
     assert result["checks"]["strategy_ensemble_alpha_parquet_unsupported"] is True
+    assert result["checks"]["regime_allocation_learning_fixture_run"] is True
+    assert result["checks"]["regime_feature_report_generated"] is True
+    assert result["checks"]["allocation_action_candidate_report_generated"] is True
+    assert result["checks"]["hedge_inverse_eligibility_report_generated"] is True
+    assert result["checks"]["forward_outcome_label_report_generated"] is True
+    assert result["checks"]["allocation_reward_scoring_report_generated"] is True
+    assert result["checks"]["regime_allocation_leakage_report_generated"] is True
+    assert result["checks"]["regime_allocation_dataset_readiness_report_generated"] is True
+    assert result["checks"]["regime_allocation_learning_local_only"] is True
+    assert result["checks"]["regime_allocation_learning_offline_only"] is True
+    assert result["checks"]["regime_allocation_learning_report_only"] is True
+    assert result["checks"]["regime_allocation_learning_non_executable"] is True
+    assert result["checks"]["regime_allocation_learning_training_ready"] is True
+    assert result["checks"]["regime_allocation_learning_no_live_path"] is True
+    assert result["checks"]["regime_allocation_learning_no_order_path"] is True
+    assert result["checks"]["regime_allocation_learning_no_account_mutation"] is True
+    assert result["checks"]["regime_allocation_learning_no_network"] is True
+    assert result["checks"]["regime_allocation_learning_hedge_inverse_report_only"] is True
+    assert result["checks"]["regime_allocation_learning_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

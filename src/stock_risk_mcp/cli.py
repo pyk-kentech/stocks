@@ -277,6 +277,8 @@ from stock_risk_mcp.training_pipeline_promotion_engine import build_training_pip
 from stock_risk_mcp.training_pipeline_promotion_fixture import load_training_pipeline_promotion_fixture
 from stock_risk_mcp.strategy_ensemble_alpha_engine import build_strategy_ensemble_alpha_gate
 from stock_risk_mcp.strategy_ensemble_alpha_fixture import load_strategy_ensemble_alpha_fixture
+from stock_risk_mcp.regime_allocation_learning_engine import build_regime_allocation_learning_dataset
+from stock_risk_mcp.regime_allocation_learning_fixture import load_regime_allocation_learning_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1213,6 +1215,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     ensemble_promotion_readiness_report = subparsers.add_parser("ensemble-promotion-readiness-report")
     ensemble_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     ensemble_promotion_readiness_report.add_argument("--output-file", type=Path)
+    regime_allocation_learning_check = subparsers.add_parser("regime-allocation-learning-check")
+    regime_allocation_learning_check.add_argument("--fixture-file", type=Path, required=True)
+    regime_allocation_learning_check.add_argument("--output-file", type=Path)
+    regime_feature_report = subparsers.add_parser("regime-feature-report")
+    regime_feature_report.add_argument("--fixture-file", type=Path, required=True)
+    regime_feature_report.add_argument("--output-file", type=Path)
+    allocation_action_candidate_report = subparsers.add_parser("allocation-action-candidate-report")
+    allocation_action_candidate_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_action_candidate_report.add_argument("--output-file", type=Path)
+    hedge_inverse_eligibility_report = subparsers.add_parser("hedge-inverse-eligibility-report")
+    hedge_inverse_eligibility_report.add_argument("--fixture-file", type=Path, required=True)
+    hedge_inverse_eligibility_report.add_argument("--output-file", type=Path)
+    forward_outcome_label_report = subparsers.add_parser("forward-outcome-label-report")
+    forward_outcome_label_report.add_argument("--fixture-file", type=Path, required=True)
+    forward_outcome_label_report.add_argument("--output-file", type=Path)
+    allocation_reward_scoring_report = subparsers.add_parser("allocation-reward-scoring-report")
+    allocation_reward_scoring_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_reward_scoring_report.add_argument("--output-file", type=Path)
+    regime_allocation_leakage_report = subparsers.add_parser("regime-allocation-leakage-report")
+    regime_allocation_leakage_report.add_argument("--fixture-file", type=Path, required=True)
+    regime_allocation_leakage_report.add_argument("--output-file", type=Path)
+    regime_allocation_dataset_readiness_report = subparsers.add_parser("regime-allocation-dataset-readiness-report")
+    regime_allocation_dataset_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    regime_allocation_dataset_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2461,6 +2487,14 @@ def main(argv: list[str] | None = None) -> None:
         "regime-overlap-report",
         "alpha-portfolio-concentration-report",
         "ensemble-promotion-readiness-report",
+        "regime-allocation-learning-check",
+        "regime-feature-report",
+        "allocation-action-candidate-report",
+        "hedge-inverse-eligibility-report",
+        "forward-outcome-label-report",
+        "allocation-reward-scoring-report",
+        "regime-allocation-leakage-report",
+        "regime-allocation-dataset-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4693,6 +4727,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "regime-allocation-learning-check":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).learning_dataset_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "regime-feature-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).regime_feature_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-action-candidate-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).action_candidate_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "hedge-inverse-eligibility-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).hedge_inverse_eligibility_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "forward-outcome-label-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).forward_outcome_label_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-reward-scoring-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).allocation_reward_scoring_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "regime-allocation-leakage-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).regime_allocation_leakage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "regime-allocation-dataset-readiness-report":
+        try:
+            result = _run_regime_allocation_learning_dataset(args.fixture_file).learning_dataset_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5551,6 +5657,15 @@ def _load_strategy_ensemble_alpha_fixture_or_raise(fixture_file: Path):
 def _run_strategy_ensemble_alpha_gate(fixture_file: Path):
     fixture = _load_strategy_ensemble_alpha_fixture_or_raise(fixture_file)
     return build_strategy_ensemble_alpha_gate(fixture)
+
+
+def _load_regime_allocation_learning_fixture_or_raise(fixture_file: Path):
+    return load_regime_allocation_learning_fixture(fixture_file)
+
+
+def _run_regime_allocation_learning_dataset(fixture_file: Path):
+    fixture = _load_regime_allocation_learning_fixture_or_raise(fixture_file)
+    return build_regime_allocation_learning_dataset(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
