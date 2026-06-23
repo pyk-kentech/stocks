@@ -279,6 +279,8 @@ from stock_risk_mcp.strategy_ensemble_alpha_engine import build_strategy_ensembl
 from stock_risk_mcp.strategy_ensemble_alpha_fixture import load_strategy_ensemble_alpha_fixture
 from stock_risk_mcp.regime_allocation_learning_engine import build_regime_allocation_learning_dataset
 from stock_risk_mcp.regime_allocation_learning_fixture import load_regime_allocation_learning_fixture
+from stock_risk_mcp.allocation_policy_training_engine import build_allocation_policy_training_sandbox
+from stock_risk_mcp.allocation_policy_training_fixture import load_allocation_policy_training_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1239,6 +1241,33 @@ def build_command_parser() -> argparse.ArgumentParser:
     regime_allocation_dataset_readiness_report = subparsers.add_parser("regime-allocation-dataset-readiness-report")
     regime_allocation_dataset_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     regime_allocation_dataset_readiness_report.add_argument("--output-file", type=Path)
+    allocation_policy_training_check = subparsers.add_parser("allocation-policy-training-check")
+    allocation_policy_training_check.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_training_check.add_argument("--output-file", type=Path)
+    allocation_policy_training_summary_report = subparsers.add_parser("allocation-policy-training-summary-report")
+    allocation_policy_training_summary_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_training_summary_report.add_argument("--output-file", type=Path)
+    regime_action_selection_report = subparsers.add_parser("regime-action-selection-report")
+    regime_action_selection_report.add_argument("--fixture-file", type=Path, required=True)
+    regime_action_selection_report.add_argument("--output-file", type=Path)
+    allocation_policy_walk_forward_report = subparsers.add_parser("allocation-policy-walk-forward-report")
+    allocation_policy_walk_forward_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_walk_forward_report.add_argument("--output-file", type=Path)
+    allocation_policy_risk_adjusted_report = subparsers.add_parser("allocation-policy-risk-adjusted-report")
+    allocation_policy_risk_adjusted_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_risk_adjusted_report.add_argument("--output-file", type=Path)
+    allocation_policy_turnover_slippage_report = subparsers.add_parser("allocation-policy-turnover-slippage-report")
+    allocation_policy_turnover_slippage_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_turnover_slippage_report.add_argument("--output-file", type=Path)
+    allocation_policy_drawdown_stability_report = subparsers.add_parser("allocation-policy-drawdown-stability-report")
+    allocation_policy_drawdown_stability_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_drawdown_stability_report.add_argument("--output-file", type=Path)
+    allocation_policy_promotion_readiness_report = subparsers.add_parser("allocation-policy-promotion-readiness-report")
+    allocation_policy_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_promotion_readiness_report.add_argument("--output-file", type=Path)
+    allocation_policy_artifact_report = subparsers.add_parser("allocation-policy-artifact-report")
+    allocation_policy_artifact_report.add_argument("--fixture-file", type=Path, required=True)
+    allocation_policy_artifact_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2495,6 +2524,15 @@ def main(argv: list[str] | None = None) -> None:
         "allocation-reward-scoring-report",
         "regime-allocation-leakage-report",
         "regime-allocation-dataset-readiness-report",
+        "allocation-policy-training-check",
+        "allocation-policy-training-summary-report",
+        "regime-action-selection-report",
+        "allocation-policy-walk-forward-report",
+        "allocation-policy-risk-adjusted-report",
+        "allocation-policy-turnover-slippage-report",
+        "allocation-policy-drawdown-stability-report",
+        "allocation-policy-promotion-readiness-report",
+        "allocation-policy-artifact-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4799,6 +4837,87 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-training-check":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).policy_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-training-summary-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).policy_training_summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "regime-action-selection-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).regime_action_selection_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-walk-forward-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).allocation_policy_walk_forward_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-risk-adjusted-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).allocation_policy_risk_adjusted_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-turnover-slippage-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).allocation_policy_turnover_slippage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-drawdown-stability-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).allocation_policy_drawdown_stability_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-promotion-readiness-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).policy_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "allocation-policy-artifact-report":
+        try:
+            result = _run_allocation_policy_training_sandbox(args.fixture_file).model_artifact_policy_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5666,6 +5785,15 @@ def _load_regime_allocation_learning_fixture_or_raise(fixture_file: Path):
 def _run_regime_allocation_learning_dataset(fixture_file: Path):
     fixture = _load_regime_allocation_learning_fixture_or_raise(fixture_file)
     return build_regime_allocation_learning_dataset(fixture)
+
+
+def _load_allocation_policy_training_fixture_or_raise(fixture_file: Path):
+    return load_allocation_policy_training_fixture(fixture_file)
+
+
+def _run_allocation_policy_training_sandbox(fixture_file: Path):
+    fixture = _load_allocation_policy_training_fixture_or_raise(fixture_file)
+    return build_allocation_policy_training_sandbox(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

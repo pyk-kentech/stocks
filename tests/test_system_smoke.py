@@ -578,6 +578,26 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["regime_allocation_learning_no_network"] is True
     assert result["checks"]["regime_allocation_learning_hedge_inverse_report_only"] is True
     assert result["checks"]["regime_allocation_learning_parquet_unsupported"] is True
+    assert result["checks"]["allocation_policy_training_fixture_run"] is True
+    assert result["checks"]["allocation_policy_training_summary_report_generated"] is True
+    assert result["checks"]["regime_action_selection_report_generated"] is True
+    assert result["checks"]["allocation_policy_walk_forward_report_generated"] is True
+    assert result["checks"]["allocation_policy_risk_adjusted_report_generated"] is True
+    assert result["checks"]["allocation_policy_turnover_slippage_report_generated"] is True
+    assert result["checks"]["allocation_policy_drawdown_stability_report_generated"] is True
+    assert result["checks"]["allocation_policy_promotion_readiness_report_generated"] is True
+    assert result["checks"]["allocation_policy_artifact_report_generated"] is True
+    assert result["checks"]["allocation_policy_training_local_only"] is True
+    assert result["checks"]["allocation_policy_training_offline_only"] is True
+    assert result["checks"]["allocation_policy_training_report_only"] is True
+    assert result["checks"]["allocation_policy_training_non_executable"] is True
+    assert result["checks"]["allocation_policy_training_trained_or_paper_candidate"] is True
+    assert result["checks"]["allocation_policy_training_no_live_path"] is True
+    assert result["checks"]["allocation_policy_training_no_order_path"] is True
+    assert result["checks"]["allocation_policy_training_no_account_mutation"] is True
+    assert result["checks"]["allocation_policy_training_no_network"] is True
+    assert result["checks"]["allocation_policy_training_artifact_local_only"] is True
+    assert result["checks"]["allocation_policy_training_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

@@ -195,6 +195,8 @@ from stock_risk_mcp.strategy_ensemble_alpha_engine import build_strategy_ensembl
 from stock_risk_mcp.strategy_ensemble_alpha_models import StrategyEnsembleAlphaInput
 from stock_risk_mcp.regime_allocation_learning_engine import build_regime_allocation_learning_dataset
 from stock_risk_mcp.regime_allocation_learning_models import RegimeAllocationLearningInput
+from stock_risk_mcp.allocation_policy_training_engine import build_allocation_policy_training_sandbox
+from stock_risk_mcp.allocation_policy_training_models import AllocationPolicyCandidateInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2135,6 +2137,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     training_pipeline_promotion = _run_training_pipeline_promotion_smoke(output_dir)
     strategy_ensemble_alpha = _run_strategy_ensemble_alpha_smoke(output_dir)
     regime_allocation_learning = _run_regime_allocation_learning_smoke(output_dir)
+    allocation_policy_training = _run_allocation_policy_training_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2906,6 +2909,26 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "regime_allocation_learning_no_network": regime_allocation_learning["no_network"],
             "regime_allocation_learning_hedge_inverse_report_only": regime_allocation_learning["hedge_inverse_report_only"],
             "regime_allocation_learning_parquet_unsupported": regime_allocation_learning["parquet_unsupported"],
+            "allocation_policy_training_fixture_run": allocation_policy_training["fixture_run"],
+            "allocation_policy_training_summary_report_generated": allocation_policy_training["summary_report_generated"],
+            "regime_action_selection_report_generated": allocation_policy_training["selection_report_generated"],
+            "allocation_policy_walk_forward_report_generated": allocation_policy_training["walk_forward_report_generated"],
+            "allocation_policy_risk_adjusted_report_generated": allocation_policy_training["risk_adjusted_report_generated"],
+            "allocation_policy_turnover_slippage_report_generated": allocation_policy_training["turnover_report_generated"],
+            "allocation_policy_drawdown_stability_report_generated": allocation_policy_training["drawdown_report_generated"],
+            "allocation_policy_promotion_readiness_report_generated": allocation_policy_training["promotion_report_generated"],
+            "allocation_policy_artifact_report_generated": allocation_policy_training["artifact_report_generated"],
+            "allocation_policy_training_local_only": allocation_policy_training["local_only"],
+            "allocation_policy_training_offline_only": allocation_policy_training["offline_only"],
+            "allocation_policy_training_report_only": allocation_policy_training["report_only"],
+            "allocation_policy_training_non_executable": allocation_policy_training["non_executable"],
+            "allocation_policy_training_trained_or_paper_candidate": allocation_policy_training["trained_or_paper_candidate"],
+            "allocation_policy_training_no_live_path": allocation_policy_training["no_live_path"],
+            "allocation_policy_training_no_order_path": allocation_policy_training["no_order_path"],
+            "allocation_policy_training_no_account_mutation": allocation_policy_training["no_account_mutation"],
+            "allocation_policy_training_no_network": allocation_policy_training["no_network"],
+            "allocation_policy_training_artifact_local_only": allocation_policy_training["artifact_local_only"],
+            "allocation_policy_training_parquet_unsupported": allocation_policy_training["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -7684,5 +7707,128 @@ def _run_regime_allocation_learning_smoke(output_dir: Path) -> dict[str, bool]:
         "no_account_mutation": evaluated.learning_dataset_readiness_report.no_account_mutation,
         "no_network": evaluated.learning_dataset_readiness_report.no_network,
         "hedge_inverse_report_only": evaluated.hedge_inverse_eligibility_report.report_only and evaluated.hedge_inverse_eligibility_report.non_executable,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_allocation_policy_training_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_allocation_policy_training_sandbox(
+        AllocationPolicyCandidateInput.model_validate(
+            {
+                "input_id": "allocation-policy-training-input-smoke",
+                "training_input": {
+                    "learning_dataset_readiness_ref": "dataset-readiness-ref-smoke",
+                    "learning_dataset_readiness_decision": "TRAINING_READY",
+                    "regime_feature_snapshot_refs": ["REGIME-SNAPSHOT-SMOKE-1", "REGIME-SNAPSHOT-SMOKE-2"],
+                    "action_candidate_refs": ["ACTION-REF-SMOKE-1", "ACTION-REF-SMOKE-2"],
+                    "forward_outcome_label_refs": ["OUTCOME-REF-SMOKE-1", "OUTCOME-REF-SMOKE-2"],
+                    "reward_scoring_refs": ["REWARD-REF-SMOKE-1"],
+                    "point_in_time_safety_ref": "pit-safety-ref-smoke",
+                    "leakage_guard_ref": "leakage-guard-ref-smoke",
+                    "walk_forward_split_ref": "walk-forward-split-ref-smoke",
+                },
+                "policy_candidate": {
+                    "policy_id": "allocation-policy-smoke",
+                    "policy_family": "RULE_BASELINE",
+                    "action_space": [
+                        "KEEP_LONG",
+                        "REDUCE_SIZE",
+                        "ROTATE_DEFENSIVE",
+                        "WATCH_ONLY",
+                    ],
+                    "regime_feature_set_id": "regime-feature-set-smoke",
+                    "training_dataset_ref": "training-dataset-ref-smoke",
+                    "walk_forward_validation_ref": "walk-forward-validation-ref-smoke",
+                    "strategy_ensemble_ref": "strategy-ensemble-ref-smoke",
+                    "reward_scoring_ref": "reward-scoring-ref-smoke",
+                    "random_seed_policy_present": True,
+                    "reproducibility_hash": "repro-hash-smoke",
+                    "artifact_metadata": {
+                        "artifact_id": "artifact-smoke",
+                        "local_only": True,
+                        "offline_only": True,
+                        "non_production": True,
+                    },
+                },
+                "training_evaluation_input": {
+                    "policy_scores_by_action": {
+                        "KEEP_LONG": 0.63,
+                        "REDUCE_SIZE": 0.55,
+                        "ROTATE_DEFENSIVE": 0.71,
+                        "WATCH_ONLY": 0.42,
+                    },
+                    "selected_action_distribution_by_regime": {
+                        "RISK_ON": {"KEEP_LONG": 0.7, "ROTATE_DEFENSIVE": 0.3},
+                        "RISK_OFF": {"ROTATE_DEFENSIVE": 0.6, "REDUCE_SIZE": 0.4},
+                    },
+                    "train_score": 0.66,
+                    "validation_score": 0.64,
+                    "test_score": 0.62,
+                    "forward_paper_score": 0.61,
+                    "risk_adjusted_score": 0.58,
+                    "turnover_score": 0.12,
+                    "slippage_score": 0.03,
+                    "max_drawdown_score": 0.08,
+                    "stable_fold_count": 3,
+                    "fold_count": 4,
+                },
+                "dependency_status": {
+                    "walk_forward_validation_decision": "PAPER_READY",
+                    "training_promotion_dependency_decision": "PAPER_CANDIDATE",
+                    "ensemble_dependency_decision": "PAPER_CANDIDATE",
+                    "point_in_time_evidence_present": True,
+                    "available_at_evidence_present": True,
+                    "leakage_evidence_present": True,
+                },
+                "future_outcome_leakage_detected": False,
+                "source_manifest_ids": ["MANIFEST-SMOKE"],
+                "audit_records": [
+                    {
+                        "audit_record_id": "allocation-policy-training-audit-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "allocation_policy_training_smoke_fixture.json"),
+                        "operator_context": "offline allocation policy training smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+                "safety_report": {
+                    "safety_report_id": "allocation-policy-training-safety-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+            }
+        )
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": evaluated.policy_training_summary_report.report_id.endswith("REPORT"),
+        "selection_report_generated": evaluated.regime_action_selection_report.report_id.endswith("REPORT"),
+        "walk_forward_report_generated": evaluated.allocation_policy_walk_forward_report.report_id.endswith("REPORT"),
+        "risk_adjusted_report_generated": evaluated.allocation_policy_risk_adjusted_report.report_id.endswith("REPORT"),
+        "turnover_report_generated": evaluated.allocation_policy_turnover_slippage_report.report_id.endswith("REPORT"),
+        "drawdown_report_generated": evaluated.allocation_policy_drawdown_stability_report.report_id.endswith("REPORT"),
+        "promotion_report_generated": evaluated.policy_promotion_readiness_report.report_id.endswith("REPORT"),
+        "artifact_report_generated": evaluated.model_artifact_policy_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.policy_promotion_readiness_report.local_file_only,
+        "offline_only": evaluated.policy_promotion_readiness_report.offline_only,
+        "report_only": evaluated.policy_promotion_readiness_report.report_only,
+        "non_executable": evaluated.policy_promotion_readiness_report.non_executable,
+        "trained_or_paper_candidate": evaluated.policy_promotion_readiness_report.decision.value in {"TRAINED_OFFLINE", "PAPER_CANDIDATE"},
+        "no_live_path": evaluated.policy_promotion_readiness_report.no_live_prod and evaluated.policy_promotion_readiness_report.no_autonomous_trading,
+        "no_order_path": evaluated.policy_promotion_readiness_report.no_order and "order intent" not in dumped,
+        "no_account_mutation": evaluated.policy_promotion_readiness_report.no_account_mutation,
+        "no_network": evaluated.policy_promotion_readiness_report.no_network,
+        "artifact_local_only": evaluated.model_artifact_policy_report.local_only and evaluated.model_artifact_policy_report.offline_only and evaluated.model_artifact_policy_report.non_production,
         "parquet_unsupported": ".parquet" not in dumped,
     }
