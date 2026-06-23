@@ -275,6 +275,8 @@ from stock_risk_mcp.walk_forward_validation_engine import build_walk_forward_val
 from stock_risk_mcp.walk_forward_validation_fixture import load_walk_forward_validation_fixture
 from stock_risk_mcp.training_pipeline_promotion_engine import build_training_pipeline_promotion
 from stock_risk_mcp.training_pipeline_promotion_fixture import load_training_pipeline_promotion_fixture
+from stock_risk_mcp.strategy_ensemble_alpha_engine import build_strategy_ensemble_alpha_gate
+from stock_risk_mcp.strategy_ensemble_alpha_fixture import load_strategy_ensemble_alpha_fixture
 from stock_risk_mcp.historical_paper_trading_engine import run_historical_paper_trading
 from stock_risk_mcp.historical_paper_trading_fixture import load_historical_paper_trading_fixture
 from stock_risk_mcp.historical_signal_candidate_engine import build_historical_signal_candidate_batch
@@ -1187,6 +1189,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     model_promotion_readiness_report = subparsers.add_parser("model-promotion-readiness-report")
     model_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     model_promotion_readiness_report.add_argument("--output-file", type=Path)
+    strategy_ensemble_check = subparsers.add_parser("strategy-ensemble-check")
+    strategy_ensemble_check.add_argument("--fixture-file", type=Path, required=True)
+    strategy_ensemble_check.add_argument("--output-file", type=Path)
+    alpha_candidate_report = subparsers.add_parser("alpha-candidate-report")
+    alpha_candidate_report.add_argument("--fixture-file", type=Path, required=True)
+    alpha_candidate_report.add_argument("--output-file", type=Path)
+    strategy_family_diversification_report = subparsers.add_parser("strategy-family-diversification-report")
+    strategy_family_diversification_report.add_argument("--fixture-file", type=Path, required=True)
+    strategy_family_diversification_report.add_argument("--output-file", type=Path)
+    alpha_correlation_risk_report = subparsers.add_parser("alpha-correlation-risk-report")
+    alpha_correlation_risk_report.add_argument("--fixture-file", type=Path, required=True)
+    alpha_correlation_risk_report.add_argument("--output-file", type=Path)
+    drawdown_co_movement_report = subparsers.add_parser("drawdown-co-movement-report")
+    drawdown_co_movement_report.add_argument("--fixture-file", type=Path, required=True)
+    drawdown_co_movement_report.add_argument("--output-file", type=Path)
+    regime_overlap_report = subparsers.add_parser("regime-overlap-report")
+    regime_overlap_report.add_argument("--fixture-file", type=Path, required=True)
+    regime_overlap_report.add_argument("--output-file", type=Path)
+    alpha_portfolio_concentration_report = subparsers.add_parser("alpha-portfolio-concentration-report")
+    alpha_portfolio_concentration_report.add_argument("--fixture-file", type=Path, required=True)
+    alpha_portfolio_concentration_report.add_argument("--output-file", type=Path)
+    ensemble_promotion_readiness_report = subparsers.add_parser("ensemble-promotion-readiness-report")
+    ensemble_promotion_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    ensemble_promotion_readiness_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2427,6 +2453,14 @@ def main(argv: list[str] | None = None) -> None:
         "training-reproducibility-report",
         "model-artifact-policy-report",
         "model-promotion-readiness-report",
+        "strategy-ensemble-check",
+        "alpha-candidate-report",
+        "strategy-family-diversification-report",
+        "alpha-correlation-risk-report",
+        "drawdown-co-movement-report",
+        "regime-overlap-report",
+        "alpha-portfolio-concentration-report",
+        "ensemble-promotion-readiness-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -4587,6 +4621,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-ensemble-check":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).ensemble_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "alpha-candidate-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).alpha_candidate_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "strategy-family-diversification-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).strategy_family_diversification_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "alpha-correlation-risk-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).alpha_correlation_risk_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "drawdown-co-movement-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).drawdown_co_movement_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "regime-overlap-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).regime_overlap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "alpha-portfolio-concentration-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).alpha_portfolio_concentration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "ensemble-promotion-readiness-report":
+        try:
+            result = _run_strategy_ensemble_alpha_gate(args.fixture_file).ensemble_promotion_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -5436,6 +5542,15 @@ def _load_training_pipeline_promotion_fixture_or_raise(fixture_file: Path):
 def _run_training_pipeline_promotion(fixture_file: Path):
     fixture = _load_training_pipeline_promotion_fixture_or_raise(fixture_file)
     return build_training_pipeline_promotion(fixture)
+
+
+def _load_strategy_ensemble_alpha_fixture_or_raise(fixture_file: Path):
+    return load_strategy_ensemble_alpha_fixture(fixture_file)
+
+
+def _run_strategy_ensemble_alpha_gate(fixture_file: Path):
+    fixture = _load_strategy_ensemble_alpha_fixture_or_raise(fixture_file)
+    return build_strategy_ensemble_alpha_gate(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

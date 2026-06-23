@@ -541,6 +541,24 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["training_pipeline_promotion_no_account_mutation"] is True
     assert result["checks"]["training_pipeline_promotion_no_network"] is True
     assert result["checks"]["training_pipeline_promotion_parquet_unsupported"] is True
+    assert result["checks"]["strategy_ensemble_alpha_fixture_run"] is True
+    assert result["checks"]["alpha_candidate_report_generated"] is True
+    assert result["checks"]["strategy_family_diversification_report_generated"] is True
+    assert result["checks"]["alpha_correlation_risk_report_generated"] is True
+    assert result["checks"]["drawdown_co_movement_report_generated"] is True
+    assert result["checks"]["regime_overlap_report_generated"] is True
+    assert result["checks"]["alpha_portfolio_concentration_report_generated"] is True
+    assert result["checks"]["ensemble_promotion_readiness_report_generated"] is True
+    assert result["checks"]["strategy_ensemble_alpha_local_only"] is True
+    assert result["checks"]["strategy_ensemble_alpha_offline_only"] is True
+    assert result["checks"]["strategy_ensemble_alpha_report_only"] is True
+    assert result["checks"]["strategy_ensemble_alpha_non_executable"] is True
+    assert result["checks"]["strategy_ensemble_alpha_ensemble_ready_or_paper_candidate"] is True
+    assert result["checks"]["strategy_ensemble_alpha_no_live_path"] is True
+    assert result["checks"]["strategy_ensemble_alpha_no_order_path"] is True
+    assert result["checks"]["strategy_ensemble_alpha_no_account_mutation"] is True
+    assert result["checks"]["strategy_ensemble_alpha_no_network"] is True
+    assert result["checks"]["strategy_ensemble_alpha_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

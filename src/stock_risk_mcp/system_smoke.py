@@ -191,6 +191,8 @@ from stock_risk_mcp.walk_forward_validation_engine import build_walk_forward_val
 from stock_risk_mcp.walk_forward_validation_models import WalkForwardValidationInput
 from stock_risk_mcp.training_pipeline_promotion_engine import build_training_pipeline_promotion
 from stock_risk_mcp.training_pipeline_promotion_models import TrainingPipelinePromotionInput
+from stock_risk_mcp.strategy_ensemble_alpha_engine import build_strategy_ensemble_alpha_gate
+from stock_risk_mcp.strategy_ensemble_alpha_models import StrategyEnsembleAlphaInput
 
 
 def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dict[str, object]:
@@ -2129,6 +2131,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     point_in_time_universe = _run_point_in_time_universe_smoke(output_dir)
     walk_forward_validation = _run_walk_forward_validation_smoke(output_dir)
     training_pipeline_promotion = _run_training_pipeline_promotion_smoke(output_dir)
+    strategy_ensemble_alpha = _run_strategy_ensemble_alpha_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2863,6 +2866,24 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "training_pipeline_promotion_no_account_mutation": training_pipeline_promotion["no_account_mutation"],
             "training_pipeline_promotion_no_network": training_pipeline_promotion["no_network"],
             "training_pipeline_promotion_parquet_unsupported": training_pipeline_promotion["parquet_unsupported"],
+            "strategy_ensemble_alpha_fixture_run": strategy_ensemble_alpha["fixture_run"],
+            "alpha_candidate_report_generated": strategy_ensemble_alpha["alpha_candidate_report_generated"],
+            "strategy_family_diversification_report_generated": strategy_ensemble_alpha["family_report_generated"],
+            "alpha_correlation_risk_report_generated": strategy_ensemble_alpha["correlation_report_generated"],
+            "drawdown_co_movement_report_generated": strategy_ensemble_alpha["drawdown_report_generated"],
+            "regime_overlap_report_generated": strategy_ensemble_alpha["regime_report_generated"],
+            "alpha_portfolio_concentration_report_generated": strategy_ensemble_alpha["concentration_report_generated"],
+            "ensemble_promotion_readiness_report_generated": strategy_ensemble_alpha["promotion_report_generated"],
+            "strategy_ensemble_alpha_local_only": strategy_ensemble_alpha["local_only"],
+            "strategy_ensemble_alpha_offline_only": strategy_ensemble_alpha["offline_only"],
+            "strategy_ensemble_alpha_report_only": strategy_ensemble_alpha["report_only"],
+            "strategy_ensemble_alpha_non_executable": strategy_ensemble_alpha["non_executable"],
+            "strategy_ensemble_alpha_ensemble_ready_or_paper_candidate": strategy_ensemble_alpha["ensemble_ready_or_paper_candidate"],
+            "strategy_ensemble_alpha_no_live_path": strategy_ensemble_alpha["no_live_path"],
+            "strategy_ensemble_alpha_no_order_path": strategy_ensemble_alpha["no_order_path"],
+            "strategy_ensemble_alpha_no_account_mutation": strategy_ensemble_alpha["no_account_mutation"],
+            "strategy_ensemble_alpha_no_network": strategy_ensemble_alpha["no_network"],
+            "strategy_ensemble_alpha_parquet_unsupported": strategy_ensemble_alpha["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -7375,5 +7396,133 @@ def _run_training_pipeline_promotion_smoke(output_dir: Path) -> dict[str, bool]:
         "no_order_path": evaluated.model_promotion_readiness_report.no_order and "order intent" not in dumped,
         "no_account_mutation": evaluated.model_promotion_readiness_report.no_account_mutation,
         "no_network": evaluated.model_promotion_readiness_report.no_network,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_strategy_ensemble_alpha_smoke(output_dir: Path) -> dict[str, bool]:
+    evaluated = build_strategy_ensemble_alpha_gate(
+        StrategyEnsembleAlphaInput.model_validate(
+            {
+                "input_id": "strategy-ensemble-input-smoke",
+                "portfolio": {
+                    "portfolio_id": "alpha-portfolio-smoke",
+                    "rebalance_policy": "WEEKLY",
+                    "risk_budget_policy": "BALANCED",
+                    "min_alpha_count": 3,
+                    "min_strategy_family_count": 3,
+                    "max_family_concentration": 0.45,
+                    "max_single_alpha_concentration": 0.40,
+                    "allocations": [
+                        {"alpha_id": "alpha-1", "proposed_weight": 0.34},
+                        {"alpha_id": "alpha-2", "proposed_weight": 0.33},
+                        {"alpha_id": "alpha-3", "proposed_weight": 0.33},
+                    ],
+                },
+                "alpha_candidates": [
+                    {
+                        "alpha_id": "alpha-1",
+                        "strategy_family": "MOMENTUM",
+                        "feature_set_id": "feature-set-1",
+                        "signal_source": "SIGNAL-CANDIDATE",
+                        "horizon": "5D",
+                        "market": "KRX",
+                        "expected_holding_period": "3D",
+                        "training_promotion_ref": "promotion-ref-1",
+                        "training_promotion_decision": "PAPER_CANDIDATE",
+                        "robustness_ref": "robustness-ref-1",
+                        "robustness_decision": "TRAINING_READY",
+                        "paper_candidate_eligibility_ref": "paper-ref-1",
+                    },
+                    {
+                        "alpha_id": "alpha-2",
+                        "strategy_family": "MEAN_REVERSION",
+                        "feature_set_id": "feature-set-2",
+                        "signal_source": "SIGNAL-CANDIDATE",
+                        "horizon": "10D",
+                        "market": "KRX",
+                        "expected_holding_period": "5D",
+                        "training_promotion_ref": "promotion-ref-2",
+                        "training_promotion_decision": "TRAINING_READY",
+                        "robustness_ref": "robustness-ref-2",
+                        "robustness_decision": "TRAINING_READY",
+                        "paper_candidate_eligibility_ref": "paper-ref-2",
+                    },
+                    {
+                        "alpha_id": "alpha-3",
+                        "strategy_family": "SECTOR_ROTATION",
+                        "feature_set_id": "feature-set-3",
+                        "signal_source": "SIGNAL-CANDIDATE",
+                        "horizon": "15D",
+                        "market": "KRX",
+                        "expected_holding_period": "7D",
+                        "training_promotion_ref": "promotion-ref-3",
+                        "training_promotion_decision": "TRAINING_READY",
+                        "robustness_ref": "robustness-ref-3",
+                        "robustness_decision": "TRAINING_READY",
+                        "paper_candidate_eligibility_ref": "paper-ref-3",
+                    },
+                ],
+                "correlation_matrix_summary": {
+                    "max_pair_correlation": 0.35,
+                    "high_correlation_pairs": [],
+                },
+                "drawdown_summary": {
+                    "max_drawdown_co_movement": 0.30,
+                    "high_drawdown_pairs": [],
+                },
+                "regime_overlap_summary": {
+                    "regime_coverage_complete": True,
+                    "overlap_ratio": 0.35,
+                    "covered_regimes": ["RISK_ON", "RISK_OFF", "DEFENSIVE"],
+                },
+                "duplicate_signal_detected": False,
+                "source_manifest_ids": ["MANIFEST-SMOKE"],
+                "audit_records": [
+                    {
+                        "audit_record_id": "strategy-ensemble-audit-smoke",
+                        "created_at": "2026-06-25T09:13:00+09:00",
+                        "source_path": str(output_dir / "strategy_ensemble_alpha_smoke_fixture.json"),
+                        "operator_context": "offline strategy ensemble alpha smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+                "safety_report": {
+                    "safety_report_id": "strategy-ensemble-safety-smoke",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+            }
+        )
+    )
+    dumped = json.dumps(evaluated.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "alpha_candidate_report_generated": evaluated.alpha_candidate_report.report_id.endswith("REPORT"),
+        "family_report_generated": evaluated.strategy_family_diversification_report.report_id.endswith("REPORT"),
+        "correlation_report_generated": evaluated.alpha_correlation_risk_report.report_id.endswith("REPORT"),
+        "drawdown_report_generated": evaluated.drawdown_co_movement_report.report_id.endswith("REPORT"),
+        "regime_report_generated": evaluated.regime_overlap_report.report_id.endswith("REPORT"),
+        "concentration_report_generated": evaluated.alpha_portfolio_concentration_report.report_id.endswith("REPORT"),
+        "promotion_report_generated": evaluated.ensemble_promotion_readiness_report.report_id.endswith("REPORT"),
+        "local_only": evaluated.ensemble_promotion_readiness_report.local_file_only,
+        "offline_only": evaluated.ensemble_promotion_readiness_report.offline_only,
+        "report_only": evaluated.ensemble_promotion_readiness_report.report_only,
+        "non_executable": evaluated.ensemble_promotion_readiness_report.non_executable,
+        "ensemble_ready_or_paper_candidate": evaluated.ensemble_promotion_readiness_report.decision.value in {"ENSEMBLE_READY", "PAPER_CANDIDATE"},
+        "no_live_path": evaluated.ensemble_promotion_readiness_report.no_live_prod and evaluated.ensemble_promotion_readiness_report.no_autonomous_trading,
+        "no_order_path": evaluated.ensemble_promotion_readiness_report.no_order and "order intent" not in dumped,
+        "no_account_mutation": evaluated.ensemble_promotion_readiness_report.no_account_mutation,
+        "no_network": evaluated.ensemble_promotion_readiness_report.no_network,
         "parquet_unsupported": ".parquet" not in dumped,
     }
