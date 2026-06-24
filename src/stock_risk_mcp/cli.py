@@ -270,6 +270,8 @@ from stock_risk_mcp.market_data_provider_registry_engine import build_market_dat
 from stock_risk_mcp.market_data_provider_registry_fixture import load_market_data_provider_registry_fixture
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
 from stock_risk_mcp.position_sizing_fixture import load_position_sizing_fixture
+from stock_risk_mcp.event_risk_engine import build_event_risk_review
+from stock_risk_mcp.event_risk_fixture import load_event_risk_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1441,6 +1443,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     position_sizing_gap_report = subparsers.add_parser("position-sizing-gap-report")
     position_sizing_gap_report.add_argument("--fixture-file", type=Path, required=True)
     position_sizing_gap_report.add_argument("--output-file", type=Path)
+    event_risk_check = subparsers.add_parser("event-risk-check")
+    event_risk_check.add_argument("--fixture-file", type=Path, required=True)
+    event_risk_check.add_argument("--output-file", type=Path)
+    economic_calendar_snapshot_report = subparsers.add_parser("economic-calendar-snapshot-report")
+    economic_calendar_snapshot_report.add_argument("--fixture-file", type=Path, required=True)
+    economic_calendar_snapshot_report.add_argument("--output-file", type=Path)
+    event_window_report = subparsers.add_parser("event-window-report")
+    event_window_report.add_argument("--fixture-file", type=Path, required=True)
+    event_window_report.add_argument("--output-file", type=Path)
+    event_restriction_report = subparsers.add_parser("event-restriction-report")
+    event_restriction_report.add_argument("--fixture-file", type=Path, required=True)
+    event_restriction_report.add_argument("--output-file", type=Path)
+    position_sizing_event_adjustment_report = subparsers.add_parser("position-sizing-event-adjustment-report")
+    position_sizing_event_adjustment_report.add_argument("--fixture-file", type=Path, required=True)
+    position_sizing_event_adjustment_report.add_argument("--output-file", type=Path)
+    event_calendar_provider_readiness_report = subparsers.add_parser("event-calendar-provider-readiness-report")
+    event_calendar_provider_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    event_calendar_provider_readiness_report.add_argument("--output-file", type=Path)
+    event_risk_leakage_report = subparsers.add_parser("event-risk-leakage-report")
+    event_risk_leakage_report.add_argument("--fixture-file", type=Path, required=True)
+    event_risk_leakage_report.add_argument("--output-file", type=Path)
+    event_risk_gap_report = subparsers.add_parser("event-risk-gap-report")
+    event_risk_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    event_risk_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2759,6 +2785,14 @@ def main(argv: list[str] | None = None) -> None:
         "inverse-hedge-sizing-report",
         "position-sizing-boundary-violation-report",
         "position-sizing-gap-report",
+        "event-risk-check",
+        "economic-calendar-snapshot-report",
+        "event-window-report",
+        "event-restriction-report",
+        "position-sizing-event-adjustment-report",
+        "event-calendar-provider-readiness-report",
+        "event-risk-leakage-report",
+        "event-risk-gap-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5625,6 +5659,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "event-risk-check":
+        try:
+            result = _run_event_risk(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return {"decision": result.decision.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "economic-calendar-snapshot-report":
+        try:
+            result = _run_event_risk(args.fixture_file).calendar_snapshot_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "event-window-report":
+        try:
+            result = _run_event_risk(args.fixture_file).event_window_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "event-restriction-report":
+        try:
+            result = _run_event_risk(args.fixture_file).restriction_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-sizing-event-adjustment-report":
+        try:
+            result = _run_event_risk(args.fixture_file).position_sizing_adjustment_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "event-calendar-provider-readiness-report":
+        try:
+            result = _run_event_risk(args.fixture_file).provider_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "event-risk-leakage-report":
+        try:
+            result = _run_event_risk(args.fixture_file).leakage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "event-risk-gap-report":
+        try:
+            result = _run_event_risk(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -6569,6 +6675,15 @@ def _load_position_sizing_fixture_or_raise(fixture_file: Path):
 def _run_position_sizing(fixture_file: Path):
     fixture = _load_position_sizing_fixture_or_raise(fixture_file)
     return build_position_sizing_review(fixture)
+
+
+def _load_event_risk_fixture_or_raise(fixture_file: Path):
+    return load_event_risk_fixture(fixture_file)
+
+
+def _run_event_risk(fixture_file: Path):
+    fixture = _load_event_risk_fixture_or_raise(fixture_file)
+    return build_event_risk_review(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

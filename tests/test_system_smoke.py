@@ -709,6 +709,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["position_sizing_no_network"] is True
     assert result["checks"]["position_sizing_no_provider_call"] is True
     assert result["checks"]["position_sizing_parquet_unsupported"] is True
+    assert result["checks"]["event_risk_fixture_run"] is True
+    assert result["checks"]["event_risk_summary_report_generated"] is True
+    assert result["checks"]["event_risk_calendar_snapshot_report_generated"] is True
+    assert result["checks"]["event_risk_event_window_report_generated"] is True
+    assert result["checks"]["event_risk_restriction_report_generated"] is True
+    assert result["checks"]["event_risk_position_sizing_adjustment_report_generated"] is True
+    assert result["checks"]["event_risk_provider_readiness_report_generated"] is True
+    assert result["checks"]["event_risk_leakage_report_generated"] is True
+    assert result["checks"]["event_risk_gap_report_generated"] is True
+    assert result["checks"]["event_risk_local_only"] is True
+    assert result["checks"]["event_risk_offline_only"] is True
+    assert result["checks"]["event_risk_report_only"] is True
+    assert result["checks"]["event_risk_non_executable"] is True
+    assert result["checks"]["event_risk_no_live_path"] is True
+    assert result["checks"]["event_risk_no_order_path"] is True
+    assert result["checks"]["event_risk_no_account_mutation"] is True
+    assert result["checks"]["event_risk_no_network"] is True
+    assert result["checks"]["event_risk_no_provider_call"] is True
+    assert result["checks"]["event_risk_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

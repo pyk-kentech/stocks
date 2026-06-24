@@ -205,6 +205,8 @@ from stock_risk_mcp.market_data_provider_registry_engine import build_market_dat
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
 from stock_risk_mcp.position_sizing_models import PositionSizingInput
+from stock_risk_mcp.event_risk_engine import build_event_risk_review
+from stock_risk_mcp.event_risk_models import EventRiskInput
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_models import MarketRegimeInput
 from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
@@ -2156,6 +2158,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     market_regime = _run_market_regime_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
     position_sizing = _run_position_sizing_smoke(output_dir)
+    event_risk = _run_event_risk_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3058,6 +3061,25 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "position_sizing_no_network": position_sizing["no_network"],
             "position_sizing_no_provider_call": position_sizing["no_provider_call"],
             "position_sizing_parquet_unsupported": position_sizing["parquet_unsupported"],
+            "event_risk_fixture_run": event_risk["fixture_run"],
+            "event_risk_summary_report_generated": event_risk["summary_report_generated"],
+            "event_risk_calendar_snapshot_report_generated": event_risk["calendar_snapshot_report_generated"],
+            "event_risk_event_window_report_generated": event_risk["event_window_report_generated"],
+            "event_risk_restriction_report_generated": event_risk["restriction_report_generated"],
+            "event_risk_position_sizing_adjustment_report_generated": event_risk["position_sizing_adjustment_report_generated"],
+            "event_risk_provider_readiness_report_generated": event_risk["provider_readiness_report_generated"],
+            "event_risk_leakage_report_generated": event_risk["leakage_report_generated"],
+            "event_risk_gap_report_generated": event_risk["gap_report_generated"],
+            "event_risk_local_only": event_risk["local_only"],
+            "event_risk_offline_only": event_risk["offline_only"],
+            "event_risk_report_only": event_risk["report_only"],
+            "event_risk_non_executable": event_risk["non_executable"],
+            "event_risk_no_live_path": event_risk["no_live_path"],
+            "event_risk_no_order_path": event_risk["no_order_path"],
+            "event_risk_no_account_mutation": event_risk["no_account_mutation"],
+            "event_risk_no_network": event_risk["no_network"],
+            "event_risk_no_provider_call": event_risk["no_provider_call"],
+            "event_risk_parquet_unsupported": event_risk["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -8617,5 +8639,129 @@ def _run_position_sizing_smoke(output_dir: Path) -> dict[str, bool]:
         "no_account_mutation": review.summary_report.no_account_mutation,
         "no_network": review.summary_report.no_network,
         "no_provider_call": review.summary_report.no_provider_api and review.summary_report.no_network and review.summary_report.no_websocket,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_event_risk_smoke(output_dir: Path) -> dict[str, bool]:
+    review = build_event_risk_review(
+        EventRiskInput.model_validate(
+            {
+                "event_risk_review_id": "event-risk-smoke",
+                "candidate_symbol": "QQQ",
+                "market": "NASDAQ",
+                "country_scope": "US",
+                "candidate_action_type": "NEW_ENTRY",
+                "candidate_side": "BUY",
+                "decision_timestamp": "2026-06-24T11:00:00+09:00",
+                "available_at": "2026-06-24T10:00:00+09:00",
+                "provider_readiness_ref": str(output_dir / "provider_selection_report.json"),
+                "provider_readiness_level": "PAPER_READY",
+                "calendar_source_ref": str(output_dir / "economic_calendar_snapshot.json"),
+                "calendar_provider_ref": str(output_dir / "economic_calendar_provider.json"),
+                "calendar_freshness_minutes": 30,
+                "calendar_max_age_minutes": 120,
+                "fail_closed_if_calendar_missing": True,
+                "position_sizing_ref": str(output_dir / "position_sizing_report.json"),
+                "position_sizing_decision": "SIZE_READY",
+                "position_sizing_quantity": 40,
+                "position_sizing_notional": 20000.0,
+                "position_sizing_size_multiplier": 1.0,
+                "market_regime_ref": str(output_dir / "market_regime_report.json"),
+                "market_regime_label": "RISK_ON",
+                "existing_position": False,
+                "is_single_name": False,
+                "is_inverse_or_hedge": False,
+                "net_exposure_reducing_action": False,
+                "events": [
+                    {
+                        "event_id": "fomc-2026-06",
+                        "event_type": "FOMC_RATE_DECISION",
+                        "country_scope": "US",
+                        "market_scope": "GLOBAL",
+                        "affected_markets": ["NASDAQ", "NYSE"],
+                        "scheduled_at": "2026-06-24T14:00:00+09:00",
+                        "available_at": "2026-06-24T10:00:00+09:00",
+                        "source_provider_ref": str(output_dir / "economic_calendar_provider.json"),
+                        "source_calendar_ref": str(output_dir / "economic_calendar_snapshot.json"),
+                        "importance_level": "CRITICAL",
+                        "expected_impact": "rate decision risk event",
+                        "event_status": "SCHEDULED",
+                        "timezone": "ASIA/SEOUL",
+                        "event_window_policy_ref": str(output_dir / "fomc_window_policy.json"),
+                    }
+                ],
+                "event_windows": [
+                    {
+                        "window_id": "fomc-window",
+                        "event_type": "FOMC_RATE_DECISION",
+                        "importance_level": "CRITICAL",
+                        "pre_event_block_window_minutes": 240,
+                        "pre_event_reduce_window_minutes": 720,
+                        "post_event_cooldown_minutes": 180,
+                        "event_active_window_minutes": 120,
+                        "new_entry_allowed": False,
+                        "position_increase_allowed": False,
+                        "reduce_only": False,
+                        "watch_only": False,
+                        "event_size_multiplier": 0.5,
+                        "forced_gap_if_calendar_missing": True,
+                        "policy_reason": "fomc risk gate",
+                    }
+                ],
+                "source_refs": [
+                    str(output_dir / "economic_calendar_snapshot.json"),
+                    str(output_dir / "provider_selection_report.json"),
+                    str(output_dir / "position_sizing_report.json"),
+                ],
+                "safety_report": {
+                    "safety_report_id": "event-risk-smoke-safety",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "KIWOOM_API_BLOCKED",
+                        "WEBSOCKET_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "event-risk-smoke-audit",
+                        "created_at": "2026-06-24T18:00:00+09:00",
+                        "source_path": str(output_dir / "event_risk_fixture.json"),
+                        "operator_context": "offline event risk smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(review.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": review.summary_report is not None and review.summary_report.report_id.endswith("REPORT"),
+        "calendar_snapshot_report_generated": review.calendar_snapshot_report is not None and review.calendar_snapshot_report.report_id.endswith("REPORT"),
+        "event_window_report_generated": review.event_window_report is not None and review.event_window_report.report_id.endswith("REPORT"),
+        "restriction_report_generated": review.restriction_report is not None and review.restriction_report.report_id.endswith("REPORT"),
+        "position_sizing_adjustment_report_generated": review.position_sizing_adjustment_report is not None and review.position_sizing_adjustment_report.report_id.endswith("REPORT"),
+        "provider_readiness_report_generated": review.provider_readiness_report is not None and review.provider_readiness_report.report_id.endswith("REPORT"),
+        "leakage_report_generated": review.leakage_report is not None and review.leakage_report.report_id.endswith("REPORT"),
+        "gap_report_generated": review.gap_report is not None and review.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": review.summary_report is not None and review.summary_report.local_file_only,
+        "offline_only": review.summary_report is not None and review.summary_report.offline_only,
+        "report_only": review.summary_report is not None and review.summary_report.report_only,
+        "non_executable": review.summary_report is not None and review.summary_report.non_executable,
+        "no_live_path": review.summary_report is not None and review.summary_report.no_live_prod and review.summary_report.no_autonomous_trading,
+        "no_order_path": review.summary_report is not None and review.summary_report.no_order and review.summary_report.non_executable,
+        "no_account_mutation": review.summary_report is not None and review.summary_report.no_account_mutation,
+        "no_network": review.summary_report is not None and review.summary_report.no_network,
+        "no_provider_call": review.summary_report is not None and review.summary_report.no_provider_api and review.summary_report.no_network and review.summary_report.no_websocket,
         "parquet_unsupported": ".parquet" not in dumped,
     }
