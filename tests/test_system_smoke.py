@@ -714,6 +714,27 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_rest_readonly_chart_no_auth_header_generation"] is True
     assert result["checks"]["kiwoom_rest_readonly_chart_canonical_ohlcv_output_only"] is True
     assert result["checks"]["kiwoom_rest_readonly_chart_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_fixture_run"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_request_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_mocked_response_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_canonical_rank_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_canonical_outlier_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_continuation_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_v7_integration_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_local_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_offline_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_report_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_non_executable"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_no_network"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_no_provider_api"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_no_token_loading"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_rank_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
