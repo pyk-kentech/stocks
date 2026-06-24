@@ -649,6 +649,32 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["controlled_mock_readiness_no_mock_order_execution"] is True
     assert result["checks"]["controlled_mock_readiness_review_only"] is True
     assert result["checks"]["controlled_mock_readiness_parquet_unsupported"] is True
+    assert result["checks"]["controlled_mock_dry_run_fixture_run"] is True
+    assert result["checks"]["controlled_mock_dry_run_summary_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_preview_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_preflight_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_provider_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_market_regime_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_position_sizing_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_event_risk_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_breadth_routing_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_order_gate_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_risk_budget_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_kill_switch_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_rollback_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_audit_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_boundary_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_gap_report_generated"] is True
+    assert result["checks"]["controlled_mock_dry_run_report_only"] is True
+    assert result["checks"]["controlled_mock_dry_run_non_executable"] is True
+    assert result["checks"]["controlled_mock_dry_run_local_only"] is True
+    assert result["checks"]["controlled_mock_dry_run_offline_only"] is True
+    assert result["checks"]["controlled_mock_dry_run_no_live_order_account_prod_path"] is True
+    assert result["checks"]["controlled_mock_dry_run_no_real_broker_kiwoom_network_provider_call"] is True
+    assert result["checks"]["controlled_mock_dry_run_no_mock_order_execution"] is True
+    assert result["checks"]["controlled_mock_dry_run_preview_non_executable"] is True
+    assert result["checks"]["controlled_mock_dry_run_execution_review_or_rehearsed_only"] is True
+    assert result["checks"]["controlled_mock_dry_run_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True

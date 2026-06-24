@@ -264,6 +264,8 @@ from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_p
 from stock_risk_mcp.risk_adjusted_paper_eval_fixture import load_risk_adjusted_paper_eval_fixture
 from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_mock_readiness_review
 from stock_risk_mcp.controlled_mock_readiness_fixture import load_controlled_mock_readiness_fixture
+from stock_risk_mcp.controlled_mock_dry_run_engine import build_controlled_mock_dry_run_review
+from stock_risk_mcp.controlled_mock_dry_run_fixture import load_controlled_mock_dry_run_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
@@ -1355,6 +1357,51 @@ def build_command_parser() -> argparse.ArgumentParser:
     mock_readiness_gap_report = subparsers.add_parser("mock-readiness-gap-report")
     mock_readiness_gap_report.add_argument("--fixture-file", type=Path, required=True)
     mock_readiness_gap_report.add_argument("--output-file", type=Path)
+    controlled_mock_dry_run_check = subparsers.add_parser("controlled-mock-dry-run-check")
+    controlled_mock_dry_run_check.add_argument("--fixture-file", type=Path, required=True)
+    controlled_mock_dry_run_check.add_argument("--output-file", type=Path)
+    mock_order_intent_preview_report = subparsers.add_parser("mock-order-intent-preview-report")
+    mock_order_intent_preview_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_order_intent_preview_report.add_argument("--output-file", type=Path)
+    mock_preflight_rehearsal_report = subparsers.add_parser("mock-preflight-rehearsal-report")
+    mock_preflight_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_preflight_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_provider_readiness_rehearsal_report = subparsers.add_parser("mock-provider-readiness-rehearsal-report")
+    mock_provider_readiness_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_provider_readiness_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_market_regime_rehearsal_report = subparsers.add_parser("mock-market-regime-rehearsal-report")
+    mock_market_regime_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_market_regime_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_position_sizing_rehearsal_report = subparsers.add_parser("mock-position-sizing-rehearsal-report")
+    mock_position_sizing_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_position_sizing_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_event_risk_rehearsal_report = subparsers.add_parser("mock-event-risk-rehearsal-report")
+    mock_event_risk_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_event_risk_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_breadth_outlier_routing_rehearsal_report = subparsers.add_parser("mock-breadth-outlier-routing-rehearsal-report")
+    mock_breadth_outlier_routing_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_breadth_outlier_routing_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_order_gate_rehearsal_report = subparsers.add_parser("mock-order-gate-rehearsal-report")
+    mock_order_gate_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_order_gate_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_risk_budget_rehearsal_report = subparsers.add_parser("mock-risk-budget-rehearsal-report")
+    mock_risk_budget_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_risk_budget_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_kill_switch_rehearsal_report = subparsers.add_parser("mock-kill-switch-rehearsal-report")
+    mock_kill_switch_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_kill_switch_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_rollback_rehearsal_report = subparsers.add_parser("mock-rollback-rehearsal-report")
+    mock_rollback_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_rollback_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_audit_trail_rehearsal_report = subparsers.add_parser("mock-audit-trail-rehearsal-report")
+    mock_audit_trail_rehearsal_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_audit_trail_rehearsal_report.add_argument("--output-file", type=Path)
+    mock_dry_run_boundary_violation_report = subparsers.add_parser("mock-dry-run-boundary-violation-report")
+    mock_dry_run_boundary_violation_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_dry_run_boundary_violation_report.add_argument("--output-file", type=Path)
+    mock_dry_run_gap_report = subparsers.add_parser("mock-dry-run-gap-report")
+    mock_dry_run_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_dry_run_gap_report.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
     market_regime_check.add_argument("--output-file", type=Path)
@@ -2805,6 +2852,21 @@ def main(argv: list[str] | None = None) -> None:
         "mock-safety-policy-report",
         "mock-boundary-violation-report",
         "mock-readiness-gap-report",
+        "controlled-mock-dry-run-check",
+        "mock-order-intent-preview-report",
+        "mock-preflight-rehearsal-report",
+        "mock-provider-readiness-rehearsal-report",
+        "mock-market-regime-rehearsal-report",
+        "mock-position-sizing-rehearsal-report",
+        "mock-event-risk-rehearsal-report",
+        "mock-breadth-outlier-routing-rehearsal-report",
+        "mock-order-gate-rehearsal-report",
+        "mock-risk-budget-rehearsal-report",
+        "mock-kill-switch-rehearsal-report",
+        "mock-rollback-rehearsal-report",
+        "mock-audit-trail-rehearsal-report",
+        "mock-dry-run-boundary-violation-report",
+        "mock-dry-run-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -5455,6 +5517,141 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-mock-dry-run-check":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return {"decision": result.decision.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-order-intent-preview-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).mock_order_intent_preview
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "intent_id": result.intent_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-preflight-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).preflight_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-provider-readiness-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).provider_readiness_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-market-regime-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).market_regime_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-position-sizing-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).position_sizing_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-event-risk-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).event_risk_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-breadth-outlier-routing-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).breadth_outlier_routing_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-order-gate-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).order_gate_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-risk-budget-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).risk_budget_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-kill-switch-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).kill_switch_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-rollback-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).rollback_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-audit-trail-rehearsal-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).audit_trail_rehearsal_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-dry-run-boundary-violation-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).boundary_violation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-dry-run-gap-report":
+        try:
+            result = _run_controlled_mock_dry_run(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -6858,6 +7055,15 @@ def _load_controlled_mock_readiness_fixture_or_raise(fixture_file: Path):
 def _run_controlled_mock_readiness(fixture_file: Path):
     fixture = _load_controlled_mock_readiness_fixture_or_raise(fixture_file)
     return build_controlled_mock_readiness_review(fixture)
+
+
+def _load_controlled_mock_dry_run_fixture_or_raise(fixture_file: Path):
+    return load_controlled_mock_dry_run_fixture(fixture_file)
+
+
+def _run_controlled_mock_dry_run(fixture_file: Path):
+    fixture = _load_controlled_mock_dry_run_fixture_or_raise(fixture_file)
+    return build_controlled_mock_dry_run_review(fixture)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):
