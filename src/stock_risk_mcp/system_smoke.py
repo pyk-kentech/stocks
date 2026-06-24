@@ -205,6 +205,8 @@ from stock_risk_mcp.controlled_mock_dry_run_engine import build_controlled_mock_
 from stock_risk_mcp.controlled_mock_dry_run_models import ControlledMockDryRunInput
 from stock_risk_mcp.read_only_provider_adapter_engine import build_read_only_provider_adapter_boundary
 from stock_risk_mcp.read_only_provider_adapter_models import ReadOnlyProviderAdapterInput
+from stock_risk_mcp.kiwoom_rest_readonly_chart_engine import build_kiwoom_rest_readonly_chart_adapter
+from stock_risk_mcp.kiwoom_rest_readonly_chart_models import KiwoomRestChartConfig
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
@@ -2168,6 +2170,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     breadth_leadership_routing = _run_breadth_leadership_routing_smoke(output_dir)
     controlled_mock_dry_run = _run_controlled_mock_dry_run_smoke(output_dir)
     read_only_provider_adapter = _run_read_only_provider_adapter_smoke(output_dir)
+    kiwoom_rest_readonly_chart = _run_kiwoom_rest_readonly_chart_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3160,6 +3163,26 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "read_only_provider_adapter_account_order_blocked": read_only_provider_adapter["account_order_blocked"],
             "read_only_provider_adapter_canonical_output_only": read_only_provider_adapter["canonical_output_only"],
             "read_only_provider_adapter_parquet_unsupported": read_only_provider_adapter["parquet_unsupported"],
+            "kiwoom_rest_readonly_chart_fixture_run": kiwoom_rest_readonly_chart["fixture_run"],
+            "kiwoom_rest_readonly_chart_request_report_generated": kiwoom_rest_readonly_chart["request_report_generated"],
+            "kiwoom_rest_readonly_chart_mocked_response_report_generated": kiwoom_rest_readonly_chart["mocked_response_report_generated"],
+            "kiwoom_rest_readonly_chart_canonical_ohlcv_report_generated": kiwoom_rest_readonly_chart["canonical_ohlcv_report_generated"],
+            "kiwoom_rest_readonly_chart_continuation_report_generated": kiwoom_rest_readonly_chart["continuation_report_generated"],
+            "kiwoom_rest_readonly_chart_safety_report_generated": kiwoom_rest_readonly_chart["safety_report_generated"],
+            "kiwoom_rest_readonly_chart_integration_compatibility_report_generated": kiwoom_rest_readonly_chart["integration_compatibility_report_generated"],
+            "kiwoom_rest_readonly_chart_gap_report_generated": kiwoom_rest_readonly_chart["gap_report_generated"],
+            "kiwoom_rest_readonly_chart_local_only": kiwoom_rest_readonly_chart["local_only"],
+            "kiwoom_rest_readonly_chart_offline_only": kiwoom_rest_readonly_chart["offline_only"],
+            "kiwoom_rest_readonly_chart_report_only": kiwoom_rest_readonly_chart["report_only"],
+            "kiwoom_rest_readonly_chart_non_executable": kiwoom_rest_readonly_chart["non_executable"],
+            "kiwoom_rest_readonly_chart_no_network": kiwoom_rest_readonly_chart["no_network"],
+            "kiwoom_rest_readonly_chart_no_provider_api": kiwoom_rest_readonly_chart["no_provider_api"],
+            "kiwoom_rest_readonly_chart_no_account_order_path": kiwoom_rest_readonly_chart["no_account_order_path"],
+            "kiwoom_rest_readonly_chart_no_env_credential_read": kiwoom_rest_readonly_chart["no_env_credential_read"],
+            "kiwoom_rest_readonly_chart_no_token_loading": kiwoom_rest_readonly_chart["no_token_loading"],
+            "kiwoom_rest_readonly_chart_no_auth_header_generation": kiwoom_rest_readonly_chart["no_auth_header_generation"],
+            "kiwoom_rest_readonly_chart_canonical_ohlcv_output_only": kiwoom_rest_readonly_chart["canonical_ohlcv_output_only"],
+            "kiwoom_rest_readonly_chart_parquet_unsupported": kiwoom_rest_readonly_chart["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -9402,5 +9425,90 @@ def _run_read_only_provider_adapter_smoke(output_dir: Path) -> dict[str, bool]:
         "no_auth_header_generation": reviewed.summary_report.no_auth_header_generation and reviewed.canonical_readonly_contract_report.request_envelope_boundary.authorization_template == "Bearer <TOKEN_REF_ONLY>",
         "account_order_blocked": {"KA00001", "KT10000", "00", "04"} <= {item.api_id for item in reviewed.blocked_account_order_api_report.blocked_records},
         "canonical_output_only": reviewed.request_envelope_boundary.authorization_template == "Bearer <TOKEN_REF_ONLY>" and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records) and all(item.raw_payload_redacted for item in reviewed.canonical_quotes + reviewed.canonical_ohlcv_records + reviewed.canonical_rank_signals + reviewed.canonical_flow_signals + reviewed.canonical_sector_theme_signals + reviewed.canonical_realtime_events + reviewed.canonical_capability_records),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_rest_readonly_chart_smoke(output_dir: Path) -> dict[str, bool]:
+    reviewed = build_kiwoom_rest_readonly_chart_adapter(
+        KiwoomRestChartConfig.model_validate(
+            {
+                "config_id": "kiwoom-rest-readonly-chart-smoke",
+                "provider_symbol": "005930",
+                "canonical_instrument_key": "005930_KRX",
+                "api_id": "KA10081",
+                "base_dt": "20260202",
+                "upd_stkpc_tp": "1",
+                "available_at": "2026-06-25T15:35:00+09:00",
+                "source_ref": str(output_dir / "kiwoom_rest_readonly_chart_fixture.json"),
+                "mocked_response_payload": {
+                    "stk_cd": "005930",
+                    "return_code": 0,
+                    "return_msg": "정상적으로 처리되었습니다",
+                    "stk_dt_pole_chart_qry": [
+                        {
+                            "dt": "20260202",
+                            "open_pric": "+78850",
+                            "high_pric": "+78900",
+                            "low_pric": "+78000",
+                            "cur_prc": "+78800",
+                            "acc_trde_qty": "1234567",
+                        }
+                    ],
+                    "cont_yn": "N",
+                    "next_key": "",
+                },
+                "safety_report": {
+                    "safety_report_id": "kiwoom-rest-readonly-chart-safety-smoke",
+                    "blocked_capabilities": [
+                        "NETWORK_BLOCKED",
+                        "PROVIDER_API_BLOCKED",
+                        "ACCOUNT_ORDER_BLOCKED",
+                        "ENV_READ_BLOCKED",
+                        "CREDENTIAL_READ_BLOCKED",
+                        "TOKEN_LOADING_BLOCKED",
+                        "AUTH_HEADER_GENERATION_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "kiwoom-rest-readonly-chart-audit-smoke",
+                        "created_at": "2026-06-25T16:00:00+09:00",
+                        "source_path": str(output_dir / "kiwoom_rest_readonly_chart_fixture.json"),
+                        "operator_context": "offline mocked transport smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "request_report_generated": reviewed.request_report.report_id.endswith("REPORT"),
+        "mocked_response_report_generated": reviewed.mocked_response_report.report_id.endswith("REPORT"),
+        "canonical_ohlcv_report_generated": reviewed.canonical_ohlcv_report.report_id.endswith("REPORT"),
+        "continuation_report_generated": reviewed.continuation_report.report_id.endswith("REPORT"),
+        "safety_report_generated": reviewed.safety_report.safety_report_id.endswith("SMOKE"),
+        "integration_compatibility_report_generated": reviewed.integration_compatibility_report.report_id.endswith("REPORT"),
+        "gap_report_generated": reviewed.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": reviewed.summary_report.local_file_only,
+        "offline_only": reviewed.summary_report.offline_only,
+        "report_only": reviewed.summary_report.report_only,
+        "non_executable": reviewed.summary_report.non_executable,
+        "no_network": reviewed.summary_report.no_network,
+        "no_provider_api": reviewed.summary_report.no_provider_api,
+        "no_account_order_path": reviewed.summary_report.no_order and reviewed.summary_report.no_account_mutation,
+        "no_env_credential_read": reviewed.summary_report.no_env_read and reviewed.summary_report.no_credential_read,
+        "no_token_loading": reviewed.summary_report.no_token_loading,
+        "no_auth_header_generation": reviewed.summary_report.no_auth_header_generation,
+        "canonical_ohlcv_output_only": bool(reviewed.canonical_ohlcv_report.records)
+        and all(item.source_ref.endswith(".json") for item in reviewed.canonical_ohlcv_report.records)
+        and all("TOKEN_REF_ONLY" in item.quality_flags for item in reviewed.canonical_ohlcv_report.records)
+        and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records),
         "parquet_unsupported": ".parquet" not in dumped,
     }

@@ -694,6 +694,26 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["read_only_provider_adapter_account_order_blocked"] is True
     assert result["checks"]["read_only_provider_adapter_canonical_output_only"] is True
     assert result["checks"]["read_only_provider_adapter_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_fixture_run"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_request_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_mocked_response_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_canonical_ohlcv_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_continuation_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_integration_compatibility_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_local_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_offline_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_report_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_non_executable"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_no_network"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_no_provider_api"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_no_token_loading"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_canonical_ohlcv_output_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_chart_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True

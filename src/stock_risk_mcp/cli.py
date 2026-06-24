@@ -268,6 +268,8 @@ from stock_risk_mcp.controlled_mock_dry_run_engine import build_controlled_mock_
 from stock_risk_mcp.controlled_mock_dry_run_fixture import load_controlled_mock_dry_run_fixture
 from stock_risk_mcp.read_only_provider_adapter_engine import build_read_only_provider_adapter_boundary
 from stock_risk_mcp.read_only_provider_adapter_fixture import load_read_only_provider_adapter_fixture
+from stock_risk_mcp.kiwoom_rest_readonly_chart_engine import build_kiwoom_rest_readonly_chart_adapter
+from stock_risk_mcp.kiwoom_rest_readonly_chart_fixture import load_kiwoom_rest_readonly_chart_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
@@ -1428,6 +1430,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     read_only_provider_gap_report = subparsers.add_parser("read-only-provider-gap-report")
     read_only_provider_gap_report.add_argument("--fixture-file", type=Path, required=True)
     read_only_provider_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_adapter_check = subparsers.add_parser("kiwoom-rest-chart-adapter-check")
+    kiwoom_rest_chart_adapter_check.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_adapter_check.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_request_report = subparsers.add_parser("kiwoom-rest-chart-request-report")
+    kiwoom_rest_chart_request_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_request_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_mocked_response_report = subparsers.add_parser("kiwoom-rest-chart-mocked-response-report")
+    kiwoom_rest_chart_mocked_response_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_mocked_response_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_canonical_ohlcv_report = subparsers.add_parser("kiwoom-rest-canonical-ohlcv-report")
+    kiwoom_rest_canonical_ohlcv_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_canonical_ohlcv_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_continuation_report = subparsers.add_parser("kiwoom-rest-chart-continuation-report")
+    kiwoom_rest_chart_continuation_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_continuation_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_readonly_safety_report = subparsers.add_parser("kiwoom-rest-chart-readonly-safety-report")
+    kiwoom_rest_chart_readonly_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_readonly_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_integration_compatibility_report = subparsers.add_parser("kiwoom-rest-chart-integration-compatibility-report")
+    kiwoom_rest_chart_integration_compatibility_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_integration_compatibility_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_chart_gap_report = subparsers.add_parser("kiwoom-rest-chart-gap-report")
+    kiwoom_rest_chart_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_chart_gap_report.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
     market_regime_check.add_argument("--output-file", type=Path)
@@ -2901,6 +2927,14 @@ def main(argv: list[str] | None = None) -> None:
         "blocked-account-order-api-report",
         "provider-migration-readiness-report",
         "read-only-provider-gap-report",
+        "kiwoom-rest-chart-adapter-check",
+        "kiwoom-rest-chart-request-report",
+        "kiwoom-rest-chart-mocked-response-report",
+        "kiwoom-rest-canonical-ohlcv-report",
+        "kiwoom-rest-chart-continuation-report",
+        "kiwoom-rest-chart-readonly-safety-report",
+        "kiwoom-rest-chart-integration-compatibility-report",
+        "kiwoom-rest-chart-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -5758,6 +5792,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-adapter-check":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness": result.readiness.value}
+            return {"readiness": result.readiness.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-request-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).request_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-mocked-response-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).mocked_response_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-canonical-ohlcv-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).canonical_ohlcv_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-continuation-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).continuation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-readonly-safety-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-integration-compatibility-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).integration_compatibility_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-chart-gap-report":
+        try:
+            result = _run_kiwoom_rest_readonly_chart(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -7179,6 +7285,15 @@ def _load_read_only_provider_adapter_fixture_or_raise(fixture_file: Path):
 def _run_read_only_provider_adapter(fixture_file: Path):
     fixture = _load_read_only_provider_adapter_fixture_or_raise(fixture_file)
     return build_read_only_provider_adapter_boundary(fixture)
+
+
+def _load_kiwoom_rest_readonly_chart_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_rest_readonly_chart_fixture(fixture_file)
+
+
+def _run_kiwoom_rest_readonly_chart(fixture_file: Path):
+    fixture = _load_kiwoom_rest_readonly_chart_fixture_or_raise(fixture_file)
+    return build_kiwoom_rest_readonly_chart_adapter(fixture)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):
