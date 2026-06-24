@@ -670,6 +670,24 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["market_regime_no_network"] is True
     assert result["checks"]["market_regime_training_feature_ready"] is True
     assert result["checks"]["market_regime_parquet_unsupported"] is True
+    assert result["checks"]["market_data_provider_registry_fixture_run"] is True
+    assert result["checks"]["market_data_provider_registry_report_generated"] is True
+    assert result["checks"]["market_data_provider_module_requirement_report_generated"] is True
+    assert result["checks"]["market_data_provider_readiness_matrix_report_generated"] is True
+    assert result["checks"]["market_data_provider_canonical_contract_report_generated"] is True
+    assert result["checks"]["market_data_provider_symbol_mapping_report_generated"] is True
+    assert result["checks"]["market_data_provider_selection_report_generated"] is True
+    assert result["checks"]["market_data_provider_gap_report_generated"] is True
+    assert result["checks"]["market_data_provider_local_only"] is True
+    assert result["checks"]["market_data_provider_offline_only"] is True
+    assert result["checks"]["market_data_provider_report_only"] is True
+    assert result["checks"]["market_data_provider_non_executable"] is True
+    assert result["checks"]["market_data_provider_no_live_path"] is True
+    assert result["checks"]["market_data_provider_no_order_path"] is True
+    assert result["checks"]["market_data_provider_no_account_mutation"] is True
+    assert result["checks"]["market_data_provider_no_network"] is True
+    assert result["checks"]["market_data_provider_no_provider_call"] is True
+    assert result["checks"]["market_data_provider_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

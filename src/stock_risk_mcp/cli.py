@@ -266,6 +266,8 @@ from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_moc
 from stock_risk_mcp.controlled_mock_readiness_fixture import load_controlled_mock_readiness_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
+from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
+from stock_risk_mcp.market_data_provider_registry_fixture import load_market_data_provider_registry_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1380,6 +1382,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     market_regime_gap_report = subparsers.add_parser("market-regime-gap-report")
     market_regime_gap_report.add_argument("--fixture-file", type=Path, required=True)
     market_regime_gap_report.add_argument("--output-file", type=Path)
+    market_data_provider_registry_check = subparsers.add_parser("market-data-provider-registry-check")
+    market_data_provider_registry_check.add_argument("--fixture-file", type=Path, required=True)
+    market_data_provider_registry_check.add_argument("--output-file", type=Path)
+    global_provider_registry_report = subparsers.add_parser("global-provider-registry-report")
+    global_provider_registry_report.add_argument("--fixture-file", type=Path, required=True)
+    global_provider_registry_report.add_argument("--output-file", type=Path)
+    module_data_requirement_report = subparsers.add_parser("module-data-requirement-report")
+    module_data_requirement_report.add_argument("--fixture-file", type=Path, required=True)
+    module_data_requirement_report.add_argument("--output-file", type=Path)
+    provider_readiness_matrix_report = subparsers.add_parser("provider-readiness-matrix-report")
+    provider_readiness_matrix_report.add_argument("--fixture-file", type=Path, required=True)
+    provider_readiness_matrix_report.add_argument("--output-file", type=Path)
+    canonical_data_contract_report = subparsers.add_parser("canonical-data-contract-report")
+    canonical_data_contract_report.add_argument("--fixture-file", type=Path, required=True)
+    canonical_data_contract_report.add_argument("--output-file", type=Path)
+    symbol_mapping_report = subparsers.add_parser("symbol-mapping-report")
+    symbol_mapping_report.add_argument("--fixture-file", type=Path, required=True)
+    symbol_mapping_report.add_argument("--output-file", type=Path)
+    provider_selection_report = subparsers.add_parser("provider-selection-report")
+    provider_selection_report.add_argument("--fixture-file", type=Path, required=True)
+    provider_selection_report.add_argument("--output-file", type=Path)
+    market_data_provider_gap_report = subparsers.add_parser("market-data-provider-gap-report")
+    market_data_provider_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    market_data_provider_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2679,6 +2705,14 @@ def main(argv: list[str] | None = None) -> None:
         "market-regime-downstream-constraint-report",
         "market-regime-training-feature-report",
         "market-regime-gap-report",
+        "market-data-provider-registry-check",
+        "global-provider-registry-report",
+        "module-data-requirement-report",
+        "provider-readiness-matrix-report",
+        "canonical-data-contract-report",
+        "symbol-mapping-report",
+        "provider-selection-report",
+        "market-data-provider-gap-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5374,6 +5408,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-data-provider-registry-check":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).provider_selection_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.selection_decision.value}
+            return {"decision": result.selection_decision.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "global-provider-registry-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).global_provider_registry_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "module-data-requirement-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).module_data_requirement_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "provider-readiness-matrix-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).provider_readiness_matrix_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "canonical-data-contract-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).canonical_data_contract_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "symbol-mapping-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).symbol_mapping_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "provider-selection-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).provider_selection_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-data-provider-gap-report":
+        try:
+            result = _run_market_data_provider_registry(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -6300,6 +6406,15 @@ def _load_market_regime_fixture_or_raise(fixture_file: Path):
 def _run_market_regime(fixture_file: Path):
     fixture = _load_market_regime_fixture_or_raise(fixture_file)
     return build_market_regime(fixture)
+
+
+def _load_market_data_provider_registry_fixture_or_raise(fixture_file: Path):
+    return load_market_data_provider_registry_fixture(fixture_file)
+
+
+def _run_market_data_provider_registry(fixture_file: Path):
+    fixture = _load_market_data_provider_registry_fixture_or_raise(fixture_file)
+    return build_market_data_provider_registry(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
