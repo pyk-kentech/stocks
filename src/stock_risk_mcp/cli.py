@@ -268,6 +268,8 @@ from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_fixture import load_market_data_provider_registry_fixture
+from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
+from stock_risk_mcp.position_sizing_fixture import load_position_sizing_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1406,6 +1408,39 @@ def build_command_parser() -> argparse.ArgumentParser:
     market_data_provider_gap_report = subparsers.add_parser("market-data-provider-gap-report")
     market_data_provider_gap_report.add_argument("--fixture-file", type=Path, required=True)
     market_data_provider_gap_report.add_argument("--output-file", type=Path)
+    position_sizing_check = subparsers.add_parser("position-sizing-check")
+    position_sizing_check.add_argument("--fixture-file", type=Path, required=True)
+    position_sizing_check.add_argument("--output-file", type=Path)
+    position_sizing_summary_report = subparsers.add_parser("position-sizing-summary-report")
+    position_sizing_summary_report.add_argument("--fixture-file", type=Path, required=True)
+    position_sizing_summary_report.add_argument("--output-file", type=Path)
+    stop_distance_report = subparsers.add_parser("stop-distance-report")
+    stop_distance_report.add_argument("--fixture-file", type=Path, required=True)
+    stop_distance_report.add_argument("--output-file", type=Path)
+    risk_budget_report = subparsers.add_parser("risk-budget-report")
+    risk_budget_report.add_argument("--fixture-file", type=Path, required=True)
+    risk_budget_report.add_argument("--output-file", type=Path)
+    position_sizing_data_readiness_report = subparsers.add_parser("position-sizing-data-readiness-report")
+    position_sizing_data_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    position_sizing_data_readiness_report.add_argument("--output-file", type=Path)
+    position_quantity_notional_report = subparsers.add_parser("position-quantity-notional-report")
+    position_quantity_notional_report.add_argument("--fixture-file", type=Path, required=True)
+    position_quantity_notional_report.add_argument("--output-file", type=Path)
+    position_cost_assumption_report = subparsers.add_parser("position-cost-assumption-report")
+    position_cost_assumption_report.add_argument("--fixture-file", type=Path, required=True)
+    position_cost_assumption_report.add_argument("--output-file", type=Path)
+    market_regime_sizing_adjustment_report = subparsers.add_parser("market-regime-sizing-adjustment-report")
+    market_regime_sizing_adjustment_report.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_sizing_adjustment_report.add_argument("--output-file", type=Path)
+    inverse_hedge_sizing_report = subparsers.add_parser("inverse-hedge-sizing-report")
+    inverse_hedge_sizing_report.add_argument("--fixture-file", type=Path, required=True)
+    inverse_hedge_sizing_report.add_argument("--output-file", type=Path)
+    position_sizing_boundary_violation_report = subparsers.add_parser("position-sizing-boundary-violation-report")
+    position_sizing_boundary_violation_report.add_argument("--fixture-file", type=Path, required=True)
+    position_sizing_boundary_violation_report.add_argument("--output-file", type=Path)
+    position_sizing_gap_report = subparsers.add_parser("position-sizing-gap-report")
+    position_sizing_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    position_sizing_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2713,6 +2748,17 @@ def main(argv: list[str] | None = None) -> None:
         "symbol-mapping-report",
         "provider-selection-report",
         "market-data-provider-gap-report",
+        "position-sizing-check",
+        "position-sizing-summary-report",
+        "stop-distance-report",
+        "risk-budget-report",
+        "position-sizing-data-readiness-report",
+        "position-quantity-notional-report",
+        "position-cost-assumption-report",
+        "market-regime-sizing-adjustment-report",
+        "inverse-hedge-sizing-report",
+        "position-sizing-boundary-violation-report",
+        "position-sizing-gap-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5480,6 +5526,105 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-sizing-check":
+        try:
+            result = _run_position_sizing(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return {"decision": result.decision.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-sizing-summary-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "stop-distance-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).stop_distance_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "risk-budget-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).risk_budget_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-sizing-data-readiness-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).data_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-quantity-notional-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).quantity_notional_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-cost-assumption-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).cost_assumption_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-sizing-adjustment-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).market_regime_adjustment_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "inverse-hedge-sizing-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).inverse_hedge_sizing_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-sizing-boundary-violation-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).boundary_violation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "position-sizing-gap-report":
+        try:
+            result = _run_position_sizing(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -6415,6 +6560,15 @@ def _load_market_data_provider_registry_fixture_or_raise(fixture_file: Path):
 def _run_market_data_provider_registry(fixture_file: Path):
     fixture = _load_market_data_provider_registry_fixture_or_raise(fixture_file)
     return build_market_data_provider_registry(fixture)
+
+
+def _load_position_sizing_fixture_or_raise(fixture_file: Path):
+    return load_position_sizing_fixture(fixture_file)
+
+
+def _run_position_sizing(fixture_file: Path):
+    fixture = _load_position_sizing_fixture_or_raise(fixture_file)
+    return build_position_sizing_review(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

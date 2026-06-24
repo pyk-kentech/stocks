@@ -203,6 +203,8 @@ from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_moc
 from stock_risk_mcp.controlled_mock_readiness_models import ControlledMockReadinessInput
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
+from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
+from stock_risk_mcp.position_sizing_models import PositionSizingInput
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_models import MarketRegimeInput
 from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
@@ -2153,6 +2155,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     controlled_mock_readiness = _run_controlled_mock_readiness_smoke(output_dir)
     market_regime = _run_market_regime_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
+    position_sizing = _run_position_sizing_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3034,6 +3037,27 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "market_data_provider_no_network": provider_registry["no_network"],
             "market_data_provider_no_provider_call": provider_registry["no_provider_call"],
             "market_data_provider_parquet_unsupported": provider_registry["parquet_unsupported"],
+            "position_sizing_fixture_run": position_sizing["fixture_run"],
+            "position_sizing_summary_report_generated": position_sizing["summary_report_generated"],
+            "position_sizing_stop_distance_report_generated": position_sizing["stop_distance_report_generated"],
+            "position_sizing_risk_budget_report_generated": position_sizing["risk_budget_report_generated"],
+            "position_sizing_data_readiness_report_generated": position_sizing["data_readiness_report_generated"],
+            "position_sizing_quantity_notional_report_generated": position_sizing["quantity_notional_report_generated"],
+            "position_sizing_cost_assumption_report_generated": position_sizing["cost_assumption_report_generated"],
+            "position_sizing_market_regime_adjustment_report_generated": position_sizing["market_regime_adjustment_report_generated"],
+            "position_sizing_inverse_hedge_report_generated": position_sizing["inverse_hedge_report_generated"],
+            "position_sizing_boundary_report_generated": position_sizing["boundary_report_generated"],
+            "position_sizing_gap_report_generated": position_sizing["gap_report_generated"],
+            "position_sizing_local_only": position_sizing["local_only"],
+            "position_sizing_offline_only": position_sizing["offline_only"],
+            "position_sizing_report_only": position_sizing["report_only"],
+            "position_sizing_non_executable": position_sizing["non_executable"],
+            "position_sizing_no_live_path": position_sizing["no_live_path"],
+            "position_sizing_no_order_path": position_sizing["no_order_path"],
+            "position_sizing_no_account_mutation": position_sizing["no_account_mutation"],
+            "position_sizing_no_network": position_sizing["no_network"],
+            "position_sizing_no_provider_call": position_sizing["no_provider_call"],
+            "position_sizing_parquet_unsupported": position_sizing["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -8458,5 +8482,140 @@ def _run_market_data_provider_registry_smoke(output_dir: Path) -> dict[str, bool
             and registry.global_provider_registry_report.no_network
             and registry.global_provider_registry_report.no_websocket
         ),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_position_sizing_smoke(output_dir: Path) -> dict[str, bool]:
+    review = build_position_sizing_review(
+        PositionSizingInput.model_validate(
+            {
+                "sizing_review_id": "position-sizing-smoke",
+                "candidate_symbol": "QQQ",
+                "market": "NASDAQ",
+                "currency": "USD",
+                "side": "LONG",
+                "candidate_action_type": "ALLOCATE",
+                "entry_price": 500.0,
+                "current_price": 500.0,
+                "atr_value": 10.0,
+                "atr_period": 14,
+                "atr_multiplier": 2.0,
+                "fixed_stop_percent": 0.05,
+                "explicit_stop_price": 475.0,
+                "account_equity": 100000.0,
+                "available_cash": 100000.0,
+                "risk_per_trade_percent": 0.01,
+                "max_risk_cash_per_trade": 1000.0,
+                "daily_risk_budget": 2500.0,
+                "remaining_daily_risk_budget": 2500.0,
+                "current_gross_exposure": 0.10,
+                "current_net_exposure": 0.10,
+                "current_open_risk_percent": 0.005,
+                "max_portfolio_exposure": 1.0,
+                "max_gross_exposure": 1.0,
+                "max_net_exposure": 1.0,
+                "max_single_position_exposure": 0.25,
+                "max_sector_exposure": 0.35,
+                "max_inverse_hedge_exposure": 0.15,
+                "sector_name": "TECH",
+                "sector_exposure_after_trade_estimate": 0.20,
+                "is_inverse_or_hedge": False,
+                "instrument_eligibility_ref": str(output_dir / "position_eligibility.md"),
+                "liquidity_evidence_ref": str(output_dir / "position_liquidity.md"),
+                "leverage_flag": False,
+                "daily_reset_warning": False,
+                "short_holding_period_warning": False,
+                "basis_risk_note": "LOW",
+                "fee_bps": 5.0,
+                "tax_bps": 0.0,
+                "slippage_bps": 3.0,
+                "fee_tax_slippage_assumption_ref": str(output_dir / "position_costs.md"),
+                "fx_conversion_rate": 1.0,
+                "fx_conversion_ref": str(output_dir / "usdusd.md"),
+                "market_regime_constraint_ref": str(output_dir / "market_regime_report.json"),
+                "market_regime_label": "RISK_ON",
+                "market_volatility_state": "NORMAL_VOL",
+                "market_stress_state": "NORMAL",
+                "market_regime_size_multiplier": 1.0,
+                "provider_readiness_ref": str(output_dir / "provider_selection_report.json"),
+                "provider_readiness_level": "PAPER_READY",
+                "provider_policy_allows_research_only": False,
+                "price_contract_ref": str(output_dir / "qqq_price_contract.json"),
+                "atr_contract_ref": str(output_dir / "qqq_atr_contract.json"),
+                "fx_contract_ref": str(output_dir / "usd_contract.json"),
+                "cost_contract_ref": str(output_dir / "cost_contract.json"),
+                "paper_evaluation_ref": str(output_dir / "risk_adjusted_eval.json"),
+                "available_at": "2026-06-24T09:05:00+09:00",
+                "observed_at": "2026-06-24T09:00:00+09:00",
+                "decision_anchor_at": "2026-06-24T09:05:00+09:00",
+                "source_refs": [
+                    str(output_dir / "qqq_price_contract.json"),
+                    str(output_dir / "provider_selection_report.json"),
+                ],
+                "stop_mode": "FIXED_PERCENT",
+                "requested_allocation_percent": 0.20,
+                "requested_quantity": 100,
+                "round_lot_size": 1,
+                "confidence_multiplier": 1.0,
+                "volatility_size_multiplier": 1.0,
+                "learned_size_multiplier": 1.0,
+                "max_daily_loss_cap": 0.03,
+                "max_open_risk_cap": 0.05,
+                "max_order_count_per_day": 5,
+                "cool_down_policy": "NONE",
+                "fail_closed": True,
+                "report_only_preview_allowed": True,
+                "safety_report": {
+                    "safety_report_id": "position-sizing-smoke-safety",
+                    "blocked_capabilities": [
+                        "LIVE_TRADING_BLOCKED",
+                        "REAL_ORDER_BLOCKED",
+                        "ACCOUNT_MUTATION_BLOCKED",
+                        "BROKER_API_BLOCKED",
+                        "KIWOOM_API_BLOCKED",
+                        "WEBSOCKET_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "AUTONOMOUS_TRADING_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "position-sizing-smoke-audit",
+                        "created_at": "2026-06-24T18:00:00+09:00",
+                        "source_path": str(output_dir / "position_sizing_fixture.json"),
+                        "operator_context": "offline position sizing smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(review.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": review.summary_report.report_id.endswith("REPORT"),
+        "stop_distance_report_generated": review.stop_distance_report.report_id.endswith("REPORT"),
+        "risk_budget_report_generated": review.risk_budget_report.report_id.endswith("REPORT"),
+        "data_readiness_report_generated": review.data_readiness_report.report_id.endswith("REPORT"),
+        "quantity_notional_report_generated": review.quantity_notional_report.report_id.endswith("REPORT"),
+        "cost_assumption_report_generated": review.cost_assumption_report.report_id.endswith("REPORT"),
+        "market_regime_adjustment_report_generated": review.market_regime_adjustment_report.report_id.endswith("REPORT"),
+        "inverse_hedge_report_generated": review.inverse_hedge_sizing_report.report_id.endswith("REPORT"),
+        "boundary_report_generated": review.boundary_violation_report.report_id.endswith("REPORT"),
+        "gap_report_generated": review.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": review.summary_report.local_file_only,
+        "offline_only": review.summary_report.offline_only,
+        "report_only": review.summary_report.report_only,
+        "non_executable": review.summary_report.non_executable,
+        "no_live_path": review.summary_report.no_live_prod and review.summary_report.no_autonomous_trading,
+        "no_order_path": review.summary_report.no_order and review.summary_report.non_executable,
+        "no_account_mutation": review.summary_report.no_account_mutation,
+        "no_network": review.summary_report.no_network,
+        "no_provider_call": review.summary_report.no_provider_api and review.summary_report.no_network and review.summary_report.no_websocket,
         "parquet_unsupported": ".parquet" not in dumped,
     }

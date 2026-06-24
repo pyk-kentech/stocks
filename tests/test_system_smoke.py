@@ -688,6 +688,27 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["market_data_provider_no_network"] is True
     assert result["checks"]["market_data_provider_no_provider_call"] is True
     assert result["checks"]["market_data_provider_parquet_unsupported"] is True
+    assert result["checks"]["position_sizing_fixture_run"] is True
+    assert result["checks"]["position_sizing_summary_report_generated"] is True
+    assert result["checks"]["position_sizing_stop_distance_report_generated"] is True
+    assert result["checks"]["position_sizing_risk_budget_report_generated"] is True
+    assert result["checks"]["position_sizing_data_readiness_report_generated"] is True
+    assert result["checks"]["position_sizing_quantity_notional_report_generated"] is True
+    assert result["checks"]["position_sizing_cost_assumption_report_generated"] is True
+    assert result["checks"]["position_sizing_market_regime_adjustment_report_generated"] is True
+    assert result["checks"]["position_sizing_inverse_hedge_report_generated"] is True
+    assert result["checks"]["position_sizing_boundary_report_generated"] is True
+    assert result["checks"]["position_sizing_gap_report_generated"] is True
+    assert result["checks"]["position_sizing_local_only"] is True
+    assert result["checks"]["position_sizing_offline_only"] is True
+    assert result["checks"]["position_sizing_report_only"] is True
+    assert result["checks"]["position_sizing_non_executable"] is True
+    assert result["checks"]["position_sizing_no_live_path"] is True
+    assert result["checks"]["position_sizing_no_order_path"] is True
+    assert result["checks"]["position_sizing_no_account_mutation"] is True
+    assert result["checks"]["position_sizing_no_network"] is True
+    assert result["checks"]["position_sizing_no_provider_call"] is True
+    assert result["checks"]["position_sizing_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
