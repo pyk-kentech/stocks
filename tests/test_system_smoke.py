@@ -728,6 +728,32 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["event_risk_no_network"] is True
     assert result["checks"]["event_risk_no_provider_call"] is True
     assert result["checks"]["event_risk_parquet_unsupported"] is True
+    assert result["checks"]["breadth_leadership_routing_fixture_run"] is True
+    assert result["checks"]["breadth_leadership_summary_report_generated"] is True
+    assert result["checks"]["breadth_input_snapshot_report_generated"] is True
+    assert result["checks"]["advance_decline_report_generated"] is True
+    assert result["checks"]["new_high_low_report_generated"] is True
+    assert result["checks"]["up_down_volume_participation_report_generated"] is True
+    assert result["checks"]["sector_leadership_report_generated"] is True
+    assert result["checks"]["leadership_concentration_report_generated"] is True
+    assert result["checks"]["index_distortion_report_generated"] is True
+    assert result["checks"]["equal_weight_divergence_report_generated"] is True
+    assert result["checks"]["outlier_momentum_candidate_report_generated"] is True
+    assert result["checks"]["outlier_sleeve_risk_report_generated"] is True
+    assert result["checks"]["breadth_routing_downstream_constraint_report_generated"] is True
+    assert result["checks"]["breadth_routing_provider_readiness_report_generated"] is True
+    assert result["checks"]["breadth_routing_leakage_report_generated"] is True
+    assert result["checks"]["breadth_routing_gap_report_generated"] is True
+    assert result["checks"]["breadth_routing_local_only"] is True
+    assert result["checks"]["breadth_routing_offline_only"] is True
+    assert result["checks"]["breadth_routing_report_only"] is True
+    assert result["checks"]["breadth_routing_non_executable"] is True
+    assert result["checks"]["breadth_routing_no_live_path"] is True
+    assert result["checks"]["breadth_routing_no_order_path"] is True
+    assert result["checks"]["breadth_routing_no_account_mutation"] is True
+    assert result["checks"]["breadth_routing_no_network"] is True
+    assert result["checks"]["breadth_routing_no_provider_call"] is True
+    assert result["checks"]["breadth_routing_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

@@ -272,6 +272,8 @@ from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
 from stock_risk_mcp.position_sizing_fixture import load_position_sizing_fixture
 from stock_risk_mcp.event_risk_engine import build_event_risk_review
 from stock_risk_mcp.event_risk_fixture import load_event_risk_fixture
+from stock_risk_mcp.breadth_leadership_routing_engine import build_breadth_leadership_routing_review
+from stock_risk_mcp.breadth_leadership_routing_fixture import load_breadth_leadership_routing_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1467,6 +1469,54 @@ def build_command_parser() -> argparse.ArgumentParser:
     event_risk_gap_report = subparsers.add_parser("event-risk-gap-report")
     event_risk_gap_report.add_argument("--fixture-file", type=Path, required=True)
     event_risk_gap_report.add_argument("--output-file", type=Path)
+    breadth_leadership_routing_check = subparsers.add_parser("breadth-leadership-routing-check")
+    breadth_leadership_routing_check.add_argument("--fixture-file", type=Path, required=True)
+    breadth_leadership_routing_check.add_argument("--output-file", type=Path)
+    breadth_routing_summary_report = subparsers.add_parser("breadth-routing-summary-report")
+    breadth_routing_summary_report.add_argument("--fixture-file", type=Path, required=True)
+    breadth_routing_summary_report.add_argument("--output-file", type=Path)
+    breadth_input_snapshot_report = subparsers.add_parser("breadth-input-snapshot-report")
+    breadth_input_snapshot_report.add_argument("--fixture-file", type=Path, required=True)
+    breadth_input_snapshot_report.add_argument("--output-file", type=Path)
+    advance_decline_report = subparsers.add_parser("advance-decline-report")
+    advance_decline_report.add_argument("--fixture-file", type=Path, required=True)
+    advance_decline_report.add_argument("--output-file", type=Path)
+    new_high_low_report = subparsers.add_parser("new-high-low-report")
+    new_high_low_report.add_argument("--fixture-file", type=Path, required=True)
+    new_high_low_report.add_argument("--output-file", type=Path)
+    up_down_volume_participation_report = subparsers.add_parser("up-down-volume-participation-report")
+    up_down_volume_participation_report.add_argument("--fixture-file", type=Path, required=True)
+    up_down_volume_participation_report.add_argument("--output-file", type=Path)
+    sector_leadership_report = subparsers.add_parser("sector-leadership-report")
+    sector_leadership_report.add_argument("--fixture-file", type=Path, required=True)
+    sector_leadership_report.add_argument("--output-file", type=Path)
+    leadership_concentration_report = subparsers.add_parser("leadership-concentration-report")
+    leadership_concentration_report.add_argument("--fixture-file", type=Path, required=True)
+    leadership_concentration_report.add_argument("--output-file", type=Path)
+    index_distortion_report = subparsers.add_parser("index-distortion-report")
+    index_distortion_report.add_argument("--fixture-file", type=Path, required=True)
+    index_distortion_report.add_argument("--output-file", type=Path)
+    equal_weight_divergence_report = subparsers.add_parser("equal-weight-divergence-report")
+    equal_weight_divergence_report.add_argument("--fixture-file", type=Path, required=True)
+    equal_weight_divergence_report.add_argument("--output-file", type=Path)
+    outlier_momentum_candidate_report = subparsers.add_parser("outlier-momentum-candidate-report")
+    outlier_momentum_candidate_report.add_argument("--fixture-file", type=Path, required=True)
+    outlier_momentum_candidate_report.add_argument("--output-file", type=Path)
+    outlier_sleeve_risk_report = subparsers.add_parser("outlier-sleeve-risk-report")
+    outlier_sleeve_risk_report.add_argument("--fixture-file", type=Path, required=True)
+    outlier_sleeve_risk_report.add_argument("--output-file", type=Path)
+    breadth_routing_downstream_constraint_report = subparsers.add_parser("breadth-routing-downstream-constraint-report")
+    breadth_routing_downstream_constraint_report.add_argument("--fixture-file", type=Path, required=True)
+    breadth_routing_downstream_constraint_report.add_argument("--output-file", type=Path)
+    breadth_routing_provider_readiness_report = subparsers.add_parser("breadth-routing-provider-readiness-report")
+    breadth_routing_provider_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    breadth_routing_provider_readiness_report.add_argument("--output-file", type=Path)
+    breadth_routing_leakage_report = subparsers.add_parser("breadth-routing-leakage-report")
+    breadth_routing_leakage_report.add_argument("--fixture-file", type=Path, required=True)
+    breadth_routing_leakage_report.add_argument("--output-file", type=Path)
+    breadth_routing_gap_report = subparsers.add_parser("breadth-routing-gap-report")
+    breadth_routing_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    breadth_routing_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2793,6 +2843,22 @@ def main(argv: list[str] | None = None) -> None:
         "event-calendar-provider-readiness-report",
         "event-risk-leakage-report",
         "event-risk-gap-report",
+        "breadth-leadership-routing-check",
+        "breadth-routing-summary-report",
+        "breadth-input-snapshot-report",
+        "advance-decline-report",
+        "new-high-low-report",
+        "up-down-volume-participation-report",
+        "sector-leadership-report",
+        "leadership-concentration-report",
+        "index-distortion-report",
+        "equal-weight-divergence-report",
+        "outlier-momentum-candidate-report",
+        "outlier-sleeve-risk-report",
+        "breadth-routing-downstream-constraint-report",
+        "breadth-routing-provider-readiness-report",
+        "breadth-routing-leakage-report",
+        "breadth-routing-gap-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5731,6 +5797,150 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-leadership-routing-check":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "primary_decision": result.primary_decision.value}
+            return {"primary_decision": result.primary_decision.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-routing-summary-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-input-snapshot-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).breadth_input_snapshot_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "advance-decline-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).advance_decline_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "new-high-low-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).new_high_low_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "up-down-volume-participation-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).up_down_volume_participation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "sector-leadership-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).sector_leadership_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "leadership-concentration-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).leadership_concentration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "index-distortion-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).index_distortion_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "equal-weight-divergence-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).equal_weight_divergence_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "outlier-momentum-candidate-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).outlier_momentum_candidate_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "outlier-sleeve-risk-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).outlier_sleeve_risk_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-routing-downstream-constraint-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).downstream_constraint_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-routing-provider-readiness-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).provider_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-routing-leakage-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).leakage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "breadth-routing-gap-report":
+        try:
+            result = _run_breadth_leadership_routing(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -6684,6 +6894,15 @@ def _load_event_risk_fixture_or_raise(fixture_file: Path):
 def _run_event_risk(fixture_file: Path):
     fixture = _load_event_risk_fixture_or_raise(fixture_file)
     return build_event_risk_review(fixture)
+
+
+def _load_breadth_leadership_routing_fixture_or_raise(fixture_file: Path):
+    return load_breadth_leadership_routing_fixture(fixture_file)
+
+
+def _run_breadth_leadership_routing(fixture_file: Path):
+    fixture = _load_breadth_leadership_routing_fixture_or_raise(fixture_file)
+    return build_breadth_leadership_routing_review(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
