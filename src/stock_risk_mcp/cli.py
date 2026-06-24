@@ -266,6 +266,8 @@ from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_moc
 from stock_risk_mcp.controlled_mock_readiness_fixture import load_controlled_mock_readiness_fixture
 from stock_risk_mcp.controlled_mock_dry_run_engine import build_controlled_mock_dry_run_review
 from stock_risk_mcp.controlled_mock_dry_run_fixture import load_controlled_mock_dry_run_fixture
+from stock_risk_mcp.read_only_provider_adapter_engine import build_read_only_provider_adapter_boundary
+from stock_risk_mcp.read_only_provider_adapter_fixture import load_read_only_provider_adapter_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
@@ -1402,6 +1404,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     mock_dry_run_gap_report = subparsers.add_parser("mock-dry-run-gap-report")
     mock_dry_run_gap_report.add_argument("--fixture-file", type=Path, required=True)
     mock_dry_run_gap_report.add_argument("--output-file", type=Path)
+    read_only_provider_adapter_boundary_check = subparsers.add_parser("read-only-provider-adapter-boundary-check")
+    read_only_provider_adapter_boundary_check.add_argument("--fixture-file", type=Path, required=True)
+    read_only_provider_adapter_boundary_check.add_argument("--output-file", type=Path)
+    kiwoom_rest_evidence_map_report = subparsers.add_parser("kiwoom-rest-evidence-map-report")
+    kiwoom_rest_evidence_map_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_evidence_map_report.add_argument("--output-file", type=Path)
+    ls_future_compatibility_report = subparsers.add_parser("ls-future-compatibility-report")
+    ls_future_compatibility_report.add_argument("--fixture-file", type=Path, required=True)
+    ls_future_compatibility_report.add_argument("--output-file", type=Path)
+    canonical_readonly_contract_report = subparsers.add_parser("canonical-readonly-contract-report")
+    canonical_readonly_contract_report.add_argument("--fixture-file", type=Path, required=True)
+    canonical_readonly_contract_report.add_argument("--output-file", type=Path)
+    provider_capability_matrix_report = subparsers.add_parser("provider-capability-matrix-report")
+    provider_capability_matrix_report.add_argument("--fixture-file", type=Path, required=True)
+    provider_capability_matrix_report.add_argument("--output-file", type=Path)
+    blocked_account_order_api_report = subparsers.add_parser("blocked-account-order-api-report")
+    blocked_account_order_api_report.add_argument("--fixture-file", type=Path, required=True)
+    blocked_account_order_api_report.add_argument("--output-file", type=Path)
+    provider_migration_readiness_report = subparsers.add_parser("provider-migration-readiness-report")
+    provider_migration_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    provider_migration_readiness_report.add_argument("--output-file", type=Path)
+    read_only_provider_gap_report = subparsers.add_parser("read-only-provider-gap-report")
+    read_only_provider_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    read_only_provider_gap_report.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
     market_regime_check.add_argument("--output-file", type=Path)
@@ -2867,6 +2893,14 @@ def main(argv: list[str] | None = None) -> None:
         "mock-audit-trail-rehearsal-report",
         "mock-dry-run-boundary-violation-report",
         "mock-dry-run-gap-report",
+        "read-only-provider-adapter-boundary-check",
+        "kiwoom-rest-evidence-map-report",
+        "ls-future-compatibility-report",
+        "canonical-readonly-contract-report",
+        "provider-capability-matrix-report",
+        "blocked-account-order-api-report",
+        "provider-migration-readiness-report",
+        "read-only-provider-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -5652,6 +5686,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "read-only-provider-adapter-boundary-check":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness": result.readiness.value}
+            return {"readiness": result.readiness.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-evidence-map-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).kiwoom_rest_evidence_map_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "ls-future-compatibility-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).ls_future_compatibility_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "canonical-readonly-contract-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).canonical_readonly_contract_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "provider-capability-matrix-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).provider_capability_matrix_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "blocked-account-order-api-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).blocked_account_order_api_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "provider-migration-readiness-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).provider_migration_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "read-only-provider-gap-report":
+        try:
+            result = _run_read_only_provider_adapter(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -7064,6 +7170,15 @@ def _load_controlled_mock_dry_run_fixture_or_raise(fixture_file: Path):
 def _run_controlled_mock_dry_run(fixture_file: Path):
     fixture = _load_controlled_mock_dry_run_fixture_or_raise(fixture_file)
     return build_controlled_mock_dry_run_review(fixture)
+
+
+def _load_read_only_provider_adapter_fixture_or_raise(fixture_file: Path):
+    return load_read_only_provider_adapter_fixture(fixture_file)
+
+
+def _run_read_only_provider_adapter(fixture_file: Path):
+    fixture = _load_read_only_provider_adapter_fixture_or_raise(fixture_file)
+    return build_read_only_provider_adapter_boundary(fixture)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):

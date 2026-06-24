@@ -675,6 +675,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["controlled_mock_dry_run_preview_non_executable"] is True
     assert result["checks"]["controlled_mock_dry_run_execution_review_or_rehearsed_only"] is True
     assert result["checks"]["controlled_mock_dry_run_parquet_unsupported"] is True
+    assert result["checks"]["read_only_provider_adapter_fixture_run"] is True
+    assert result["checks"]["read_only_provider_adapter_summary_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_evidence_map_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_ls_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_canonical_contract_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_capability_matrix_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_blocked_api_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_migration_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_gap_report_generated"] is True
+    assert result["checks"]["read_only_provider_adapter_local_only"] is True
+    assert result["checks"]["read_only_provider_adapter_offline_only"] is True
+    assert result["checks"]["read_only_provider_adapter_report_only"] is True
+    assert result["checks"]["read_only_provider_adapter_non_executable"] is True
+    assert result["checks"]["read_only_provider_adapter_no_provider_network_call"] is True
+    assert result["checks"]["read_only_provider_adapter_no_credential_env_read"] is True
+    assert result["checks"]["read_only_provider_adapter_no_auth_header_generation"] is True
+    assert result["checks"]["read_only_provider_adapter_account_order_blocked"] is True
+    assert result["checks"]["read_only_provider_adapter_canonical_output_only"] is True
+    assert result["checks"]["read_only_provider_adapter_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True

@@ -203,6 +203,8 @@ from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_moc
 from stock_risk_mcp.controlled_mock_readiness_models import ControlledMockReadinessInput
 from stock_risk_mcp.controlled_mock_dry_run_engine import build_controlled_mock_dry_run_review
 from stock_risk_mcp.controlled_mock_dry_run_models import ControlledMockDryRunInput
+from stock_risk_mcp.read_only_provider_adapter_engine import build_read_only_provider_adapter_boundary
+from stock_risk_mcp.read_only_provider_adapter_models import ReadOnlyProviderAdapterInput
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
@@ -2165,6 +2167,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     event_risk = _run_event_risk_smoke(output_dir)
     breadth_leadership_routing = _run_breadth_leadership_routing_smoke(output_dir)
     controlled_mock_dry_run = _run_controlled_mock_dry_run_smoke(output_dir)
+    read_only_provider_adapter = _run_read_only_provider_adapter_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3138,6 +3141,25 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "controlled_mock_dry_run_preview_non_executable": controlled_mock_dry_run["preview_non_executable"],
             "controlled_mock_dry_run_execution_review_or_rehearsed_only": controlled_mock_dry_run["execution_review_or_rehearsed_only"],
             "controlled_mock_dry_run_parquet_unsupported": controlled_mock_dry_run["parquet_unsupported"],
+            "read_only_provider_adapter_fixture_run": read_only_provider_adapter["fixture_run"],
+            "read_only_provider_adapter_summary_report_generated": read_only_provider_adapter["summary_report_generated"],
+            "read_only_provider_adapter_evidence_map_report_generated": read_only_provider_adapter["evidence_map_report_generated"],
+            "read_only_provider_adapter_ls_report_generated": read_only_provider_adapter["ls_report_generated"],
+            "read_only_provider_adapter_canonical_contract_report_generated": read_only_provider_adapter["canonical_contract_report_generated"],
+            "read_only_provider_adapter_capability_matrix_report_generated": read_only_provider_adapter["capability_matrix_report_generated"],
+            "read_only_provider_adapter_blocked_api_report_generated": read_only_provider_adapter["blocked_api_report_generated"],
+            "read_only_provider_adapter_migration_report_generated": read_only_provider_adapter["migration_report_generated"],
+            "read_only_provider_adapter_gap_report_generated": read_only_provider_adapter["gap_report_generated"],
+            "read_only_provider_adapter_local_only": read_only_provider_adapter["local_only"],
+            "read_only_provider_adapter_offline_only": read_only_provider_adapter["offline_only"],
+            "read_only_provider_adapter_report_only": read_only_provider_adapter["report_only"],
+            "read_only_provider_adapter_non_executable": read_only_provider_adapter["non_executable"],
+            "read_only_provider_adapter_no_provider_network_call": read_only_provider_adapter["no_provider_network_call"],
+            "read_only_provider_adapter_no_credential_env_read": read_only_provider_adapter["no_credential_env_read"],
+            "read_only_provider_adapter_no_auth_header_generation": read_only_provider_adapter["no_auth_header_generation"],
+            "read_only_provider_adapter_account_order_blocked": read_only_provider_adapter["account_order_blocked"],
+            "read_only_provider_adapter_canonical_output_only": read_only_provider_adapter["canonical_output_only"],
+            "read_only_provider_adapter_parquet_unsupported": read_only_provider_adapter["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -9141,5 +9163,244 @@ def _run_controlled_mock_dry_run_smoke(output_dir: Path) -> dict[str, bool]:
         "no_mock_order_execution": reviewed.summary_report.no_mock_order_execution and reviewed.mock_order_intent_preview.no_execution_flag,
         "preview_non_executable": reviewed.mock_order_intent_preview.non_executable and reviewed.mock_order_intent_preview.report_only,
         "execution_review_or_rehearsed_only": decision in {"DRY_RUN_REHEARSED", "MOCK_EXECUTION_REVIEW_READY", "WATCH_ONLY", "GAP", "BLOCKED", "RESEARCH_ONLY", "REJECTED"},
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_read_only_provider_adapter_smoke(output_dir: Path) -> dict[str, bool]:
+    reviewed = build_read_only_provider_adapter_boundary(
+        ReadOnlyProviderAdapterInput.model_validate(
+            {
+                "adapter_id": "read-only-provider-adapter-smoke",
+                "current_provider": "KIWOOM_REST",
+                "future_provider": "LS_OPEN_API",
+                "provider_definitions": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "role": "CURRENT_PRIMARY",
+                        "markets_supported": ["KRX_EQUITY"],
+                        "implemented": True,
+                        "placeholder_only": False,
+                        "future_api_evidence_required": False,
+                        "evidence_ref": str(output_dir / "kiwoom_readonly.md"),
+                        "notes": "current readonly provider",
+                    },
+                    {
+                        "provider": "LS_OPEN_API",
+                        "role": "FUTURE_MIGRATION_TARGET",
+                        "markets_supported": ["KRX_EQUITY", "GLOBAL_FUTURES"],
+                        "implemented": False,
+                        "placeholder_only": True,
+                        "future_api_evidence_required": True,
+                        "notes": "future target only",
+                    },
+                    {
+                        "provider": "LOCAL_FIXTURE",
+                        "role": "FIXTURE_ONLY",
+                        "markets_supported": ["TEST_ONLY"],
+                        "implemented": True,
+                        "placeholder_only": False,
+                        "future_api_evidence_required": False,
+                        "evidence_ref": str(output_dir / "local_fixture.md"),
+                        "notes": "local fixture only",
+                    },
+                ],
+                "request_envelope_boundary": {"authorization_template": "Bearer <TOKEN_REF_ONLY>"},
+                "kiwoom_rest_evidence_entries": [
+                    {"api_id": "AU10001", "title": "접근토큰 발급", "category": "OAUTH", "maps_to": ["TOKEN_BOUNDARY"], "blocked_in_readonly": True},
+                    {"api_id": "KA10004", "title": "주식호가요청", "category": "QUOTE_ORDERBOOK", "maps_to": ["CANONICAL_QUOTE"]},
+                    {"api_id": "KA10081", "title": "주식일봉차트조회요청", "category": "OHLCV_CHART", "maps_to": ["CANONICAL_OHLCV"]},
+                    {"api_id": "KA00198", "title": "실시간종목조회순위", "category": "RANKING_OUTLIER", "maps_to": ["CANONICAL_RANK_SIGNAL"]},
+                    {"api_id": "KA10008", "title": "주식외국인종목별매매동향", "category": "FLOW_SHORT_PROGRAM", "maps_to": ["CANONICAL_FLOW_SIGNAL"]},
+                    {"api_id": "KA20001", "title": "업종현재가요청", "category": "SECTOR_THEME_ETF", "maps_to": ["CANONICAL_SECTOR_THEME_SIGNAL"]},
+                    {"api_id": "0B", "title": "주식체결", "category": "REALTIME_READONLY", "maps_to": ["CANONICAL_REALTIME_EVENT"], "realtime_stream": True},
+                ],
+                "ls_future_placeholder": {
+                    "expected_base_url_placeholder": "LS_BASE_URL_PLACEHOLDER",
+                    "expected_rest_header_shape_placeholder": "LS_HEADER_SHAPE_PLACEHOLDER",
+                    "expected_tr_code_shape_placeholder": "LS_TR_CODE_PLACEHOLDER",
+                    "migration_readiness_status": "EVIDENCE_REQUIRED",
+                },
+                "canonical_quotes": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "KA10004",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T09:30:00+09:00",
+                        "available_at": "2026-06-25T09:30:01+09:00",
+                        "source_ref": str(output_dir / "kiwoom_quote.json"),
+                        "quality_flags": ["READ_ONLY_ONLY"],
+                        "raw_payload_redacted": True,
+                        "last_price": 82500.0,
+                    }
+                ],
+                "canonical_ohlcv_records": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "KA10081",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "source_ref": str(output_dir / "kiwoom_ohlcv.json"),
+                        "quality_flags": ["POINT_IN_TIME_SAFE"],
+                        "raw_payload_redacted": True,
+                        "interval": "1D",
+                        "open_price": 82000.0,
+                        "high_price": 83000.0,
+                        "low_price": 81800.0,
+                        "close_price": 82500.0,
+                        "volume": 1234567.0,
+                    }
+                ],
+                "canonical_rank_signals": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "KA00198",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T09:31:00+09:00",
+                        "available_at": "2026-06-25T09:31:02+09:00",
+                        "source_ref": str(output_dir / "kiwoom_rank.json"),
+                        "quality_flags": ["READ_ONLY_ONLY"],
+                        "raw_payload_redacted": True,
+                        "rank_metric": "VOLUME_SPIKE",
+                        "rank_value": 4.2,
+                        "rank_order": 3,
+                    }
+                ],
+                "canonical_flow_signals": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "KA10008",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T15:31:00+09:00",
+                        "available_at": "2026-06-25T15:32:00+09:00",
+                        "source_ref": str(output_dir / "kiwoom_flow.json"),
+                        "quality_flags": ["READ_ONLY_ONLY"],
+                        "raw_payload_redacted": True,
+                        "flow_metric": "FOREIGN_NET_FLOW",
+                        "net_flow_value": 1300000000.0,
+                    }
+                ],
+                "canonical_sector_theme_signals": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "KA20001",
+                        "canonical_instrument_key": "SEMICONDUCTOR_THEME",
+                        "provider_symbol": "SEMIS",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T09:32:00+09:00",
+                        "available_at": "2026-06-25T09:32:05+09:00",
+                        "source_ref": str(output_dir / "kiwoom_sector.json"),
+                        "quality_flags": ["READ_ONLY_ONLY"],
+                        "raw_payload_redacted": True,
+                        "sector_or_theme_id": "SEMIS",
+                        "signal_metric": "RELATIVE_STRENGTH",
+                        "signal_value": 1.7,
+                    }
+                ],
+                "canonical_realtime_events": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "0B",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T09:30:05+09:00",
+                        "available_at": "2026-06-25T09:30:05+09:00",
+                        "source_ref": str(output_dir / "kiwoom_realtime.json"),
+                        "quality_flags": ["READ_ONLY_ONLY"],
+                        "raw_payload_redacted": True,
+                        "event_code": "0B",
+                        "event_type": "TRADE_PRINT",
+                        "event_summary": "trade print",
+                    }
+                ],
+                "canonical_capability_records": [
+                    {
+                        "provider": "KIWOOM_REST",
+                        "provider_api_id": "KA10081",
+                        "canonical_instrument_key": "CAPABILITY_KRX_OHLCV",
+                        "provider_symbol": "KRX_OHLCV",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "observed_at": "2026-06-25T09:00:00+09:00",
+                        "available_at": "2026-06-25T09:00:00+09:00",
+                        "source_ref": str(output_dir / "kiwoom_capability.json"),
+                        "quality_flags": ["READ_ONLY_ONLY"],
+                        "raw_payload_redacted": True,
+                        "capability_name": "DOMESTIC_OHLCV",
+                        "capability_status": "AVAILABLE_NOW",
+                        "notes": "kiwoom chart api available",
+                    }
+                ],
+                "blocked_account_order_api_records": [
+                    {"api_id": "KA00001", "title": "계좌번호조회", "block_reason": "ACCOUNT_API_BLOCKED"},
+                    {"api_id": "KT10000", "title": "주문요청", "block_reason": "ORDER_API_BLOCKED"},
+                    {"api_id": "00", "title": "주문체결", "block_reason": "REALTIME_ORDER_STREAM_BLOCKED", "realtime_stream": True},
+                    {"api_id": "04", "title": "잔고", "block_reason": "REALTIME_ACCOUNT_STREAM_BLOCKED", "realtime_stream": True},
+                ],
+                "external_gap_markets": ["NQ_ES_FUTURES", "VIX_DXY_10Y_USDKRW", "ECONOMIC_CALENDAR"],
+                "safety_report": {
+                    "safety_report_id": "read-only-provider-adapter-safety-smoke",
+                    "blocked_capabilities": [
+                        "KIWOOM_API_CALL_BLOCKED",
+                        "LS_API_CALL_BLOCKED",
+                        "NETWORK_BLOCKED",
+                        "CREDENTIAL_READ_BLOCKED",
+                        "TOKEN_LOADING_BLOCKED",
+                        "AUTH_HEADER_GENERATION_BLOCKED",
+                        "ACCOUNT_ORDER_API_BLOCKED",
+                    ],
+                    "findings": [],
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "read-only-provider-adapter-audit-smoke",
+                        "created_at": "2026-06-25T10:00:00+09:00",
+                        "source_path": str(output_dir / "read_only_provider_adapter_fixture.json"),
+                        "operator_context": "offline readonly provider boundary smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": reviewed.summary_report.report_id.endswith("REPORT"),
+        "evidence_map_report_generated": reviewed.kiwoom_rest_evidence_map_report.report_id.endswith("REPORT"),
+        "ls_report_generated": reviewed.ls_future_compatibility_report.report_id.endswith("REPORT"),
+        "canonical_contract_report_generated": reviewed.canonical_readonly_contract_report.report_id.endswith("REPORT"),
+        "capability_matrix_report_generated": reviewed.provider_capability_matrix_report.report_id.endswith("REPORT"),
+        "blocked_api_report_generated": reviewed.blocked_account_order_api_report.report_id.endswith("REPORT"),
+        "migration_report_generated": reviewed.provider_migration_readiness_report.report_id.endswith("REPORT"),
+        "gap_report_generated": reviewed.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": reviewed.summary_report.local_file_only,
+        "offline_only": reviewed.summary_report.offline_only,
+        "report_only": reviewed.summary_report.report_only,
+        "non_executable": reviewed.summary_report.non_executable,
+        "no_provider_network_call": reviewed.summary_report.no_network and reviewed.summary_report.no_provider_api and reviewed.summary_report.no_kiwoom_api and reviewed.summary_report.no_ls_api,
+        "no_credential_env_read": reviewed.summary_report.no_env_read and reviewed.summary_report.no_credential_read and reviewed.summary_report.no_token_loading,
+        "no_auth_header_generation": reviewed.summary_report.no_auth_header_generation and reviewed.canonical_readonly_contract_report.request_envelope_boundary.authorization_template == "Bearer <TOKEN_REF_ONLY>",
+        "account_order_blocked": {"KA00001", "KT10000", "00", "04"} <= {item.api_id for item in reviewed.blocked_account_order_api_report.blocked_records},
+        "canonical_output_only": reviewed.request_envelope_boundary.authorization_template == "Bearer <TOKEN_REF_ONLY>" and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records) and all(item.raw_payload_redacted for item in reviewed.canonical_quotes + reviewed.canonical_ohlcv_records + reviewed.canonical_rank_signals + reviewed.canonical_flow_signals + reviewed.canonical_sector_theme_signals + reviewed.canonical_realtime_events + reviewed.canonical_capability_records),
         "parquet_unsupported": ".parquet" not in dumped,
     }
