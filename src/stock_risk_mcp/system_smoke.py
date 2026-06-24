@@ -199,6 +199,8 @@ from stock_risk_mcp.allocation_policy_training_engine import build_allocation_po
 from stock_risk_mcp.allocation_policy_training_models import AllocationPolicyCandidateInput
 from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
 from stock_risk_mcp.cnn_fear_greed_models import CNNFearGreedCollectorConfig
+from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_mock_readiness_review
+from stock_risk_mcp.controlled_mock_readiness_models import ControlledMockReadinessInput
 from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
 from stock_risk_mcp.risk_adjusted_paper_eval_models import RiskAdjustedPaperEvalInput
 
@@ -2144,6 +2146,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     allocation_policy_training = _run_allocation_policy_training_smoke(output_dir)
     cnn_fear_greed = _run_cnn_fear_greed_smoke(output_dir)
     risk_adjusted_paper_eval = _run_risk_adjusted_paper_eval_smoke(output_dir)
+    controlled_mock_readiness = _run_controlled_mock_readiness_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2967,6 +2970,25 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "risk_adjusted_paper_eval_paper_evaluated_or_pass": risk_adjusted_paper_eval["paper_evaluated_or_pass"],
             "risk_adjusted_paper_eval_fear_feature_used": risk_adjusted_paper_eval["fear_feature_used"],
             "risk_adjusted_paper_eval_parquet_unsupported": risk_adjusted_paper_eval["parquet_unsupported"],
+            "controlled_mock_readiness_fixture_run": controlled_mock_readiness["fixture_run"],
+            "controlled_mock_readiness_summary_report_generated": controlled_mock_readiness["summary_report_generated"],
+            "controlled_mock_readiness_dependency_report_generated": controlled_mock_readiness["dependency_report_generated"],
+            "controlled_mock_readiness_paper_pass_evidence_report_generated": controlled_mock_readiness["paper_pass_evidence_report_generated"],
+            "controlled_mock_readiness_infrastructure_report_generated": controlled_mock_readiness["infrastructure_report_generated"],
+            "controlled_mock_readiness_safety_policy_report_generated": controlled_mock_readiness["safety_policy_report_generated"],
+            "controlled_mock_readiness_boundary_violation_report_generated": controlled_mock_readiness["boundary_violation_report_generated"],
+            "controlled_mock_readiness_gap_report_generated": controlled_mock_readiness["gap_report_generated"],
+            "controlled_mock_readiness_local_only": controlled_mock_readiness["local_only"],
+            "controlled_mock_readiness_offline_only": controlled_mock_readiness["offline_only"],
+            "controlled_mock_readiness_report_only": controlled_mock_readiness["report_only"],
+            "controlled_mock_readiness_non_executable": controlled_mock_readiness["non_executable"],
+            "controlled_mock_readiness_no_live_path": controlled_mock_readiness["no_live_path"],
+            "controlled_mock_readiness_no_order_path": controlled_mock_readiness["no_order_path"],
+            "controlled_mock_readiness_no_account_mutation": controlled_mock_readiness["no_account_mutation"],
+            "controlled_mock_readiness_no_network": controlled_mock_readiness["no_network"],
+            "controlled_mock_readiness_no_mock_order_execution": controlled_mock_readiness["no_mock_order_execution"],
+            "controlled_mock_readiness_review_only": controlled_mock_readiness["review_only"],
+            "controlled_mock_readiness_parquet_unsupported": controlled_mock_readiness["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -8028,5 +8050,81 @@ def _run_risk_adjusted_paper_eval_smoke(output_dir: Path) -> dict[str, bool]:
         "no_network": evaluated.pass_readiness_report.no_network,
         "paper_evaluated_or_pass": evaluated.pass_readiness_report.decision.value in {"PAPER_EVALUATED", "PAPER_PASS"},
         "fear_feature_used": evaluated.regime_fear_bucket_report.cnn_fear_greed_feature_used,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_controlled_mock_readiness_smoke(output_dir: Path) -> dict[str, bool]:
+    reviewed = build_controlled_mock_readiness_review(
+        ControlledMockReadinessInput.model_validate(
+            {
+                "readiness_review_id": "controlled-mock-readiness-smoke",
+                "paper_evaluation_ref": "risk-adjusted-paper-eval-smoke",
+                "paper_evaluation_decision": "PAPER_PASS",
+                "allocation_policy_ref": "allocation-policy-smoke",
+                "allocation_policy_decision": "PAPER_CANDIDATE",
+                "strategy_ensemble_ref": "ensemble-smoke",
+                "risk_control_ref": "risk-control-smoke",
+                "mock_oauth_readiness_ref": "kiwoom-mock-oauth-draft-smoke",
+                "mock_oauth_readiness_status": "GAP",
+                "mock_market_data_readiness_ref": "kiwoom-mock-market-data-smoke",
+                "mock_market_data_readiness_status": "AVAILABLE",
+                "broker_adapter_boundary_ref": "broker-mock-boundary-smoke",
+                "order_gate_boundary_ref": "order-gate-boundary-smoke",
+                "kill_switch_policy_ref": "kill-switch-smoke",
+                "user_opt_in_policy_ref": "user-opt-in-smoke",
+                "audit_policy_ref": "audit-policy-smoke",
+                "rollback_policy_ref": "rollback-policy-smoke",
+                "point_in_time_evidence_present": True,
+                "walk_forward_evidence_present": True,
+                "costs_present": True,
+                "cnn_feature_gap_noted": False,
+                "drawdown_limit_passed": True,
+                "exposure_limit_passed": True,
+                "turnover_limit_passed": True,
+                "safety_policy": {
+                    "policy_id": "controlled-mock-safety-policy-smoke",
+                    "maximum_simulated_exposure": 1.0,
+                    "maximum_mock_exposure": 0.25,
+                    "maximum_inverse_hedge_exposure": 0.2,
+                    "daily_loss_limit": 0.05,
+                    "maximum_drawdown_limit": 0.15,
+                    "order_count_limit": 3,
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "controlled-mock-readiness-audit-smoke",
+                        "created_at": "2026-06-24T16:30:00+09:00",
+                        "source_path": str(output_dir / "controlled_mock_readiness_smoke_fixture.json"),
+                        "operator_context": "offline controlled mock readiness smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": reviewed.summary_report.report_id.endswith("REPORT"),
+        "dependency_report_generated": reviewed.dependency_report.report_id.endswith("REPORT"),
+        "paper_pass_evidence_report_generated": reviewed.paper_pass_evidence_report.report_id.endswith("REPORT"),
+        "infrastructure_report_generated": reviewed.infrastructure_readiness_report.report_id.endswith("REPORT"),
+        "safety_policy_report_generated": reviewed.safety_policy_report.report_id.endswith("REPORT"),
+        "boundary_violation_report_generated": reviewed.boundary_violation_report.report_id.endswith("REPORT"),
+        "gap_report_generated": reviewed.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": reviewed.summary_report.local_file_only,
+        "offline_only": reviewed.summary_report.offline_only,
+        "report_only": reviewed.summary_report.report_only,
+        "non_executable": reviewed.summary_report.non_executable,
+        "no_live_path": reviewed.summary_report.no_live_prod and reviewed.summary_report.no_autonomous_trading,
+        "no_order_path": reviewed.summary_report.no_order and "order intent" not in dumped,
+        "no_account_mutation": reviewed.summary_report.no_account_mutation,
+        "no_network": reviewed.summary_report.no_network,
+        "no_mock_order_execution": reviewed.summary_report.no_mock_order_execution,
+        "review_only": reviewed.summary_report.decision.value in {"MOCK_REVIEW_READY", "MOCK_DRY_RUN_READY", "GAP", "BLOCKED", "RESEARCH_ONLY", "REJECTED"},
         "parquet_unsupported": ".parquet" not in dumped,
     }

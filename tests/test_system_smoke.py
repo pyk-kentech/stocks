@@ -630,6 +630,25 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["risk_adjusted_paper_eval_paper_evaluated_or_pass"] is True
     assert result["checks"]["risk_adjusted_paper_eval_fear_feature_used"] is True
     assert result["checks"]["risk_adjusted_paper_eval_parquet_unsupported"] is True
+    assert result["checks"]["controlled_mock_readiness_fixture_run"] is True
+    assert result["checks"]["controlled_mock_readiness_summary_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_dependency_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_paper_pass_evidence_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_infrastructure_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_safety_policy_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_boundary_violation_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_gap_report_generated"] is True
+    assert result["checks"]["controlled_mock_readiness_local_only"] is True
+    assert result["checks"]["controlled_mock_readiness_offline_only"] is True
+    assert result["checks"]["controlled_mock_readiness_report_only"] is True
+    assert result["checks"]["controlled_mock_readiness_non_executable"] is True
+    assert result["checks"]["controlled_mock_readiness_no_live_path"] is True
+    assert result["checks"]["controlled_mock_readiness_no_order_path"] is True
+    assert result["checks"]["controlled_mock_readiness_no_account_mutation"] is True
+    assert result["checks"]["controlled_mock_readiness_no_network"] is True
+    assert result["checks"]["controlled_mock_readiness_no_mock_order_execution"] is True
+    assert result["checks"]["controlled_mock_readiness_review_only"] is True
+    assert result["checks"]["controlled_mock_readiness_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False

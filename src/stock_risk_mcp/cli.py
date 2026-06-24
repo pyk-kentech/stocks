@@ -262,6 +262,8 @@ from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
 from stock_risk_mcp.cnn_fear_greed_fixture import load_cnn_fear_greed_fixture
 from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
 from stock_risk_mcp.risk_adjusted_paper_eval_fixture import load_risk_adjusted_paper_eval_fixture
+from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_mock_readiness_review
+from stock_risk_mcp.controlled_mock_readiness_fixture import load_controlled_mock_readiness_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1319,6 +1321,30 @@ def build_command_parser() -> argparse.ArgumentParser:
     paper_pass_readiness_report = subparsers.add_parser("paper-pass-readiness-report")
     paper_pass_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     paper_pass_readiness_report.add_argument("--output-file", type=Path)
+    controlled_mock_readiness_check = subparsers.add_parser("controlled-mock-readiness-check")
+    controlled_mock_readiness_check.add_argument("--fixture-file", type=Path, required=True)
+    controlled_mock_readiness_check.add_argument("--output-file", type=Path)
+    mock_readiness_summary_report = subparsers.add_parser("mock-readiness-summary-report")
+    mock_readiness_summary_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_readiness_summary_report.add_argument("--output-file", type=Path)
+    mock_readiness_dependency_report = subparsers.add_parser("mock-readiness-dependency-report")
+    mock_readiness_dependency_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_readiness_dependency_report.add_argument("--output-file", type=Path)
+    paper_pass_evidence_report = subparsers.add_parser("paper-pass-evidence-report")
+    paper_pass_evidence_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_pass_evidence_report.add_argument("--output-file", type=Path)
+    mock_infrastructure_readiness_report = subparsers.add_parser("mock-infrastructure-readiness-report")
+    mock_infrastructure_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_infrastructure_readiness_report.add_argument("--output-file", type=Path)
+    mock_safety_policy_report = subparsers.add_parser("mock-safety-policy-report")
+    mock_safety_policy_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_safety_policy_report.add_argument("--output-file", type=Path)
+    mock_boundary_violation_report = subparsers.add_parser("mock-boundary-violation-report")
+    mock_boundary_violation_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_boundary_violation_report.add_argument("--output-file", type=Path)
+    mock_readiness_gap_report = subparsers.add_parser("mock-readiness-gap-report")
+    mock_readiness_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    mock_readiness_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2599,6 +2625,14 @@ def main(argv: list[str] | None = None) -> None:
         "paper-drawdown-exposure-report",
         "paper-regime-fear-bucket-report",
         "paper-pass-readiness-report",
+        "controlled-mock-readiness-check",
+        "mock-readiness-summary-report",
+        "mock-readiness-dependency-report",
+        "paper-pass-evidence-report",
+        "mock-infrastructure-readiness-report",
+        "mock-safety-policy-report",
+        "mock-boundary-violation-report",
+        "mock-readiness-gap-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5123,6 +5157,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-mock-readiness-check":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-readiness-summary-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-readiness-dependency-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).dependency_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-pass-evidence-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).paper_pass_evidence_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-infrastructure-readiness-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).infrastructure_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-safety-policy-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).safety_policy_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-boundary-violation-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).boundary_violation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "mock-readiness-gap-report":
+        try:
+            result = _run_controlled_mock_readiness(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -6031,6 +6137,15 @@ def _load_risk_adjusted_paper_eval_fixture_or_raise(fixture_file: Path):
 def _run_risk_adjusted_paper_eval(fixture_file: Path):
     fixture = _load_risk_adjusted_paper_eval_fixture_or_raise(fixture_file)
     return build_risk_adjusted_paper_evaluation(fixture)
+
+
+def _load_controlled_mock_readiness_fixture_or_raise(fixture_file: Path):
+    return load_controlled_mock_readiness_fixture(fixture_file)
+
+
+def _run_controlled_mock_readiness(fixture_file: Path):
+    fixture = _load_controlled_mock_readiness_fixture_or_raise(fixture_file)
+    return build_controlled_mock_readiness_review(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:
