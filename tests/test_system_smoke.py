@@ -735,6 +735,29 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_rest_readonly_rank_no_auth_header_generation"] is True
     assert result["checks"]["kiwoom_rest_readonly_rank_canonical_output_only"] is True
     assert result["checks"]["kiwoom_rest_readonly_rank_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_fixture_run"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_request_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_mocked_response_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_canonical_quote_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_canonical_orderbook_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_liquidity_hint_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_basic_info_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_continuation_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_v7_integration_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_local_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_offline_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_report_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_non_executable"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_no_network"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_no_provider_api"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_no_token_loading"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_quote_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
