@@ -201,6 +201,8 @@ from stock_risk_mcp.cnn_fear_greed_engine import run_cnn_fear_greed_collection
 from stock_risk_mcp.cnn_fear_greed_models import CNNFearGreedCollectorConfig
 from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_mock_readiness_review
 from stock_risk_mcp.controlled_mock_readiness_models import ControlledMockReadinessInput
+from stock_risk_mcp.market_regime_engine import build_market_regime
+from stock_risk_mcp.market_regime_models import MarketRegimeInput
 from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_paper_evaluation
 from stock_risk_mcp.risk_adjusted_paper_eval_models import RiskAdjustedPaperEvalInput
 
@@ -2147,6 +2149,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     cnn_fear_greed = _run_cnn_fear_greed_smoke(output_dir)
     risk_adjusted_paper_eval = _run_risk_adjusted_paper_eval_smoke(output_dir)
     controlled_mock_readiness = _run_controlled_mock_readiness_smoke(output_dir)
+    market_regime = _run_market_regime_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -2989,6 +2992,27 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "controlled_mock_readiness_no_mock_order_execution": controlled_mock_readiness["no_mock_order_execution"],
             "controlled_mock_readiness_review_only": controlled_mock_readiness["review_only"],
             "controlled_mock_readiness_parquet_unsupported": controlled_mock_readiness["parquet_unsupported"],
+            "market_regime_fixture_run": market_regime["fixture_run"],
+            "market_regime_summary_report_generated": market_regime["summary_report_generated"],
+            "market_regime_input_snapshot_report_generated": market_regime["input_snapshot_report_generated"],
+            "market_regime_risk_appetite_report_generated": market_regime["risk_appetite_report_generated"],
+            "market_regime_direction_report_generated": market_regime["direction_report_generated"],
+            "market_regime_volatility_report_generated": market_regime["volatility_report_generated"],
+            "market_regime_stress_report_generated": market_regime["stress_report_generated"],
+            "market_regime_conflict_report_generated": market_regime["conflict_report_generated"],
+            "market_regime_constraint_report_generated": market_regime["constraint_report_generated"],
+            "market_regime_training_feature_report_generated": market_regime["training_feature_report_generated"],
+            "market_regime_gap_report_generated": market_regime["gap_report_generated"],
+            "market_regime_local_only": market_regime["local_only"],
+            "market_regime_offline_only": market_regime["offline_only"],
+            "market_regime_report_only": market_regime["report_only"],
+            "market_regime_non_executable": market_regime["non_executable"],
+            "market_regime_no_live_path": market_regime["no_live_path"],
+            "market_regime_no_order_path": market_regime["no_order_path"],
+            "market_regime_no_account_mutation": market_regime["no_account_mutation"],
+            "market_regime_no_network": market_regime["no_network"],
+            "market_regime_training_feature_ready": market_regime["training_feature_ready"],
+            "market_regime_parquet_unsupported": market_regime["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -8126,5 +8150,68 @@ def _run_controlled_mock_readiness_smoke(output_dir: Path) -> dict[str, bool]:
         "no_network": reviewed.summary_report.no_network,
         "no_mock_order_execution": reviewed.summary_report.no_mock_order_execution,
         "review_only": reviewed.summary_report.decision.value in {"MOCK_REVIEW_READY", "MOCK_DRY_RUN_READY", "GAP", "BLOCKED", "RESEARCH_ONLY", "REJECTED"},
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_market_regime_smoke(output_dir: Path) -> dict[str, bool]:
+    regime = build_market_regime(
+        MarketRegimeInput.model_validate(
+            {
+                "regime_id": "market-regime-smoke",
+                "snapshot": {
+                    "snapshot_id": "market-regime-snapshot-smoke",
+                    "anchor_at": "2026-06-24T09:10:00+09:00",
+                    "observed_at": "2026-06-24T09:00:00+09:00",
+                    "available_at": "2026-06-24T09:05:00+09:00",
+                    "nq": {"symbol": "NQ", "last_value": 20000.0, "pct_change_1d": 0.8, "source_ref": str(output_dir / "nq_smoke.json")},
+                    "es": {"symbol": "ES", "last_value": 5500.0, "pct_change_1d": 0.6, "source_ref": str(output_dir / "es_smoke.json")},
+                    "vix": {"symbol": "VIX", "last_value": 14.5, "pct_change_1d": -4.0, "source_ref": str(output_dir / "vix_smoke.json")},
+                    "dxy": {"symbol": "DXY", "last_value": 104.0, "pct_change_1d": -0.3, "source_ref": str(output_dir / "dxy_smoke.json")},
+                    "us10y": {"symbol": "US10Y", "last_value": 4.2, "pct_change_1d": -0.8, "source_ref": str(output_dir / "us10y_smoke.json")},
+                    "usdkrw": {"symbol": "USDKRW", "last_value": 1360.0, "pct_change_1d": -0.2, "source_ref": str(output_dir / "usdkrw_smoke.json")},
+                    "cnn_fear_greed_feature_ref": str(output_dir / "cnn_fear_greed_smoke.json"),
+                    "data_freshness_policy": {
+                        "max_age_minutes": 90,
+                        "critical_inputs": ["NQ", "ES", "VIX", "DXY", "US10Y", "USDKRW"],
+                    },
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "market-regime-audit-smoke",
+                        "created_at": "2026-06-24T09:11:00+09:00",
+                        "source_path": str(output_dir / "market_regime_smoke_fixture.json"),
+                        "operator_context": "offline market regime smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(regime.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": regime.summary_report.report_id.endswith("REPORT"),
+        "input_snapshot_report_generated": regime.input_snapshot_report.report_id.endswith("REPORT"),
+        "risk_appetite_report_generated": regime.risk_appetite_report.report_id.endswith("REPORT"),
+        "direction_report_generated": regime.direction_regime_report.report_id.endswith("REPORT"),
+        "volatility_report_generated": regime.volatility_regime_report.report_id.endswith("REPORT"),
+        "stress_report_generated": regime.stress_report.report_id.endswith("REPORT"),
+        "conflict_report_generated": regime.cross_asset_conflict_report.report_id.endswith("REPORT"),
+        "constraint_report_generated": regime.downstream_constraint_report.report_id.endswith("REPORT"),
+        "training_feature_report_generated": regime.training_feature_integration_report.report_id.endswith("REPORT"),
+        "gap_report_generated": regime.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": regime.summary_report.local_file_only,
+        "offline_only": regime.summary_report.offline_only,
+        "report_only": regime.summary_report.report_only,
+        "non_executable": regime.summary_report.non_executable,
+        "no_live_path": regime.summary_report.no_live_prod and regime.summary_report.no_autonomous_trading,
+        "no_order_path": regime.summary_report.no_order and "order intent" not in dumped,
+        "no_account_mutation": regime.summary_report.no_account_mutation,
+        "no_network": regime.summary_report.no_network,
+        "training_feature_ready": regime.training_feature_integration_report.training_feature_ready,
         "parquet_unsupported": ".parquet" not in dumped,
     }

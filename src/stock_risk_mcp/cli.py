@@ -264,6 +264,8 @@ from stock_risk_mcp.risk_adjusted_paper_eval_engine import build_risk_adjusted_p
 from stock_risk_mcp.risk_adjusted_paper_eval_fixture import load_risk_adjusted_paper_eval_fixture
 from stock_risk_mcp.controlled_mock_readiness_engine import build_controlled_mock_readiness_review
 from stock_risk_mcp.controlled_mock_readiness_fixture import load_controlled_mock_readiness_fixture
+from stock_risk_mcp.market_regime_engine import build_market_regime
+from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.kiwoom_mock_market_data_execution_engine import (
     build_kiwoom_mock_market_data_execution_gap_report,
     build_kiwoom_mock_market_data_execution_safety_report,
@@ -1345,6 +1347,39 @@ def build_command_parser() -> argparse.ArgumentParser:
     mock_readiness_gap_report = subparsers.add_parser("mock-readiness-gap-report")
     mock_readiness_gap_report.add_argument("--fixture-file", type=Path, required=True)
     mock_readiness_gap_report.add_argument("--output-file", type=Path)
+    market_regime_check = subparsers.add_parser("market-regime-check")
+    market_regime_check.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_check.add_argument("--output-file", type=Path)
+    market_regime_summary_report = subparsers.add_parser("market-regime-summary-report")
+    market_regime_summary_report.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_summary_report.add_argument("--output-file", type=Path)
+    market_regime_input_snapshot_report = subparsers.add_parser("market-regime-input-snapshot-report")
+    market_regime_input_snapshot_report.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_input_snapshot_report.add_argument("--output-file", type=Path)
+    risk_appetite_report = subparsers.add_parser("risk-appetite-report")
+    risk_appetite_report.add_argument("--fixture-file", type=Path, required=True)
+    risk_appetite_report.add_argument("--output-file", type=Path)
+    market_direction_regime_report = subparsers.add_parser("market-direction-regime-report")
+    market_direction_regime_report.add_argument("--fixture-file", type=Path, required=True)
+    market_direction_regime_report.add_argument("--output-file", type=Path)
+    volatility_regime_report = subparsers.add_parser("volatility-regime-report")
+    volatility_regime_report.add_argument("--fixture-file", type=Path, required=True)
+    volatility_regime_report.add_argument("--output-file", type=Path)
+    fx_rate_dollar_stress_report = subparsers.add_parser("fx-rate-dollar-stress-report")
+    fx_rate_dollar_stress_report.add_argument("--fixture-file", type=Path, required=True)
+    fx_rate_dollar_stress_report.add_argument("--output-file", type=Path)
+    cross_asset_conflict_report = subparsers.add_parser("cross-asset-conflict-report")
+    cross_asset_conflict_report.add_argument("--fixture-file", type=Path, required=True)
+    cross_asset_conflict_report.add_argument("--output-file", type=Path)
+    market_regime_downstream_constraint_report = subparsers.add_parser("market-regime-downstream-constraint-report")
+    market_regime_downstream_constraint_report.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_downstream_constraint_report.add_argument("--output-file", type=Path)
+    market_regime_training_feature_report = subparsers.add_parser("market-regime-training-feature-report")
+    market_regime_training_feature_report.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_training_feature_report.add_argument("--output-file", type=Path)
+    market_regime_gap_report = subparsers.add_parser("market-regime-gap-report")
+    market_regime_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    market_regime_gap_report.add_argument("--output-file", type=Path)
 
     create_intent = subparsers.add_parser("create-order-intent")
     create_intent.add_argument("--db", type=Path, required=True)
@@ -2633,6 +2668,17 @@ def main(argv: list[str] | None = None) -> None:
         "mock-safety-policy-report",
         "mock-boundary-violation-report",
         "mock-readiness-gap-report",
+        "market-regime-check",
+        "market-regime-summary-report",
+        "market-regime-input-snapshot-report",
+        "risk-appetite-report",
+        "market-direction-regime-report",
+        "volatility-regime-report",
+        "fx-rate-dollar-stress-report",
+        "cross-asset-conflict-report",
+        "market-regime-downstream-constraint-report",
+        "market-regime-training-feature-report",
+        "market-regime-gap-report",
         "run-scan-pipeline",
         "run-paper-pipeline",
         "run-policy-evaluation-pipeline",
@@ -5229,6 +5275,105 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-check":
+        try:
+            result = _run_market_regime(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-summary-report":
+        try:
+            result = _run_market_regime(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision": result.decision.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-input-snapshot-report":
+        try:
+            result = _run_market_regime(args.fixture_file).input_snapshot_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "risk-appetite-report":
+        try:
+            result = _run_market_regime(args.fixture_file).risk_appetite_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-direction-regime-report":
+        try:
+            result = _run_market_regime(args.fixture_file).direction_regime_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "volatility-regime-report":
+        try:
+            result = _run_market_regime(args.fixture_file).volatility_regime_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "fx-rate-dollar-stress-report":
+        try:
+            result = _run_market_regime(args.fixture_file).stress_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "cross-asset-conflict-report":
+        try:
+            result = _run_market_regime(args.fixture_file).cross_asset_conflict_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-downstream-constraint-report":
+        try:
+            result = _run_market_regime(args.fixture_file).downstream_constraint_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-training-feature-report":
+        try:
+            result = _run_market_regime(args.fixture_file).training_feature_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "market-regime-gap-report":
+        try:
+            result = _run_market_regime(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "create-order-intent":
         try:
             intent = OrderIntent(
@@ -6146,6 +6291,15 @@ def _load_controlled_mock_readiness_fixture_or_raise(fixture_file: Path):
 def _run_controlled_mock_readiness(fixture_file: Path):
     fixture = _load_controlled_mock_readiness_fixture_or_raise(fixture_file)
     return build_controlled_mock_readiness_review(fixture)
+
+
+def _load_market_regime_fixture_or_raise(fixture_file: Path):
+    return load_market_regime_fixture(fixture_file)
+
+
+def _run_market_regime(fixture_file: Path):
+    fixture = _load_market_regime_fixture_or_raise(fixture_file)
+    return build_market_regime(fixture)
 
 
 def run_evaluate_and_save(args: argparse.Namespace) -> dict[str, object]:

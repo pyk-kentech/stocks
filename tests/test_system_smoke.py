@@ -649,6 +649,27 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["controlled_mock_readiness_no_mock_order_execution"] is True
     assert result["checks"]["controlled_mock_readiness_review_only"] is True
     assert result["checks"]["controlled_mock_readiness_parquet_unsupported"] is True
+    assert result["checks"]["market_regime_fixture_run"] is True
+    assert result["checks"]["market_regime_summary_report_generated"] is True
+    assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
+    assert result["checks"]["market_regime_risk_appetite_report_generated"] is True
+    assert result["checks"]["market_regime_direction_report_generated"] is True
+    assert result["checks"]["market_regime_volatility_report_generated"] is True
+    assert result["checks"]["market_regime_stress_report_generated"] is True
+    assert result["checks"]["market_regime_conflict_report_generated"] is True
+    assert result["checks"]["market_regime_constraint_report_generated"] is True
+    assert result["checks"]["market_regime_training_feature_report_generated"] is True
+    assert result["checks"]["market_regime_gap_report_generated"] is True
+    assert result["checks"]["market_regime_local_only"] is True
+    assert result["checks"]["market_regime_offline_only"] is True
+    assert result["checks"]["market_regime_report_only"] is True
+    assert result["checks"]["market_regime_non_executable"] is True
+    assert result["checks"]["market_regime_no_live_path"] is True
+    assert result["checks"]["market_regime_no_order_path"] is True
+    assert result["checks"]["market_regime_no_account_mutation"] is True
+    assert result["checks"]["market_regime_no_network"] is True
+    assert result["checks"]["market_regime_training_feature_ready"] is True
+    assert result["checks"]["market_regime_parquet_unsupported"] is True
     assert result["checks"]["investing_crawler_called"] is False
     assert result["checks"]["finviz_scraper_called"] is False
     assert result["checks"]["news_ingestion_called"] is False
