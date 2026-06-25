@@ -758,6 +758,29 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_rest_readonly_quote_no_auth_header_generation"] is True
     assert result["checks"]["kiwoom_rest_readonly_quote_canonical_output_only"] is True
     assert result["checks"]["kiwoom_rest_readonly_quote_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_fixture_run"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_request_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_mocked_response_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_canonical_investor_flow_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_canonical_program_flow_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_short_lending_capability_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_capability_matrix_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_continuation_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_v7_integration_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_local_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_offline_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_report_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_non_executable"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_no_network"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_no_provider_api"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_no_token_loading"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_flow_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
