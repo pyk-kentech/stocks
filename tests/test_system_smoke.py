@@ -781,6 +781,29 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_rest_readonly_flow_no_auth_header_generation"] is True
     assert result["checks"]["kiwoom_rest_readonly_flow_canonical_output_only"] is True
     assert result["checks"]["kiwoom_rest_readonly_flow_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_fixture_run"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_request_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_mocked_response_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_canonical_theme_leadership_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_canonical_theme_membership_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_canonical_etf_trend_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_capability_matrix_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_continuation_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_v7_integration_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_local_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_offline_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_report_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_non_executable"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_no_network"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_no_provider_api"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_no_token_loading"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_rest_readonly_sector_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True

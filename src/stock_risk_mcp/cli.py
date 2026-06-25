@@ -276,6 +276,8 @@ from stock_risk_mcp.kiwoom_rest_readonly_quote_engine import build_kiwoom_rest_r
 from stock_risk_mcp.kiwoom_rest_readonly_quote_fixture import load_kiwoom_rest_readonly_quote_fixture
 from stock_risk_mcp.kiwoom_rest_readonly_flow_engine import build_kiwoom_rest_readonly_flow_adapter
 from stock_risk_mcp.kiwoom_rest_readonly_flow_fixture import load_kiwoom_rest_readonly_flow_fixture
+from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_readonly_sector_adapter
+from stock_risk_mcp.kiwoom_rest_readonly_sector_fixture import load_kiwoom_rest_readonly_sector_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
@@ -1553,6 +1555,39 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_rest_flow_gap_report = subparsers.add_parser("kiwoom-rest-flow-gap-report")
     kiwoom_rest_flow_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_rest_flow_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_adapter_check = subparsers.add_parser("kiwoom-rest-sector-adapter-check")
+    kiwoom_rest_sector_adapter_check.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_adapter_check.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_request_report = subparsers.add_parser("kiwoom-rest-sector-request-report")
+    kiwoom_rest_sector_request_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_request_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_mocked_response_report = subparsers.add_parser("kiwoom-rest-sector-mocked-response-report")
+    kiwoom_rest_sector_mocked_response_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_mocked_response_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_canonical_theme_leadership_report = subparsers.add_parser("kiwoom-rest-canonical-theme-leadership-report")
+    kiwoom_rest_canonical_theme_leadership_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_canonical_theme_leadership_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_canonical_theme_membership_report = subparsers.add_parser("kiwoom-rest-canonical-theme-membership-report")
+    kiwoom_rest_canonical_theme_membership_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_canonical_theme_membership_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_canonical_etf_trend_report = subparsers.add_parser("kiwoom-rest-canonical-etf-trend-report")
+    kiwoom_rest_canonical_etf_trend_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_canonical_etf_trend_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_etf_capability_matrix_report = subparsers.add_parser("kiwoom-rest-sector-etf-capability-matrix-report")
+    kiwoom_rest_sector_etf_capability_matrix_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_etf_capability_matrix_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_continuation_report = subparsers.add_parser("kiwoom-rest-sector-continuation-report")
+    kiwoom_rest_sector_continuation_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_continuation_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_readonly_safety_report = subparsers.add_parser("kiwoom-rest-sector-readonly-safety-report")
+    kiwoom_rest_sector_readonly_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_readonly_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_v7_integration_report = subparsers.add_parser("kiwoom-rest-sector-v7-integration-report")
+    kiwoom_rest_sector_v7_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_v7_integration_report.add_argument("--output-file", type=Path)
+    kiwoom_rest_sector_gap_report = subparsers.add_parser("kiwoom-rest-sector-gap-report")
+    kiwoom_rest_sector_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_rest_sector_gap_report.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
     market_regime_check.add_argument("--output-file", type=Path)
@@ -3065,6 +3100,17 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-rest-flow-readonly-safety-report",
         "kiwoom-rest-flow-v7-integration-report",
         "kiwoom-rest-flow-gap-report",
+        "kiwoom-rest-sector-adapter-check",
+        "kiwoom-rest-sector-request-report",
+        "kiwoom-rest-sector-mocked-response-report",
+        "kiwoom-rest-canonical-theme-leadership-report",
+        "kiwoom-rest-canonical-theme-membership-report",
+        "kiwoom-rest-canonical-etf-trend-report",
+        "kiwoom-rest-sector-etf-capability-matrix-report",
+        "kiwoom-rest-sector-continuation-report",
+        "kiwoom-rest-sector-readonly-safety-report",
+        "kiwoom-rest-sector-v7-integration-report",
+        "kiwoom-rest-sector-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -6273,6 +6319,105 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-adapter-check":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness": result.readiness.value}
+            return {"readiness": result.readiness.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-request-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).request_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-mocked-response-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).mocked_response_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-canonical-theme-leadership-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).canonical_theme_leadership_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-canonical-theme-membership-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).canonical_theme_membership_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-canonical-etf-trend-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).canonical_etf_trend_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-etf-capability-matrix-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).sector_etf_capability_matrix_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-continuation-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).continuation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-readonly-safety-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-v7-integration-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).v7_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-rest-sector-gap-report":
+        try:
+            result = _run_kiwoom_rest_readonly_sector(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -7730,6 +7875,15 @@ def _load_kiwoom_rest_readonly_flow_fixture_or_raise(fixture_file: Path):
 def _run_kiwoom_rest_readonly_flow(fixture_file: Path):
     fixture = _load_kiwoom_rest_readonly_flow_fixture_or_raise(fixture_file)
     return build_kiwoom_rest_readonly_flow_adapter(fixture)
+
+
+def _load_kiwoom_rest_readonly_sector_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_rest_readonly_sector_fixture(fixture_file)
+
+
+def _run_kiwoom_rest_readonly_sector(fixture_file: Path):
+    fixture = _load_kiwoom_rest_readonly_sector_fixture_or_raise(fixture_file)
+    return build_kiwoom_rest_readonly_sector_adapter(fixture)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):
