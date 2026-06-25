@@ -280,6 +280,16 @@ from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_
 from stock_risk_mcp.kiwoom_rest_readonly_sector_fixture import load_kiwoom_rest_readonly_sector_fixture
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
+from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
+from stock_risk_mcp.kiwoom_readonly_final_transport_models import (
+    KiwoomReadonlyFinalCapturePolicy,
+    KiwoomReadonlyFinalDomain,
+    KiwoomReadonlyFinalOptIn,
+    KiwoomReadonlyFinalRequest,
+    KiwoomReadonlyFinalTokenProviderKind,
+    KiwoomReadonlyFinalTokenProviderSpec,
+    KiwoomReadonlyFinalTransportMode,
+)
 from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
@@ -1643,6 +1653,39 @@ def build_command_parser() -> argparse.ArgumentParser:
         command.add_argument("--available-at")
         command.add_argument("--observed-at")
         command.add_argument("--compose-snapshot", action="store_true")
+        command.add_argument("--output-file", type=Path)
+    for name in (
+        "kiwoom-readonly-final-transport-check",
+        "kiwoom-readonly-final-request-preview-report",
+        "kiwoom-readonly-final-opt-in-safety-report",
+        "kiwoom-readonly-final-allowlist-report",
+        "kiwoom-readonly-final-token-provider-report",
+        "kiwoom-readonly-final-mocked-call-report",
+        "kiwoom-readonly-final-single-call-smoke-report",
+        "kiwoom-readonly-final-capture-report",
+        "kiwoom-readonly-final-response-routing-report",
+        "kiwoom-readonly-final-snapshot-validation-report",
+        "kiwoom-readonly-final-v8-readiness-report",
+        "kiwoom-readonly-final-gap-report",
+    ):
+        command = subparsers.add_parser(name)
+        command.add_argument("--api-id", required=True)
+        command.add_argument("--domain", default="mock-krx")
+        command.add_argument("--body-json", default="{}")
+        command.add_argument("--symbol")
+        command.add_argument("--canonical-instrument-key")
+        command.add_argument("--available-at")
+        command.add_argument("--observed-at")
+        command.add_argument("--token-env-name")
+        command.add_argument("--mock-response-file", type=Path)
+        command.add_argument("--capture-redacted-response", action="store_true")
+        command.add_argument("--capture-dir")
+        command.add_argument("--validate-snapshot", action="store_true")
+        command.add_argument("--allow-real-readonly-network", action="store_true")
+        command.add_argument("--acknowledge-readonly-only", action="store_true")
+        command.add_argument("--acknowledge-no-orders", action="store_true")
+        command.add_argument("--acknowledge-user-initiated", action="store_true")
+        command.add_argument("--acknowledge-single-call-smoke", action="store_true")
         command.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
@@ -3186,6 +3229,18 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-manual-response-snapshot-report",
         "kiwoom-manual-response-safety-report",
         "kiwoom-manual-response-gap-report",
+        "kiwoom-readonly-final-transport-check",
+        "kiwoom-readonly-final-request-preview-report",
+        "kiwoom-readonly-final-opt-in-safety-report",
+        "kiwoom-readonly-final-allowlist-report",
+        "kiwoom-readonly-final-token-provider-report",
+        "kiwoom-readonly-final-mocked-call-report",
+        "kiwoom-readonly-final-single-call-smoke-report",
+        "kiwoom-readonly-final-capture-report",
+        "kiwoom-readonly-final-response-routing-report",
+        "kiwoom-readonly-final-snapshot-validation-report",
+        "kiwoom-readonly-final-v8-readiness-report",
+        "kiwoom-readonly-final-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -6664,6 +6719,116 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-transport-check":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "status_value": result.status.value}
+            return {"status_value": result.status.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-request-preview-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).request_preview_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-opt-in-safety-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-allowlist-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).allowlist_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-token-provider-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).token_provider_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-mocked-call-report":
+        try:
+            final = _run_kiwoom_readonly_final_transport_from_args(args)
+            result = final.smoke_result or final.summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-single-call-smoke-report":
+        try:
+            final = _run_kiwoom_readonly_final_transport_from_args(args)
+            result = final.smoke_result or final.summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-capture-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).capture_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json") if result is not None else {}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-response-routing-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).parser_routing_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json") if result is not None else {}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-snapshot-validation-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).snapshot_validation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json") if result is not None else {}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-v8-readiness-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-final-gap-report":
+        try:
+            result = _run_kiwoom_readonly_final_transport_from_args(args).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -8169,6 +8334,70 @@ def _run_kiwoom_manual_response_import_from_args(args):
         }
     )
     return build_kiwoom_manual_response_import_harness(request)
+
+
+def _run_kiwoom_readonly_final_transport_from_args(args):
+    try:
+        body_json = json.loads(args.body_json)
+    except Exception as exc:
+        raise ValueError(f"invalid --body-json: {exc}") from exc
+    if not isinstance(body_json, dict):
+        raise ValueError("--body-json must decode to an object")
+    mocked_response_payload = None
+    if args.mock_response_file:
+        mocked_response_payload = json.loads(args.mock_response_file.read_text(encoding="utf-8"))
+        if not isinstance(mocked_response_payload, dict):
+            raise ValueError("--mock-response-file must contain a JSON object")
+    domain_map = {
+        "mock-krx": KiwoomReadonlyFinalDomain.KIWOOM_MOCK_KRX,
+        "prod-readonly": KiwoomReadonlyFinalDomain.KIWOOM_PROD_READONLY,
+    }
+    mode = KiwoomReadonlyFinalTransportMode.DRY_RUN_PREVIEW_ONLY
+    if args.command in {
+        "kiwoom-readonly-final-mocked-call-report",
+        "kiwoom-readonly-final-capture-report",
+        "kiwoom-readonly-final-response-routing-report",
+        "kiwoom-readonly-final-snapshot-validation-report",
+        "kiwoom-readonly-final-v8-readiness-report",
+    }:
+        mode = KiwoomReadonlyFinalTransportMode.MOCKED_TRANSPORT_ONLY
+    if args.command == "kiwoom-readonly-final-single-call-smoke-report":
+        mode = KiwoomReadonlyFinalTransportMode.REAL_READONLY_SINGLE_CALL_SMOKE
+    request = KiwoomReadonlyFinalRequest.model_validate(
+        {
+            "request_id": "KIWOOM-READONLY-FINAL-CLI",
+            "mode": mode.value,
+            "api_id": args.api_id,
+            "domain": domain_map.get(str(args.domain).strip().lower(), KiwoomReadonlyFinalDomain.UNKNOWN_BLOCKED).value,
+            "body_json": body_json,
+            "provider_symbol": args.symbol,
+            "canonical_instrument_key": args.canonical_instrument_key,
+            "observed_at": args.observed_at,
+            "available_at": args.available_at,
+            "validate_snapshot": args.validate_snapshot,
+            "mocked_response_payload": mocked_response_payload,
+            "opt_in": KiwoomReadonlyFinalOptIn(
+                allow_real_readonly_network=args.allow_real_readonly_network,
+                acknowledge_readonly_only=args.acknowledge_readonly_only,
+                acknowledge_no_orders=args.acknowledge_no_orders,
+                acknowledge_user_initiated=args.acknowledge_user_initiated,
+                acknowledge_single_call_smoke=args.acknowledge_single_call_smoke,
+            ).model_dump(mode="json"),
+            "token_provider": KiwoomReadonlyFinalTokenProviderSpec(
+                provider_kind=(
+                    KiwoomReadonlyFinalTokenProviderKind.ENV_EXPLICIT
+                    if args.token_env_name
+                    else KiwoomReadonlyFinalTokenProviderKind.DISABLED
+                ),
+                env_var_name=args.token_env_name,
+            ).model_dump(mode="json"),
+            "capture_policy": KiwoomReadonlyFinalCapturePolicy(
+                enabled=args.capture_redacted_response,
+                capture_dir=args.capture_dir or "local_data/kiwoom_readonly_captures",
+            ).model_dump(mode="json"),
+        }
+    )
+    return build_kiwoom_readonly_final_transport(request)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):

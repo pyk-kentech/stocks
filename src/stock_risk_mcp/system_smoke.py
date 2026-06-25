@@ -219,6 +219,13 @@ from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly
 from stock_risk_mcp.kiwoom_readonly_snapshot_models import KiwoomReadonlySnapshotConfig
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
+from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
+from stock_risk_mcp.kiwoom_readonly_final_transport_models import (
+    KiwoomReadonlyFinalDomain,
+    KiwoomReadonlyFinalRequest,
+    KiwoomReadonlyFinalTokenProviderKind,
+    KiwoomReadonlyFinalTransportMode,
+)
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
@@ -2189,6 +2196,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_rest_readonly_sector = _run_kiwoom_rest_readonly_sector_smoke(output_dir)
     kiwoom_readonly_snapshot = _run_kiwoom_readonly_snapshot_smoke(output_dir)
     kiwoom_manual_response_import = _run_kiwoom_manual_response_import_smoke(output_dir)
+    kiwoom_readonly_final_transport = _run_kiwoom_readonly_final_transport_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3338,6 +3346,31 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_manual_response_import_snapshot_composed": kiwoom_manual_response_import["snapshot_composed"],
             "kiwoom_manual_response_import_snapshot_not_empty": kiwoom_manual_response_import["snapshot_not_empty"],
             "kiwoom_manual_response_import_parquet_unsupported": kiwoom_manual_response_import["parquet_unsupported"],
+            "kiwoom_readonly_final_transport_fixture_run": kiwoom_readonly_final_transport["fixture_run"],
+            "kiwoom_readonly_final_transport_summary_report_generated": kiwoom_readonly_final_transport["summary_report_generated"],
+            "kiwoom_readonly_final_transport_request_preview_report_generated": kiwoom_readonly_final_transport["request_preview_report_generated"],
+            "kiwoom_readonly_final_transport_allowlist_report_generated": kiwoom_readonly_final_transport["allowlist_report_generated"],
+            "kiwoom_readonly_final_transport_token_provider_report_generated": kiwoom_readonly_final_transport["token_provider_report_generated"],
+            "kiwoom_readonly_final_transport_capture_report_generated": kiwoom_readonly_final_transport["capture_report_generated"],
+            "kiwoom_readonly_final_transport_response_routing_report_generated": kiwoom_readonly_final_transport["response_routing_report_generated"],
+            "kiwoom_readonly_final_transport_snapshot_validation_report_generated": kiwoom_readonly_final_transport["snapshot_validation_report_generated"],
+            "kiwoom_readonly_final_transport_readiness_report_generated": kiwoom_readonly_final_transport["readiness_report_generated"],
+            "kiwoom_readonly_final_transport_safety_report_generated": kiwoom_readonly_final_transport["safety_report_generated"],
+            "kiwoom_readonly_final_transport_gap_report_generated": kiwoom_readonly_final_transport["gap_report_generated"],
+            "kiwoom_readonly_final_transport_local_only": kiwoom_readonly_final_transport["local_only"],
+            "kiwoom_readonly_final_transport_offline_only": kiwoom_readonly_final_transport["offline_only"],
+            "kiwoom_readonly_final_transport_report_only": kiwoom_readonly_final_transport["report_only"],
+            "kiwoom_readonly_final_transport_non_executable": kiwoom_readonly_final_transport["non_executable"],
+            "kiwoom_readonly_final_transport_no_network": kiwoom_readonly_final_transport["no_network"],
+            "kiwoom_readonly_final_transport_no_provider_api": kiwoom_readonly_final_transport["no_provider_api"],
+            "kiwoom_readonly_final_transport_no_account_order_path": kiwoom_readonly_final_transport["no_account_order_path"],
+            "kiwoom_readonly_final_transport_no_env_credential_read": kiwoom_readonly_final_transport["no_env_credential_read"],
+            "kiwoom_readonly_final_transport_no_token_loading": kiwoom_readonly_final_transport["no_token_loading"],
+            "kiwoom_readonly_final_transport_no_auth_header_generation": kiwoom_readonly_final_transport["no_auth_header_generation"],
+            "kiwoom_readonly_final_transport_canonical_output_only": kiwoom_readonly_final_transport["canonical_output_only"],
+            "kiwoom_readonly_final_transport_snapshot_validation_ran": kiwoom_readonly_final_transport["snapshot_validation_ran"],
+            "kiwoom_readonly_final_transport_real_network_not_used": kiwoom_readonly_final_transport["real_network_not_used"],
+            "kiwoom_readonly_final_transport_parquet_unsupported": kiwoom_readonly_final_transport["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -10421,5 +10454,76 @@ def _run_kiwoom_manual_response_import_smoke(output_dir: Path) -> dict[str, bool
             reviewed.snapshot_composition_result.snapshot_report
             and reviewed.snapshot_composition_result.snapshot_report.snapshots
         ),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_readonly_final_transport_smoke(output_dir: Path) -> dict[str, bool]:
+    reviewed = build_kiwoom_readonly_final_transport(
+        KiwoomReadonlyFinalRequest.model_validate(
+            {
+                "request_id": "kiwoom-readonly-final-smoke",
+                "mode": KiwoomReadonlyFinalTransportMode.MOCKED_TRANSPORT_ONLY.value,
+                "api_id": "KA10081",
+                "domain": KiwoomReadonlyFinalDomain.KIWOOM_MOCK_KRX.value,
+                "body_json": {"stk_cd": "005930", "base_dt": "20260625", "upd_stkpc_tp": "1"},
+                "provider_symbol": "005930",
+                "canonical_instrument_key": "005930_KRX",
+                "available_at": "2026-06-25T15:35:00+09:00",
+                "validate_snapshot": True,
+                "mocked_response_payload": {
+                    "stk_cd": "005930",
+                    "stk_day_pole_chart_qry": [
+                        {
+                            "cur_prc": "-78800",
+                            "trde_qty": "7913",
+                            "cntr_tm": "20260625153000",
+                            "open_pric": "-78850",
+                            "high_pric": "-78900",
+                            "low_pric": "-78800",
+                            "acc_trde_qty": "14947571",
+                            "pred_pre": "-600",
+                            "pred_pre_sig": "5",
+                        }
+                    ],
+                    "return_code": 0,
+                    "return_msg": "정상적으로 처리되었습니다",
+                    "cont_yn": "N",
+                    "next_key": "",
+                },
+                "token_provider": {
+                    "provider_kind": KiwoomReadonlyFinalTokenProviderKind.FAKE_PROVIDER.value,
+                },
+            }
+        )
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": reviewed.summary_report.report_id.endswith("REPORT"),
+        "request_preview_report_generated": reviewed.request_preview_report.report_id.endswith("REPORT"),
+        "allowlist_report_generated": reviewed.allowlist_report.report_id.endswith("REPORT"),
+        "token_provider_report_generated": reviewed.token_provider_report.report_id.endswith("REPORT"),
+        "capture_report_generated": reviewed.capture_report is not None and reviewed.capture_report.report_id.endswith("REPORT"),
+        "response_routing_report_generated": reviewed.parser_routing_report is not None and reviewed.parser_routing_report.report_id.endswith("REPORT"),
+        "snapshot_validation_report_generated": reviewed.snapshot_validation_report is not None and reviewed.snapshot_validation_report.report_id.endswith("REPORT"),
+        "readiness_report_generated": reviewed.readiness_report.report_id.endswith("REPORT"),
+        "safety_report_generated": reviewed.safety_report.safety_report_id.endswith("REPORT"),
+        "gap_report_generated": reviewed.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": reviewed.summary_report.local_file_only,
+        "offline_only": reviewed.summary_report.offline_only,
+        "report_only": reviewed.summary_report.report_only,
+        "non_executable": reviewed.summary_report.non_executable,
+        "no_network": reviewed.summary_report.no_network,
+        "no_provider_api": reviewed.summary_report.no_provider_api,
+        "no_account_order_path": reviewed.summary_report.no_order and reviewed.summary_report.no_account_mutation,
+        "no_env_credential_read": reviewed.summary_report.no_env_read and reviewed.summary_report.no_credential_read,
+        "no_token_loading": reviewed.summary_report.no_token_loading,
+        "no_auth_header_generation": reviewed.summary_report.no_auth_header_generation,
+        "canonical_output_only": reviewed.parser_routing_report is not None
+        and reviewed.parser_routing_report.import_result is not None
+        and bool(reviewed.parser_routing_report.import_result.canonical_output_report.canonical_ohlcv_records),
+        "snapshot_validation_ran": reviewed.snapshot_validation_report is not None,
+        "real_network_not_used": reviewed.response_report is not None and reviewed.summary_report.no_network,
         "parquet_unsupported": ".parquet" not in dumped,
     }

@@ -6,6 +6,7 @@ data/*.sqlite3
 data/*.db
 demo_outputs/
 smoke_outputs/
+local_data/kiwoom_readonly_captures/
 
 # Local broker/API secrets
 api_key/

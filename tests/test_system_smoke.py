@@ -851,6 +851,31 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_manual_response_import_snapshot_composed"] is True
     assert result["checks"]["kiwoom_manual_response_import_snapshot_not_empty"] is True
     assert result["checks"]["kiwoom_manual_response_import_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_fixture_run"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_summary_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_request_preview_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_allowlist_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_token_provider_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_capture_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_response_routing_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_snapshot_validation_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_readiness_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_local_only"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_offline_only"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_report_only"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_non_executable"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_no_network"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_no_provider_api"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_no_token_loading"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_snapshot_validation_ran"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_real_network_not_used"] is True
+    assert result["checks"]["kiwoom_readonly_final_transport_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
