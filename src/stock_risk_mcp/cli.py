@@ -278,6 +278,8 @@ from stock_risk_mcp.kiwoom_rest_readonly_flow_engine import build_kiwoom_rest_re
 from stock_risk_mcp.kiwoom_rest_readonly_flow_fixture import load_kiwoom_rest_readonly_flow_fixture
 from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_readonly_sector_adapter
 from stock_risk_mcp.kiwoom_rest_readonly_sector_fixture import load_kiwoom_rest_readonly_sector_fixture
+from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
+from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
@@ -1623,6 +1625,25 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_readonly_snapshot_gap_report = subparsers.add_parser("kiwoom-readonly-snapshot-gap-report")
     kiwoom_readonly_snapshot_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_readonly_snapshot_gap_report.add_argument("--output-file", type=Path)
+    for name in (
+        "kiwoom-manual-response-import-check",
+        "kiwoom-manual-response-file-classification-report",
+        "kiwoom-manual-response-sensitive-scan-report",
+        "kiwoom-manual-response-routing-report",
+        "kiwoom-manual-response-canonical-output-report",
+        "kiwoom-manual-response-snapshot-report",
+        "kiwoom-manual-response-safety-report",
+        "kiwoom-manual-response-gap-report",
+    ):
+        command = subparsers.add_parser(name)
+        command.add_argument("--api-id", required=True)
+        command.add_argument("--file")
+        command.add_argument("--symbol")
+        command.add_argument("--canonical-instrument-key")
+        command.add_argument("--available-at")
+        command.add_argument("--observed-at")
+        command.add_argument("--compose-snapshot", action="store_true")
+        command.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
     market_regime_check.add_argument("--output-file", type=Path)
@@ -3157,6 +3178,14 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-readonly-snapshot-v7-13-integration-report",
         "kiwoom-readonly-snapshot-safety-report",
         "kiwoom-readonly-snapshot-gap-report",
+        "kiwoom-manual-response-import-check",
+        "kiwoom-manual-response-file-classification-report",
+        "kiwoom-manual-response-sensitive-scan-report",
+        "kiwoom-manual-response-routing-report",
+        "kiwoom-manual-response-canonical-output-report",
+        "kiwoom-manual-response-snapshot-report",
+        "kiwoom-manual-response-safety-report",
+        "kiwoom-manual-response-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -6563,6 +6592,78 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-import-check":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness": result.readiness.value}
+            return {"readiness": result.readiness.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-file-classification-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).file_classification_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-sensitive-scan-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).sensitive_scan_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-routing-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).routing_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-canonical-output-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).canonical_output_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-snapshot-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).snapshot_composition_result
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-safety-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-manual-response-gap-report":
+        try:
+            result = _run_kiwoom_manual_response_import_from_args(args).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -8038,6 +8139,36 @@ def _load_kiwoom_readonly_snapshot_fixture_or_raise(fixture_file: Path):
 def _run_kiwoom_readonly_snapshot(fixture_file: Path):
     fixture = _load_kiwoom_readonly_snapshot_fixture_or_raise(fixture_file)
     return build_kiwoom_readonly_domestic_stock_snapshot(fixture)
+
+
+def _run_kiwoom_manual_response_import_from_args(args):
+    if not args.file:
+        raise ValueError("manual response import requires --file")
+    observed_at = args.observed_at
+    available_at = args.available_at
+    source_ref = args.file
+    lowered = source_ref.lower()
+    if "://" in lowered or lowered.startswith("//") or lowered.endswith(".parquet"):
+        source_ref = None
+    request = KiwoomManualResponseImportRequest.model_validate(
+        {
+            "request_id": "KIWOOM-MANUAL-RESPONSE-IMPORT-CLI",
+            "files": [
+                {
+                    "file_path": args.file,
+                    "declared_api_id": args.api_id,
+                    "provider_symbol": args.symbol,
+                    "canonical_instrument_key": args.canonical_instrument_key,
+                    "observed_at": observed_at,
+                    "available_at": available_at,
+                    "source_ref": source_ref,
+                }
+            ],
+            "compose_snapshot": args.compose_snapshot,
+            "strict_mode": True,
+        }
+    )
+    return build_kiwoom_manual_response_import_harness(request)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):

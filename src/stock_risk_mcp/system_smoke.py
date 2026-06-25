@@ -217,6 +217,8 @@ from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_
 from stock_risk_mcp.kiwoom_rest_readonly_sector_models import KiwoomRestSectorConfig
 from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
 from stock_risk_mcp.kiwoom_readonly_snapshot_models import KiwoomReadonlySnapshotConfig
+from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
+from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
@@ -2186,6 +2188,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_rest_readonly_flow = _run_kiwoom_rest_readonly_flow_smoke(output_dir)
     kiwoom_rest_readonly_sector = _run_kiwoom_rest_readonly_sector_smoke(output_dir)
     kiwoom_readonly_snapshot = _run_kiwoom_readonly_snapshot_smoke(output_dir)
+    kiwoom_manual_response_import = _run_kiwoom_manual_response_import_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3312,6 +3315,29 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_readonly_snapshot_no_auth_header_generation": kiwoom_readonly_snapshot["no_auth_header_generation"],
             "kiwoom_readonly_snapshot_canonical_output_only": kiwoom_readonly_snapshot["canonical_output_only"],
             "kiwoom_readonly_snapshot_parquet_unsupported": kiwoom_readonly_snapshot["parquet_unsupported"],
+            "kiwoom_manual_response_import_fixture_run": kiwoom_manual_response_import["fixture_run"],
+            "kiwoom_manual_response_import_summary_report_generated": kiwoom_manual_response_import["summary_report_generated"],
+            "kiwoom_manual_response_import_file_classification_report_generated": kiwoom_manual_response_import["file_classification_report_generated"],
+            "kiwoom_manual_response_import_sensitive_scan_report_generated": kiwoom_manual_response_import["sensitive_scan_report_generated"],
+            "kiwoom_manual_response_import_routing_report_generated": kiwoom_manual_response_import["routing_report_generated"],
+            "kiwoom_manual_response_import_canonical_output_report_generated": kiwoom_manual_response_import["canonical_output_report_generated"],
+            "kiwoom_manual_response_import_snapshot_report_generated": kiwoom_manual_response_import["snapshot_report_generated"],
+            "kiwoom_manual_response_import_safety_report_generated": kiwoom_manual_response_import["safety_report_generated"],
+            "kiwoom_manual_response_import_gap_report_generated": kiwoom_manual_response_import["gap_report_generated"],
+            "kiwoom_manual_response_import_local_only": kiwoom_manual_response_import["local_only"],
+            "kiwoom_manual_response_import_offline_only": kiwoom_manual_response_import["offline_only"],
+            "kiwoom_manual_response_import_report_only": kiwoom_manual_response_import["report_only"],
+            "kiwoom_manual_response_import_non_executable": kiwoom_manual_response_import["non_executable"],
+            "kiwoom_manual_response_import_no_network": kiwoom_manual_response_import["no_network"],
+            "kiwoom_manual_response_import_no_provider_api": kiwoom_manual_response_import["no_provider_api"],
+            "kiwoom_manual_response_import_no_account_order_path": kiwoom_manual_response_import["no_account_order_path"],
+            "kiwoom_manual_response_import_no_env_credential_read": kiwoom_manual_response_import["no_env_credential_read"],
+            "kiwoom_manual_response_import_no_token_loading": kiwoom_manual_response_import["no_token_loading"],
+            "kiwoom_manual_response_import_no_auth_header_generation": kiwoom_manual_response_import["no_auth_header_generation"],
+            "kiwoom_manual_response_import_canonical_output_only": kiwoom_manual_response_import["canonical_output_only"],
+            "kiwoom_manual_response_import_snapshot_composed": kiwoom_manual_response_import["snapshot_composed"],
+            "kiwoom_manual_response_import_snapshot_not_empty": kiwoom_manual_response_import["snapshot_not_empty"],
+            "kiwoom_manual_response_import_parquet_unsupported": kiwoom_manual_response_import["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -10284,5 +10310,116 @@ def _run_kiwoom_readonly_snapshot_smoke(output_dir: Path) -> dict[str, bool]:
         "canonical_output_only": bool(reviewed.domestic_stock_snapshot_report.snapshots)
         and all(snapshot.provider_symbol for snapshot in reviewed.domestic_stock_snapshot_report.snapshots)
         and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_manual_response_import_smoke(output_dir: Path) -> dict[str, bool]:
+    chart_file = output_dir / "kiwoom_manual_response_chart_fixture.json"
+    chart_file.write_text(
+        json.dumps(
+            {
+                "stk_cd": "005930",
+                "stk_day_pole_chart_qry": [
+                    {
+                        "cur_prc": "-78800",
+                        "trde_qty": "7913",
+                        "cntr_tm": "20260625153000",
+                        "open_pric": "-78850",
+                        "high_pric": "-78900",
+                        "low_pric": "-78800",
+                        "acc_trde_qty": "14947571",
+                        "pred_pre": "-600",
+                        "pred_pre_sig": "5",
+                    }
+                ],
+                "return_code": 0,
+                "return_msg": "정상적으로 처리되었습니다",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    quote_file = output_dir / "kiwoom_manual_response_quote_fixture.json"
+    quote_file.write_text(
+        json.dumps(
+            {
+                "stk_cd": "005930",
+                "stk_nm": "삼성전자",
+                "return_code": 0,
+                "return_msg": "정상적으로 처리되었습니다",
+                "bid_req_base_tm": "153000",
+                "ask_price_1": "+78810",
+                "ask_qty_1": "1200",
+                "bid_price_1": "+78790",
+                "bid_qty_1": "1500",
+                "ask_price_2": "+78820",
+                "ask_qty_2": "900",
+                "bid_price_2": "+78790",
+                "bid_qty_2": "800",
+                "cont_yn": "N",
+                "next_key": "",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    reviewed = build_kiwoom_manual_response_import_harness(
+        KiwoomManualResponseImportRequest.model_validate(
+            {
+                "request_id": "kiwoom-manual-response-import-smoke",
+                "files": [
+                    {
+                        "file_path": str(chart_file),
+                        "declared_api_id": "KA10081",
+                        "provider_symbol": "005930",
+                        "canonical_instrument_key": "005930_KRX",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "source_ref": str(chart_file),
+                    },
+                    {
+                        "file_path": str(quote_file),
+                        "declared_api_id": "KA10004",
+                        "provider_symbol": "005930",
+                        "canonical_instrument_key": "005930_KRX",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "source_ref": str(quote_file),
+                    },
+                ],
+                "compose_snapshot": True,
+            }
+        )
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": reviewed.summary_report.report_id.endswith("REPORT"),
+        "file_classification_report_generated": reviewed.file_classification_report.report_id.endswith("REPORT"),
+        "sensitive_scan_report_generated": reviewed.sensitive_scan_report.report_id.endswith("REPORT"),
+        "routing_report_generated": reviewed.routing_report.report_id.endswith("REPORT"),
+        "canonical_output_report_generated": reviewed.canonical_output_report.report_id.endswith("REPORT"),
+        "snapshot_report_generated": reviewed.snapshot_composition_result.report_id.endswith("RESULT"),
+        "safety_report_generated": reviewed.safety_report.safety_report_id.endswith("REPORT"),
+        "gap_report_generated": reviewed.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": reviewed.summary_report.local_file_only,
+        "offline_only": reviewed.summary_report.offline_only,
+        "report_only": reviewed.summary_report.report_only,
+        "non_executable": reviewed.summary_report.non_executable,
+        "no_network": reviewed.summary_report.no_network,
+        "no_provider_api": reviewed.summary_report.no_provider_api,
+        "no_account_order_path": reviewed.summary_report.no_order and reviewed.summary_report.no_account_mutation,
+        "no_env_credential_read": reviewed.summary_report.no_env_read and reviewed.summary_report.no_credential_read,
+        "no_token_loading": reviewed.summary_report.no_token_loading,
+        "no_auth_header_generation": reviewed.summary_report.no_auth_header_generation,
+        "canonical_output_only": bool(reviewed.canonical_output_report.canonical_ohlcv_records)
+        and bool(reviewed.canonical_output_report.canonical_quote_records)
+        and all(record.source_ref.endswith(".json") for record in reviewed.canonical_output_report.canonical_ohlcv_records)
+        and all(record.source_ref.endswith(".json") for record in reviewed.canonical_output_report.canonical_quote_records)
+        and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records),
+        "snapshot_composed": reviewed.snapshot_composition_result.composed,
+        "snapshot_not_empty": bool(
+            reviewed.snapshot_composition_result.snapshot_report
+            and reviewed.snapshot_composition_result.snapshot_report.snapshots
+        ),
         "parquet_unsupported": ".parquet" not in dumped,
     }

@@ -828,6 +828,29 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_readonly_snapshot_no_auth_header_generation"] is True
     assert result["checks"]["kiwoom_readonly_snapshot_canonical_output_only"] is True
     assert result["checks"]["kiwoom_readonly_snapshot_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_manual_response_import_fixture_run"] is True
+    assert result["checks"]["kiwoom_manual_response_import_summary_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_file_classification_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_sensitive_scan_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_routing_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_canonical_output_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_snapshot_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_manual_response_import_local_only"] is True
+    assert result["checks"]["kiwoom_manual_response_import_offline_only"] is True
+    assert result["checks"]["kiwoom_manual_response_import_report_only"] is True
+    assert result["checks"]["kiwoom_manual_response_import_non_executable"] is True
+    assert result["checks"]["kiwoom_manual_response_import_no_network"] is True
+    assert result["checks"]["kiwoom_manual_response_import_no_provider_api"] is True
+    assert result["checks"]["kiwoom_manual_response_import_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_manual_response_import_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_manual_response_import_no_token_loading"] is True
+    assert result["checks"]["kiwoom_manual_response_import_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_manual_response_import_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_manual_response_import_snapshot_composed"] is True
+    assert result["checks"]["kiwoom_manual_response_import_snapshot_not_empty"] is True
+    assert result["checks"]["kiwoom_manual_response_import_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
