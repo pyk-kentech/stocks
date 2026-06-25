@@ -217,6 +217,10 @@ from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_
 from stock_risk_mcp.kiwoom_rest_readonly_sector_models import KiwoomRestSectorConfig
 from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
 from stock_risk_mcp.kiwoom_readonly_snapshot_models import KiwoomReadonlySnapshotConfig
+from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_classification
+from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
+from stock_risk_mcp.macro_regime_provider_models import MacroRegimePipelineInput
+from stock_risk_mcp.macro_regime_snapshot_engine import build_macro_regime_snapshot
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
@@ -2183,6 +2187,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     risk_adjusted_paper_eval = _run_risk_adjusted_paper_eval_smoke(output_dir)
     controlled_mock_readiness = _run_controlled_mock_readiness_smoke(output_dir)
     market_regime = _run_market_regime_smoke(output_dir)
+    macro_regime = _run_macro_regime_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
     position_sizing = _run_position_sizing_smoke(output_dir)
     event_risk = _run_event_risk_smoke(output_dir)
@@ -3060,6 +3065,22 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "market_regime_no_network": market_regime["no_network"],
             "market_regime_training_feature_ready": market_regime["training_feature_ready"],
             "market_regime_parquet_unsupported": market_regime["parquet_unsupported"],
+            "macro_regime_fixture_run": macro_regime["fixture_run"],
+            "macro_regime_snapshot_generated": macro_regime["snapshot_generated"],
+            "macro_regime_classification_generated": macro_regime["classification_generated"],
+            "macro_regime_provider_capability_report_generated": macro_regime["provider_capability_report_generated"],
+            "macro_regime_freshness_report_generated": macro_regime["freshness_report_generated"],
+            "macro_regime_conflict_report_generated": macro_regime["conflict_report_generated"],
+            "macro_regime_event_window_report_generated": macro_regime["event_window_report_generated"],
+            "macro_regime_v7_integration_report_generated": macro_regime["v7_integration_report_generated"],
+            "macro_regime_v8_integration_report_generated": macro_regime["v8_integration_report_generated"],
+            "macro_regime_report_only": macro_regime["report_only"],
+            "macro_regime_no_network": macro_regime["no_network"],
+            "macro_regime_no_env_read": macro_regime["no_env_read"],
+            "macro_regime_no_account_order_path": macro_regime["no_account_order_path"],
+            "macro_regime_no_executable_output": macro_regime["no_executable_output"],
+            "macro_regime_boundary_only": macro_regime["provider_boundary_only"],
+            "macro_regime_parquet_unsupported": macro_regime["parquet_unsupported"],
             "market_data_provider_registry_fixture_run": provider_registry["fixture_run"],
             "market_data_provider_registry_report_generated": provider_registry["registry_report_generated"],
             "market_data_provider_module_requirement_report_generated": provider_registry["module_requirement_report_generated"],
@@ -8571,6 +8592,167 @@ def _run_market_regime_smoke(output_dir: Path) -> dict[str, bool]:
         "no_account_mutation": regime.summary_report.no_account_mutation,
         "no_network": regime.summary_report.no_network,
         "training_feature_ready": regime.training_feature_integration_report.training_feature_ready,
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_macro_regime_smoke(output_dir: Path) -> dict[str, bool]:
+    snapshot, capability_report, freshness_report, conflict_report, gap_report, safety_report, event_window_report = build_macro_regime_snapshot(
+        MacroRegimePipelineInput.model_validate(
+            {
+                "pipeline_id": "macro-regime-smoke",
+                "anchor_at": "2026-06-26T09:10:00+09:00",
+                "available_at": "2026-06-26T09:05:00+09:00",
+                "provider_definitions": [
+                    {
+                        "provider": "LOCAL_FIXTURE",
+                        "capabilities": ["NQ_FUTURES", "ES_FUTURES"],
+                        "status": "MANUAL_ONLY",
+                        "credential_policy": "NOT_REQUIRED",
+                        "opt_in_required": False,
+                        "notes": "manual futures fixtures only",
+                    },
+                    {
+                        "provider": "FRED",
+                        "capabilities": ["VIX", "DOLLAR_STRENGTH", "US10Y", "USDKRW"],
+                        "status": "MOCKED_ONLY",
+                        "credential_policy": "KEY_REF_ONLY",
+                        "supports_real_http": True,
+                        "key_ref_required": True,
+                        "notes": "fred preview plus mocked parsing",
+                    },
+                    {
+                        "provider": "INVESTING_CALENDAR_MANUAL",
+                        "capabilities": ["MANUAL_EVENT_CALENDAR", "CPI_EVENT", "FOMC_EVENT"],
+                        "status": "MANUAL_ONLY",
+                        "credential_policy": "MANUAL_IMPORT_ONLY",
+                        "opt_in_required": False,
+                        "notes": "manual macro calendar import",
+                    },
+                ],
+                "manual_series_points": [
+                    {
+                        "series_id": "NQ_CONTINUOUS",
+                        "asset_class": "FUTURES",
+                        "provider": "LOCAL_FIXTURE",
+                        "provider_symbol": "NQM2026",
+                        "observed_at": "2026-06-26T09:00:00+09:00",
+                        "available_at": "2026-06-26T09:02:00+09:00",
+                        "value": 20150.0,
+                        "pct_change_1d": 0.7,
+                        "unit": "INDEX",
+                        "source_ref": str(output_dir / "macro_nq_smoke.json"),
+                    },
+                    {
+                        "series_id": "ES_CONTINUOUS",
+                        "asset_class": "FUTURES",
+                        "provider": "LOCAL_FIXTURE",
+                        "provider_symbol": "ESM2026",
+                        "observed_at": "2026-06-26T09:00:00+09:00",
+                        "available_at": "2026-06-26T09:02:00+09:00",
+                        "value": 5525.0,
+                        "pct_change_1d": 0.5,
+                        "unit": "INDEX",
+                        "source_ref": str(output_dir / "macro_es_smoke.json"),
+                    },
+                ],
+                "mocked_provider_payloads": [
+                    {
+                        "payload_id": "macro-fred-vix",
+                        "provider": "FRED",
+                        "series_id": "VIX",
+                        "source_ref": str(output_dir / "macro_fred_vix_smoke.json"),
+                        "payload": {"observations": [{"date": "2026-06-25", "value": "16.20"}]},
+                    },
+                    {
+                        "payload_id": "macro-fred-us10y",
+                        "provider": "FRED",
+                        "series_id": "US10Y",
+                        "source_ref": str(output_dir / "macro_fred_us10y_smoke.json"),
+                        "payload": {"observations": [{"date": "2026-06-25", "value": "4.10"}]},
+                    },
+                    {
+                        "payload_id": "macro-fred-usdkrw",
+                        "provider": "FRED",
+                        "series_id": "USDKRW",
+                        "source_ref": str(output_dir / "macro_fred_usdkrw_smoke.json"),
+                        "payload": {"observations": [{"date": "2026-06-25", "value": "1372.00"}]},
+                    },
+                    {
+                        "payload_id": "macro-fred-dollar",
+                        "provider": "FRED",
+                        "series_id": "DOLLAR_STRENGTH",
+                        "source_ref": str(output_dir / "macro_fred_dollar_smoke.json"),
+                        "payload": {"observations": [{"date": "2026-06-25", "value": "121.50"}]},
+                    },
+                    {
+                        "payload_id": "macro-events",
+                        "provider": "INVESTING_CALENDAR_MANUAL",
+                        "source_ref": str(output_dir / "macro_event_calendar_smoke.json"),
+                        "payload": {
+                            "events": [
+                                {
+                                    "event_id": "macro-cpi-smoke",
+                                    "event_type": "CPI",
+                                    "country": "US",
+                                    "title": "US CPI",
+                                    "event_time": "2026-06-26T13:30:00+00:00",
+                                    "timezone": "UTC",
+                                    "importance": "HIGH",
+                                    "affected_assets": ["NQ_CONTINUOUS", "ES_CONTINUOUS", "USDKRW"],
+                                    "pre_event_block_window_minutes": 30,
+                                    "pre_event_reduce_window_minutes": 60,
+                                    "post_event_cooldown_minutes": 45,
+                                    "event_active_window_minutes": 15,
+                                    "available_at": "2026-06-20T00:00:00+00:00",
+                                }
+                            ]
+                        },
+                    },
+                ],
+                "audit_records": [
+                    {
+                        "audit_record_id": "macro-regime-audit-smoke",
+                        "created_at": "2026-06-26T09:11:00+09:00",
+                        "source_path": str(output_dir / "macro_regime_smoke_fixture.json"),
+                        "operator_context": "offline macro regime smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    classification = build_macro_regime_classification(snapshot, event_window_report)
+    reviewed = build_macro_regime_pipeline_result(
+        snapshot,
+        classification,
+        capability_report,
+        freshness_report,
+        conflict_report,
+        event_window_report,
+        gap_report,
+        safety_report,
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "snapshot_generated": reviewed.snapshot.snapshot_id.endswith("SNAPSHOT"),
+        "classification_generated": reviewed.classification.classification_id.endswith("CLASSIFICATION"),
+        "provider_capability_report_generated": reviewed.provider_capability_report.report_id.endswith("REPORT"),
+        "freshness_report_generated": reviewed.freshness_report.report_id.endswith("REPORT"),
+        "conflict_report_generated": reviewed.conflict_report.report_id.endswith("REPORT"),
+        "event_window_report_generated": reviewed.event_window_report.report_id.endswith("REPORT"),
+        "v7_integration_report_generated": reviewed.v7_integration_report.report_id.endswith("REPORT"),
+        "v8_integration_report_generated": reviewed.v8_integration_report.report_id.endswith("REPORT"),
+        "report_only": reviewed.snapshot.report_only and reviewed.classification.report_only,
+        "no_network": reviewed.snapshot.no_network and reviewed.safety_report.no_network,
+        "no_env_read": reviewed.snapshot.no_env_read and reviewed.safety_report.no_env_read,
+        "no_account_order_path": reviewed.snapshot.no_order and reviewed.snapshot.no_account_mutation,
+        "no_executable_output": reviewed.snapshot.non_executable and reviewed.classification.non_executable and "order intent" not in dumped,
+        "provider_boundary_only": "provider_setup_required" not in dumped,
         "parquet_unsupported": ".parquet" not in dumped,
     }
 

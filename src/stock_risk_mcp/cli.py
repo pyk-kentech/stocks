@@ -292,6 +292,12 @@ from stock_risk_mcp.kiwoom_readonly_final_transport_models import (
 )
 from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
+from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_classification
+from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
+from stock_risk_mcp.macro_regime_provider_client import build_fred_request_preview, execute_fred_observations_request
+from stock_risk_mcp.macro_regime_provider_fixture import load_macro_regime_fixture
+from stock_risk_mcp.macro_regime_provider_models import MacroRegimeRuntimeContext
+from stock_risk_mcp.macro_regime_snapshot_engine import build_macro_regime_snapshot
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
@@ -830,6 +836,34 @@ def build_command_parser() -> argparse.ArgumentParser:
     domestic_market_regime_safety = subparsers.add_parser("domestic-market-regime-safety-report")
     domestic_market_regime_safety.add_argument("--fixture-file", type=Path, required=True)
     domestic_market_regime_safety.add_argument("--output-file", type=Path)
+    macro_regime_capability = subparsers.add_parser("macro-regime-provider-capability-report")
+    macro_regime_capability.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_capability.add_argument("--output-file", type=Path)
+    macro_regime_snapshot = subparsers.add_parser("macro-regime-snapshot-build")
+    macro_regime_snapshot.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_snapshot.add_argument("--output-file", type=Path)
+    macro_regime_classify = subparsers.add_parser("macro-regime-classification-report")
+    macro_regime_classify.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_classify.add_argument("--output-file", type=Path)
+    macro_regime_event_window = subparsers.add_parser("macro-regime-event-window-report")
+    macro_regime_event_window.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_event_window.add_argument("--output-file", type=Path)
+    macro_regime_v7 = subparsers.add_parser("macro-regime-v7-integration-report")
+    macro_regime_v7.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_v7.add_argument("--output-file", type=Path)
+    macro_regime_v8 = subparsers.add_parser("macro-regime-v8-integration-report")
+    macro_regime_v8.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_v8.add_argument("--output-file", type=Path)
+    macro_regime_fred_preview = subparsers.add_parser("macro-regime-fred-request-preview")
+    macro_regime_fred_preview.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_fred_preview.add_argument("--output-file", type=Path)
+    macro_regime_fred_execute = subparsers.add_parser("macro-regime-fred-execute")
+    macro_regime_fred_execute.add_argument("--fixture-file", type=Path, required=True)
+    macro_regime_fred_execute.add_argument("--request-id", required=True)
+    macro_regime_fred_execute.add_argument("--fred-api-key-env")
+    macro_regime_fred_execute.add_argument("--allow-real-http", action="store_true")
+    macro_regime_fred_execute.add_argument("--explicit-opt-in", action="store_true")
+    macro_regime_fred_execute.add_argument("--output-file", type=Path)
     domestic_regime_aware_validate = subparsers.add_parser("domestic-regime-aware-integration-config-validate")
     domestic_regime_aware_validate.add_argument("--fixture-file", type=Path, required=True)
     domestic_regime_aware_validate.add_argument("--output-file", type=Path)
@@ -2816,6 +2850,14 @@ def main(argv: list[str] | None = None) -> None:
         "domestic-market-regime-report",
         "domestic-market-regime-gap-report",
         "domestic-market-regime-safety-report",
+        "macro-regime-provider-capability-report",
+        "macro-regime-snapshot-build",
+        "macro-regime-classification-report",
+        "macro-regime-event-window-report",
+        "macro-regime-v7-integration-report",
+        "macro-regime-v8-integration-report",
+        "macro-regime-fred-request-preview",
+        "macro-regime-fred-execute",
         "domestic-regime-aware-integration-config-validate",
         "domestic-regime-aware-integration-build",
         "domestic-regime-aware-integration-report",
@@ -4123,6 +4165,93 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             if args.output_file:
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "block_reasons": len(result.block_reasons)}
             return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-provider-capability-report":
+        try:
+            result = _run_macro_regime_pipeline(args.fixture_file).provider_capability_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": len(result.rows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-snapshot-build":
+        try:
+            result = _run_macro_regime_pipeline(args.fixture_file).snapshot
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness": result.readiness.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-classification-report":
+        try:
+            result = _run_macro_regime_pipeline(args.fixture_file).classification
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "label": result.label.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-event-window-report":
+        try:
+            result = _run_macro_regime_pipeline(args.fixture_file).event_window_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "window_count": len(result.windows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-v7-integration-report":
+        try:
+            result = _run_macro_regime_pipeline(args.fixture_file).v7_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "market_regime_context": result.market_regime_context}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-v8-integration-report":
+        try:
+            result = _run_macro_regime_pipeline(args.fixture_file).v8_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "macro_bias": result.macro_bias}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-fred-request-preview":
+        try:
+            fixture = _load_macro_regime_fixture_or_raise(args.fixture_file)
+            if not fixture.fred_series_requests:
+                raise ValueError("macro regime fixture contains no fred_series_requests")
+            result = build_fred_request_preview(fixture.fred_series_requests[0])
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "provider": result.provider.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "macro-regime-fred-execute":
+        try:
+            fixture = _load_macro_regime_fixture_or_raise(args.fixture_file)
+            request = next((item for item in fixture.fred_series_requests if item.request_id == args.request_id.upper()), None)
+            if request is None:
+                raise ValueError(f"fred request not found: {args.request_id}")
+            request = request.model_copy(update={"allow_real_http": args.allow_real_http, "explicit_opt_in": args.explicit_opt_in})
+            api_key = None
+            if args.fred_api_key_env:
+                api_key = os.environ.get(args.fred_api_key_env)
+            result = execute_fred_observations_request(
+                request,
+                api_key=api_key,
+                runtime_context=MacroRegimeRuntimeContext.CLI,
+            )
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "keys": sorted(result.keys())}
+            return result
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "domestic-regime-aware-integration-config-validate":
@@ -8434,6 +8563,26 @@ def _load_event_risk_fixture_or_raise(fixture_file: Path):
 def _run_event_risk(fixture_file: Path):
     fixture = _load_event_risk_fixture_or_raise(fixture_file)
     return build_event_risk_review(fixture)
+
+
+def _load_macro_regime_fixture_or_raise(fixture_file: Path):
+    return load_macro_regime_fixture(fixture_file)
+
+
+def _run_macro_regime_pipeline(fixture_file: Path):
+    fixture = _load_macro_regime_fixture_or_raise(fixture_file)
+    snapshot, capability_report, freshness_report, conflict_report, gap_report, safety_report, event_window_report = build_macro_regime_snapshot(fixture)
+    classification = build_macro_regime_classification(snapshot, event_window_report)
+    return build_macro_regime_pipeline_result(
+        snapshot,
+        classification,
+        capability_report,
+        freshness_report,
+        conflict_report,
+        event_window_report,
+        gap_report,
+        safety_report,
+    )
 
 
 def _load_breadth_leadership_routing_fixture_or_raise(fixture_file: Path):

@@ -897,6 +897,21 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["market_regime_no_network"] is True
     assert result["checks"]["market_regime_training_feature_ready"] is True
     assert result["checks"]["market_regime_parquet_unsupported"] is True
+    assert result["checks"]["macro_regime_fixture_run"] is True
+    assert result["checks"]["macro_regime_snapshot_generated"] is True
+    assert result["checks"]["macro_regime_classification_generated"] is True
+    assert result["checks"]["macro_regime_provider_capability_report_generated"] is True
+    assert result["checks"]["macro_regime_freshness_report_generated"] is True
+    assert result["checks"]["macro_regime_conflict_report_generated"] is True
+    assert result["checks"]["macro_regime_event_window_report_generated"] is True
+    assert result["checks"]["macro_regime_v7_integration_report_generated"] is True
+    assert result["checks"]["macro_regime_v8_integration_report_generated"] is True
+    assert result["checks"]["macro_regime_report_only"] is True
+    assert result["checks"]["macro_regime_no_network"] is True
+    assert result["checks"]["macro_regime_no_env_read"] is True
+    assert result["checks"]["macro_regime_no_account_order_path"] is True
+    assert result["checks"]["macro_regime_no_executable_output"] is True
+    assert result["checks"]["macro_regime_boundary_only"] is True
     assert result["checks"]["market_data_provider_registry_fixture_run"] is True
     assert result["checks"]["market_data_provider_registry_report_generated"] is True
     assert result["checks"]["market_data_provider_module_requirement_report_generated"] is True
