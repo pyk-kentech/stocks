@@ -278,6 +278,8 @@ from stock_risk_mcp.kiwoom_rest_readonly_flow_engine import build_kiwoom_rest_re
 from stock_risk_mcp.kiwoom_rest_readonly_flow_fixture import load_kiwoom_rest_readonly_flow_fixture
 from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_readonly_sector_adapter
 from stock_risk_mcp.kiwoom_rest_readonly_sector_fixture import load_kiwoom_rest_readonly_sector_fixture
+from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
+from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
 from stock_risk_mcp.market_regime_engine import build_market_regime
 from stock_risk_mcp.market_regime_fixture import load_market_regime_fixture
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
@@ -1588,6 +1590,39 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_rest_sector_gap_report = subparsers.add_parser("kiwoom-rest-sector-gap-report")
     kiwoom_rest_sector_gap_report.add_argument("--fixture-file", type=Path, required=True)
     kiwoom_rest_sector_gap_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_composer_check = subparsers.add_parser("kiwoom-readonly-snapshot-composer-check")
+    kiwoom_readonly_snapshot_composer_check.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_composer_check.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_source_coverage_report = subparsers.add_parser("kiwoom-readonly-snapshot-source-coverage-report")
+    kiwoom_readonly_snapshot_source_coverage_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_source_coverage_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_freshness_report = subparsers.add_parser("kiwoom-readonly-snapshot-freshness-report")
+    kiwoom_readonly_snapshot_freshness_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_freshness_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_completeness_report = subparsers.add_parser("kiwoom-readonly-snapshot-completeness-report")
+    kiwoom_readonly_snapshot_completeness_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_completeness_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_conflict_report = subparsers.add_parser("kiwoom-readonly-snapshot-conflict-report")
+    kiwoom_readonly_snapshot_conflict_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_conflict_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_domestic_stock_snapshot_report = subparsers.add_parser("kiwoom-readonly-domestic-stock-snapshot-report")
+    kiwoom_readonly_domestic_stock_snapshot_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_domestic_stock_snapshot_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_v710_integration_report = subparsers.add_parser("kiwoom-readonly-snapshot-v7-10-integration-report")
+    kiwoom_readonly_snapshot_v710_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_v710_integration_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_v712_integration_report = subparsers.add_parser("kiwoom-readonly-snapshot-v7-12-integration-report")
+    kiwoom_readonly_snapshot_v712_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_v712_integration_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_v713_integration_report = subparsers.add_parser("kiwoom-readonly-snapshot-v7-13-integration-report")
+    kiwoom_readonly_snapshot_v713_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_v713_integration_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_safety_report = subparsers.add_parser("kiwoom-readonly-snapshot-safety-report")
+    kiwoom_readonly_snapshot_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_safety_report.add_argument("--output-file", type=Path)
+    kiwoom_readonly_snapshot_gap_report = subparsers.add_parser("kiwoom-readonly-snapshot-gap-report")
+    kiwoom_readonly_snapshot_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    kiwoom_readonly_snapshot_gap_report.add_argument("--output-file", type=Path)
     market_regime_check = subparsers.add_parser("market-regime-check")
     market_regime_check.add_argument("--fixture-file", type=Path, required=True)
     market_regime_check.add_argument("--output-file", type=Path)
@@ -3111,6 +3146,17 @@ def main(argv: list[str] | None = None) -> None:
         "kiwoom-rest-sector-readonly-safety-report",
         "kiwoom-rest-sector-v7-integration-report",
         "kiwoom-rest-sector-gap-report",
+        "kiwoom-readonly-snapshot-composer-check",
+        "kiwoom-readonly-snapshot-source-coverage-report",
+        "kiwoom-readonly-snapshot-freshness-report",
+        "kiwoom-readonly-snapshot-completeness-report",
+        "kiwoom-readonly-snapshot-conflict-report",
+        "kiwoom-readonly-domestic-stock-snapshot-report",
+        "kiwoom-readonly-snapshot-v7-10-integration-report",
+        "kiwoom-readonly-snapshot-v7-12-integration-report",
+        "kiwoom-readonly-snapshot-v7-13-integration-report",
+        "kiwoom-readonly-snapshot-safety-report",
+        "kiwoom-readonly-snapshot-gap-report",
         "market-regime-check",
         "market-regime-summary-report",
         "market-regime-input-snapshot-report",
@@ -6418,6 +6464,105 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-composer-check":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).summary_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness": result.readiness.value}
+            return {"readiness": result.readiness.value, **result.model_dump(mode="json")}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-source-coverage-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).source_coverage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-freshness-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).freshness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-completeness-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).completeness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-conflict-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).conflict_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-domestic-stock-snapshot-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).domestic_stock_snapshot_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-v7-10-integration-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).v710_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-v7-12-integration-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).v712_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-v7-13-integration-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).v713_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-safety-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "safety_report_id": result.safety_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-readonly-snapshot-gap-report":
+        try:
+            result = _run_kiwoom_readonly_snapshot(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_report_id": result.gap_report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "market-regime-check":
         try:
             result = _run_market_regime(args.fixture_file).summary_report
@@ -7884,6 +8029,15 @@ def _load_kiwoom_rest_readonly_sector_fixture_or_raise(fixture_file: Path):
 def _run_kiwoom_rest_readonly_sector(fixture_file: Path):
     fixture = _load_kiwoom_rest_readonly_sector_fixture_or_raise(fixture_file)
     return build_kiwoom_rest_readonly_sector_adapter(fixture)
+
+
+def _load_kiwoom_readonly_snapshot_fixture_or_raise(fixture_file: Path):
+    return load_kiwoom_readonly_snapshot_fixture(fixture_file)
+
+
+def _run_kiwoom_readonly_snapshot(fixture_file: Path):
+    fixture = _load_kiwoom_readonly_snapshot_fixture_or_raise(fixture_file)
+    return build_kiwoom_readonly_domestic_stock_snapshot(fixture)
 
 
 def _load_market_regime_fixture_or_raise(fixture_file: Path):

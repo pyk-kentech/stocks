@@ -215,6 +215,8 @@ from stock_risk_mcp.kiwoom_rest_readonly_flow_engine import build_kiwoom_rest_re
 from stock_risk_mcp.kiwoom_rest_readonly_flow_models import KiwoomRestFlowConfig
 from stock_risk_mcp.kiwoom_rest_readonly_sector_engine import build_kiwoom_rest_readonly_sector_adapter
 from stock_risk_mcp.kiwoom_rest_readonly_sector_models import KiwoomRestSectorConfig
+from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
+from stock_risk_mcp.kiwoom_readonly_snapshot_models import KiwoomReadonlySnapshotConfig
 from stock_risk_mcp.market_data_provider_registry_engine import build_market_data_provider_registry
 from stock_risk_mcp.market_data_provider_registry_models import MarketDataProviderRegistryInput
 from stock_risk_mcp.position_sizing_engine import build_position_sizing_review
@@ -2183,6 +2185,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     kiwoom_rest_readonly_quote = _run_kiwoom_rest_readonly_quote_smoke(output_dir)
     kiwoom_rest_readonly_flow = _run_kiwoom_rest_readonly_flow_smoke(output_dir)
     kiwoom_rest_readonly_sector = _run_kiwoom_rest_readonly_sector_smoke(output_dir)
+    kiwoom_readonly_snapshot = _run_kiwoom_readonly_snapshot_smoke(output_dir)
     prompt_pack_fixture = Path(output_dir) / "offline_prompt_pack_smoke_fixture.json"
     prompt_pack_fixture.write_text(json.dumps({
         "schema_version": "3.12-offline-prompt-pack-fixture",
@@ -3285,6 +3288,30 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "kiwoom_rest_readonly_sector_no_auth_header_generation": kiwoom_rest_readonly_sector["no_auth_header_generation"],
             "kiwoom_rest_readonly_sector_canonical_output_only": kiwoom_rest_readonly_sector["canonical_output_only"],
             "kiwoom_rest_readonly_sector_parquet_unsupported": kiwoom_rest_readonly_sector["parquet_unsupported"],
+            "kiwoom_readonly_snapshot_fixture_run": kiwoom_readonly_snapshot["fixture_run"],
+            "kiwoom_readonly_snapshot_summary_report_generated": kiwoom_readonly_snapshot["summary_report_generated"],
+            "kiwoom_readonly_snapshot_source_coverage_report_generated": kiwoom_readonly_snapshot["source_coverage_report_generated"],
+            "kiwoom_readonly_snapshot_freshness_report_generated": kiwoom_readonly_snapshot["freshness_report_generated"],
+            "kiwoom_readonly_snapshot_completeness_report_generated": kiwoom_readonly_snapshot["completeness_report_generated"],
+            "kiwoom_readonly_snapshot_conflict_report_generated": kiwoom_readonly_snapshot["conflict_report_generated"],
+            "kiwoom_readonly_snapshot_domestic_stock_report_generated": kiwoom_readonly_snapshot["domestic_stock_report_generated"],
+            "kiwoom_readonly_snapshot_v710_report_generated": kiwoom_readonly_snapshot["v710_report_generated"],
+            "kiwoom_readonly_snapshot_v712_report_generated": kiwoom_readonly_snapshot["v712_report_generated"],
+            "kiwoom_readonly_snapshot_v713_report_generated": kiwoom_readonly_snapshot["v713_report_generated"],
+            "kiwoom_readonly_snapshot_safety_report_generated": kiwoom_readonly_snapshot["safety_report_generated"],
+            "kiwoom_readonly_snapshot_gap_report_generated": kiwoom_readonly_snapshot["gap_report_generated"],
+            "kiwoom_readonly_snapshot_local_only": kiwoom_readonly_snapshot["local_only"],
+            "kiwoom_readonly_snapshot_offline_only": kiwoom_readonly_snapshot["offline_only"],
+            "kiwoom_readonly_snapshot_report_only": kiwoom_readonly_snapshot["report_only"],
+            "kiwoom_readonly_snapshot_non_executable": kiwoom_readonly_snapshot["non_executable"],
+            "kiwoom_readonly_snapshot_no_network": kiwoom_readonly_snapshot["no_network"],
+            "kiwoom_readonly_snapshot_no_provider_api": kiwoom_readonly_snapshot["no_provider_api"],
+            "kiwoom_readonly_snapshot_no_account_order_path": kiwoom_readonly_snapshot["no_account_order_path"],
+            "kiwoom_readonly_snapshot_no_env_credential_read": kiwoom_readonly_snapshot["no_env_credential_read"],
+            "kiwoom_readonly_snapshot_no_token_loading": kiwoom_readonly_snapshot["no_token_loading"],
+            "kiwoom_readonly_snapshot_no_auth_header_generation": kiwoom_readonly_snapshot["no_auth_header_generation"],
+            "kiwoom_readonly_snapshot_canonical_output_only": kiwoom_readonly_snapshot["canonical_output_only"],
+            "kiwoom_readonly_snapshot_parquet_unsupported": kiwoom_readonly_snapshot["parquet_unsupported"],
             "investing_crawler_called": False,
             "finviz_scraper_called": False,
             "news_ingestion_called": False,
@@ -9979,6 +10006,283 @@ def _run_kiwoom_rest_readonly_sector_smoke(output_dir: Path) -> dict[str, bool]:
         "canonical_output_only": bool(reviewed.canonical_theme_leadership_report.signals)
         and all(signal.source_ref.endswith(".json") for signal in reviewed.canonical_theme_leadership_report.signals)
         and all("TOKEN_REF_ONLY" in signal.quality_flags for signal in reviewed.canonical_theme_leadership_report.signals)
+        and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records),
+        "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_kiwoom_readonly_snapshot_smoke(output_dir: Path) -> dict[str, bool]:
+    reviewed = build_kiwoom_readonly_domestic_stock_snapshot(
+        KiwoomReadonlySnapshotConfig.model_validate(
+            {
+                "config_id": "kiwoom-readonly-snapshot-smoke",
+                "available_at": "2026-06-25T15:35:00+09:00",
+                "source_ref": str(output_dir / "kiwoom_readonly_snapshot_fixture.json"),
+                "operator_context": "offline snapshot fusion smoke",
+                "canonical_ohlcv_records": [
+                    {
+                        "provider_api_id": "KA10081",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "timeframe": "D1",
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "open": 80000,
+                        "high": 81000,
+                        "low": 79000,
+                        "close": 80500,
+                        "volume": 1500000,
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_chart_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_rank_signals": [
+                    {
+                        "provider_api_id": "KA00198",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:20:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "rank_type": "VOLUME_TOP",
+                        "rank": 3,
+                        "price": 80500,
+                        "price_change": 1000,
+                        "percent_change": 1.26,
+                        "volume": 1400000,
+                        "trading_value": 112000000000,
+                        "relative_volume": 1.4,
+                        "liquidity_evidence_flag": True,
+                        "outlier_category": "UNKNOWN",
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_rank_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_outlier_signals": [
+                    {
+                        "provider_api_id": "KA10023",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:20:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "rank_type": "PRICE_MOMENTUM",
+                        "rank": 7,
+                        "price": 80500,
+                        "price_change": 1000,
+                        "percent_change": 1.26,
+                        "volume": 1400000,
+                        "trading_value": 112000000000,
+                        "relative_volume": 1.4,
+                        "liquidity_evidence_flag": True,
+                        "outlier_category": "PRICE_SURGE",
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_rank_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_quote_records": [
+                    {
+                        "provider_api_id": "KA10003",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:20:05+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "last_price": 80500,
+                        "bid_price": 80500,
+                        "ask_price": 80600,
+                        "spread": 100,
+                        "mid_price": 80550,
+                        "last_trade_quantity": 100,
+                        "percent_change": 1.26,
+                        "price_change": 1000,
+                        "liquidity_evidence_flag": True,
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_quote_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_orderbook_records": [
+                    {
+                        "provider_api_id": "KA10004",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:20:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "levels": [{"side": "ASK", "level": 1, "price": 80600, "quantity": 900}, {"side": "BID", "level": 1, "price": 80500, "quantity": 1200}],
+                        "spread": 100,
+                        "mid_price": 80550,
+                        "top_of_book_imbalance": 0.14,
+                        "depth_summary_quantity": 2100,
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_quote_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_liquidity_hints": [
+                    {
+                        "provider_api_id": "KA10004",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:20:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "spread": 100,
+                        "mid_price": 80550,
+                        "last_trade_quantity": 100,
+                        "top_of_book_imbalance": 0.14,
+                        "price_liquidity_ready": True,
+                        "outlier_routing_ready": True,
+                        "mock_intent_preview_ready": True,
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_quote_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_basic_info_records": [
+                    {
+                        "provider_api_id": "KA10001",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "listed_shares": 5969782550,
+                        "market_cap": 480000000000000,
+                        "market_cap_weight": 17.5,
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_quote_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_investor_flow_signals": [
+                    {
+                        "provider_api_id": "KA10059",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "flow_category": "FOREIGN",
+                        "net_buy_amount": 15000000000,
+                        "net_buy_quantity": 180000,
+                        "confidence_flags": ["CANONICAL_FLOW"],
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_flow_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_program_flow_signals": [
+                    {
+                        "provider_api_id": "KA90003",
+                        "canonical_instrument_key": "005930_KRX",
+                        "provider_symbol": "005930",
+                        "stock_name": "삼성전자",
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "flow_category": "PROGRAM",
+                        "program_buy_amount": 7000000000,
+                        "program_sell_amount": 5000000000,
+                        "program_net_amount": 2000000000,
+                        "confidence_flags": ["PROGRAM_FLOW"],
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_flow_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_theme_leadership_signals": [
+                    {
+                        "provider_api_id": "KA90001",
+                        "theme_group_code": "553",
+                        "theme_name": "AI반도체",
+                        "stock_count": 12,
+                        "rising_stock_count": 9,
+                        "falling_stock_count": 3,
+                        "theme_change_rate": 2.5,
+                        "period_return": 4.3,
+                        "main_stock": "삼성전자",
+                        "participation_hint": 0.75,
+                        "concentration_hint": 0.3,
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_sector_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_theme_membership_signals": [
+                    {
+                        "provider_api_id": "KA90002",
+                        "theme_group_code": "553",
+                        "theme_name": "AI반도체",
+                        "component_stock_code": "005930",
+                        "component_stock_name": "삼성전자",
+                        "component_change_rate": 2.1,
+                        "component_return": 4.0,
+                        "membership_evidence_flag": True,
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_sector_fixture.json"),
+                    }
+                ],
+                "canonical_etf_trend_signals": [
+                    {
+                        "provider_api_id": "KA40003",
+                        "etf_stock_code": "069500",
+                        "date": "20260625",
+                        "price": 38.2,
+                        "previous_close_difference": 0.15,
+                        "percent_change": 0.39,
+                        "trend_direction": "UP",
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "source_ref": str(output_dir / "kiwoom_rest_readonly_sector_fixture.json"),
+                        "quality_flags": ["READ_ONLY_ONLY", "TOKEN_REF_ONLY"],
+                    }
+                ],
+                "canonical_sector_capability_signals": [
+                    {
+                        "api_id": "KA90001",
+                        "capability_group": "THEME",
+                        "request_builder_ready": True,
+                        "readiness": "THEME_LEADERSHIP_READY",
+                    }
+                ],
+                "safety_report": {"safety_report_id": "kiwoom-readonly-snapshot-safety-smoke"},
+                "audit_records": [
+                    {
+                        "audit_record_id": "kiwoom-readonly-snapshot-audit-smoke",
+                        "created_at": "2026-06-25T16:00:00+09:00",
+                        "source_path": str(output_dir / "kiwoom_readonly_snapshot_fixture.json"),
+                        "operator_context": "offline snapshot fusion smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(reviewed.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "summary_report_generated": reviewed.summary_report.report_id.endswith("REPORT"),
+        "source_coverage_report_generated": reviewed.source_coverage_report.report_id.endswith("REPORT"),
+        "freshness_report_generated": reviewed.freshness_report.report_id.endswith("REPORT"),
+        "completeness_report_generated": reviewed.completeness_report.report_id.endswith("REPORT"),
+        "conflict_report_generated": reviewed.conflict_report.report_id.endswith("REPORT"),
+        "domestic_stock_report_generated": reviewed.domestic_stock_snapshot_report.report_id.endswith("REPORT"),
+        "v710_report_generated": reviewed.v710_integration_report.report_id.endswith("REPORT"),
+        "v712_report_generated": reviewed.v712_integration_report.report_id.endswith("REPORT"),
+        "v713_report_generated": reviewed.v713_integration_report.report_id.endswith("REPORT"),
+        "safety_report_generated": reviewed.safety_report.safety_report_id.endswith("SMOKE"),
+        "gap_report_generated": reviewed.gap_report.gap_report_id.endswith("REPORT"),
+        "local_only": reviewed.summary_report.local_file_only,
+        "offline_only": reviewed.summary_report.offline_only,
+        "report_only": reviewed.summary_report.report_only,
+        "non_executable": reviewed.summary_report.non_executable,
+        "no_network": reviewed.summary_report.no_network,
+        "no_provider_api": reviewed.summary_report.no_provider_api,
+        "no_account_order_path": reviewed.summary_report.no_order and reviewed.summary_report.no_account_mutation,
+        "no_env_credential_read": reviewed.summary_report.no_env_read and reviewed.summary_report.no_credential_read,
+        "no_token_loading": reviewed.summary_report.no_token_loading,
+        "no_auth_header_generation": reviewed.summary_report.no_auth_header_generation,
+        "canonical_output_only": bool(reviewed.domestic_stock_snapshot_report.snapshots)
+        and all(snapshot.provider_symbol for snapshot in reviewed.domestic_stock_snapshot_report.snapshots)
         and all(not item.contains_secret_material and not item.contains_token_material and not item.contains_account_material for item in reviewed.audit_records),
         "parquet_unsupported": ".parquet" not in dumped,
     }

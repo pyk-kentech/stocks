@@ -804,6 +804,30 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["kiwoom_rest_readonly_sector_no_auth_header_generation"] is True
     assert result["checks"]["kiwoom_rest_readonly_sector_canonical_output_only"] is True
     assert result["checks"]["kiwoom_rest_readonly_sector_parquet_unsupported"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_fixture_run"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_summary_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_source_coverage_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_freshness_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_completeness_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_conflict_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_domestic_stock_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_v710_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_v712_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_v713_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_safety_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_gap_report_generated"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_local_only"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_offline_only"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_report_only"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_non_executable"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_no_network"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_no_provider_api"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_no_account_order_path"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_no_env_credential_read"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_no_token_loading"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_no_auth_header_generation"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_canonical_output_only"] is True
+    assert result["checks"]["kiwoom_readonly_snapshot_parquet_unsupported"] is True
     assert result["checks"]["market_regime_fixture_run"] is True
     assert result["checks"]["market_regime_summary_report_generated"] is True
     assert result["checks"]["market_regime_input_snapshot_report_generated"] is True
