@@ -930,6 +930,18 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["feature_store_no_training"] is True
     assert result["checks"]["feature_store_no_paper_trading"] is True
     assert result["checks"]["feature_store_safe_local_materialization_only"] is True
+    assert result["checks"]["historical_market_data_fixture_run"] is True
+    assert result["checks"]["historical_market_data_api_catalog_report_generated"] is True
+    assert result["checks"]["historical_market_data_capture_plan_generated"] is True
+    assert result["checks"]["historical_market_data_normalized_manifest_generated"] is True
+    assert result["checks"]["historical_market_data_coverage_report_generated"] is True
+    assert result["checks"]["historical_market_data_v10_integration_report_generated"] is True
+    assert result["checks"]["historical_market_data_strategy_report_generated"] is True
+    assert result["checks"]["historical_market_data_report_only"] is True
+    assert result["checks"]["historical_market_data_no_network"] is True
+    assert result["checks"]["historical_market_data_no_env_read"] is True
+    assert result["checks"]["historical_market_data_no_account_order_path"] is True
+    assert result["checks"]["historical_market_data_real_capture_blocked"] is True
     assert result["checks"]["paper_evaluation_fixture_run"] is True
     assert result["checks"]["paper_evaluation_plan_generated"] is True
     assert result["checks"]["paper_evaluation_signal_replay_generated"] is True

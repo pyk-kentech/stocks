@@ -223,6 +223,8 @@ from stock_risk_mcp.macro_regime_provider_models import MacroRegimePipelineInput
 from stock_risk_mcp.macro_regime_snapshot_engine import build_macro_regime_snapshot
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
 from stock_risk_mcp.feature_store_models import FeatureStorePipelineInput
+from stock_risk_mcp.historical_market_data_integration_engine import build_historical_market_data_pipeline
+from stock_risk_mcp.historical_market_data_models import HistoricalMarketDataPipelineInput
 from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
 from stock_risk_mcp.paper_evaluation_models import PaperEvaluationPipelineInput
 from stock_risk_mcp.account_read_snapshot_engine import build_account_read_snapshot_pipeline
@@ -2199,6 +2201,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     market_regime = _run_market_regime_smoke(output_dir)
     macro_regime = _run_macro_regime_smoke(output_dir)
     feature_store = _run_feature_store_smoke(output_dir)
+    historical_market_data = _run_historical_market_data_smoke(output_dir)
     paper_evaluation = _run_paper_evaluation_smoke(output_dir)
     portfolio_reconciliation = _run_portfolio_reconciliation_smoke(output_dir)
     controlled_execution = _run_controlled_execution_smoke(output_dir)
@@ -3112,6 +3115,18 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "feature_store_no_training": feature_store["no_training"],
             "feature_store_no_paper_trading": feature_store["no_paper_trading"],
             "feature_store_safe_local_materialization_only": feature_store["safe_local_materialization_only"],
+            "historical_market_data_fixture_run": historical_market_data["fixture_run"],
+            "historical_market_data_api_catalog_report_generated": historical_market_data["api_catalog_report_generated"],
+            "historical_market_data_capture_plan_generated": historical_market_data["capture_plan_generated"],
+            "historical_market_data_normalized_manifest_generated": historical_market_data["normalized_manifest_generated"],
+            "historical_market_data_coverage_report_generated": historical_market_data["coverage_report_generated"],
+            "historical_market_data_v10_integration_report_generated": historical_market_data["v10_integration_report_generated"],
+            "historical_market_data_strategy_report_generated": historical_market_data["strategy_report_generated"],
+            "historical_market_data_report_only": historical_market_data["report_only"],
+            "historical_market_data_no_network": historical_market_data["no_network"],
+            "historical_market_data_no_env_read": historical_market_data["no_env_read"],
+            "historical_market_data_no_account_order_path": historical_market_data["no_account_order_path"],
+            "historical_market_data_real_capture_blocked": historical_market_data["real_capture_blocked"],
             "paper_evaluation_fixture_run": paper_evaluation["fixture_run"],
             "paper_evaluation_plan_generated": paper_evaluation["plan_generated"],
             "paper_evaluation_signal_replay_generated": paper_evaluation["signal_replay_generated"],
@@ -9010,6 +9025,114 @@ def _run_feature_store_smoke(output_dir: Path) -> dict[str, bool]:
         "no_training": result.training_dataset_manifest.no_model_training,
         "no_paper_trading": result.training_dataset_manifest.no_paper_trading,
         "safe_local_materialization_only": "feature_store" in dumped and "rejected_path" not in dumped,
+    }
+
+
+def _run_historical_market_data_smoke(output_dir: Path) -> dict[str, bool]:
+    manual_payload_path = output_dir / "historical_market_data_manual_daily_smoke.json"
+    manual_payload_path.write_text(
+        json.dumps(
+            {
+                "return_code": 0,
+                "return_msg": "MANUAL_RESPONSE_IMPORTED",
+                "stk_cd": "005930",
+                "cont_yn": "N",
+                "next_key": "",
+                "stk_day_pole_chart_qry": [
+                    {
+                        "dt": "20260623",
+                        "open_pric": "80000",
+                        "high_pric": "81300",
+                        "low_pric": "79800",
+                        "cur_prc": "81200",
+                        "trde_qty": "1000000",
+                    },
+                    {
+                        "dt": "20260624",
+                        "open_pric": "81250",
+                        "high_pric": "82000",
+                        "low_pric": "80900",
+                        "cur_prc": "81800",
+                        "trde_qty": "980000",
+                    },
+                    {
+                        "dt": "20260625",
+                        "open_pric": "81850",
+                        "high_pric": "82600",
+                        "low_pric": "81600",
+                        "cur_prc": "82400",
+                        "trde_qty": "1010000",
+                    },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    result = build_historical_market_data_pipeline(
+        HistoricalMarketDataPipelineInput.model_validate(
+            {
+                "pipeline_id": "historical-market-data-smoke",
+                "dataset_id": "historical-market-data-smoke",
+                "mode": "MANUAL_IMPORT_ONLY",
+                "capture_profile": "SMOKE_PROFILE",
+                "store_root": str(output_dir / "historical_market_data" / "normalized"),
+                "raw_lake_root": str(output_dir / "historical_market_data" / "raw_lake"),
+                "requested_storage_formats": ["IN_MEMORY", "JSON", "PARQUET"],
+                "partition_spec": {"partition_keys": ["DATASET_ID", "INTERVAL", "DATE"]},
+                "request_specs": [
+                    {
+                        "request_id": "ka10081-005930-smoke",
+                        "api_id": "KA10081",
+                        "provider_symbol": "005930",
+                        "canonical_instrument_id": "005930",
+                        "interval": "1D",
+                        "base_dt": "20260625",
+                        "upd_stkpc_tp": "1",
+                        "source_ref": "smoke-request",
+                    }
+                ],
+                "manual_response_files": [
+                    {
+                        "import_id": "historical-market-data-import-smoke",
+                        "file_path": str(manual_payload_path),
+                        "request_id": "ka10081-005930-smoke",
+                        "api_id": "KA10081",
+                        "provider_symbol": "005930",
+                        "canonical_instrument_id": "005930",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                    }
+                ],
+                "audit_records": [
+                    {
+                        "audit_record_id": "historical-market-data-audit-smoke",
+                        "created_at": "2026-06-26T16:00:00+09:00",
+                        "source_path": str(output_dir / "historical_market_data_smoke_fixture.json"),
+                        "operator_context": "offline historical market data smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(result.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "api_catalog_report_generated": result.api_catalog_report.report_id.endswith("REPORT"),
+        "capture_plan_generated": result.capture_plan.plan_id.endswith("PLAN"),
+        "normalized_manifest_generated": result.dataset_manifest.manifest_id.endswith("MANIFEST"),
+        "coverage_report_generated": result.coverage_report.report_id.endswith("REPORT"),
+        "v10_integration_report_generated": result.v10_integration_report.report_id.endswith("REPORT"),
+        "strategy_report_generated": result.strategy_research_readiness_report.report_id.endswith("REPORT"),
+        "report_only": result.dataset_manifest.report_only and result.safety_report.report_only,
+        "no_network": result.dataset_manifest.no_network and result.safety_report.no_network,
+        "no_env_read": result.dataset_manifest.no_env_read and result.safety_report.no_env_read,
+        "no_account_order_path": result.dataset_manifest.no_order and result.dataset_manifest.no_account_mutation,
+        "real_capture_blocked": result.safety_report.real_capture_blocked,
+        "safe_local_only": "historical_market_data" in dumped and "http://" not in dumped and "https://" not in dumped,
     }
 
 

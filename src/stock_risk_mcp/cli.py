@@ -294,6 +294,8 @@ from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
 from stock_risk_mcp.feature_store_fixture import load_feature_store_fixture
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
+from stock_risk_mcp.historical_market_data_fixture import load_historical_market_data_fixture
+from stock_risk_mcp.historical_market_data_integration_engine import build_historical_market_data_pipeline
 from stock_risk_mcp.paper_evaluation_fixture import load_paper_evaluation_fixture
 from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
 from stock_risk_mcp.account_read_fixture import load_account_read_fixture, load_account_read_fixture_from_payload
@@ -916,6 +918,36 @@ def build_command_parser() -> argparse.ArgumentParser:
     feature_store_gap = subparsers.add_parser("feature-store-gap-report")
     feature_store_gap.add_argument("--fixture-file", type=Path, required=True)
     feature_store_gap.add_argument("--output-file", type=Path)
+    historical_market_data_api_catalog = subparsers.add_parser("historical-market-data-api-catalog-report")
+    historical_market_data_api_catalog.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_api_catalog.add_argument("--output-file", type=Path)
+    historical_market_data_capture_plan = subparsers.add_parser("historical-market-data-capture-plan")
+    historical_market_data_capture_plan.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_capture_plan.add_argument("--output-file", type=Path)
+    historical_market_data_normalized_manifest = subparsers.add_parser("historical-market-data-normalized-manifest")
+    historical_market_data_normalized_manifest.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_normalized_manifest.add_argument("--output-file", type=Path)
+    historical_market_data_coverage = subparsers.add_parser("historical-market-data-coverage-report")
+    historical_market_data_coverage.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_coverage.add_argument("--output-file", type=Path)
+    historical_market_data_v8 = subparsers.add_parser("historical-market-data-v8-integration-report")
+    historical_market_data_v8.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_v8.add_argument("--output-file", type=Path)
+    historical_market_data_v10 = subparsers.add_parser("historical-market-data-v10-integration-report")
+    historical_market_data_v10.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_v10.add_argument("--output-file", type=Path)
+    historical_market_data_v11 = subparsers.add_parser("historical-market-data-v11-integration-report")
+    historical_market_data_v11.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_v11.add_argument("--output-file", type=Path)
+    historical_market_data_strategy = subparsers.add_parser("historical-market-data-strategy-research-readiness-report")
+    historical_market_data_strategy.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_strategy.add_argument("--output-file", type=Path)
+    historical_market_data_safety = subparsers.add_parser("historical-market-data-safety-report")
+    historical_market_data_safety.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_safety.add_argument("--output-file", type=Path)
+    historical_market_data_gap = subparsers.add_parser("historical-market-data-gap-report")
+    historical_market_data_gap.add_argument("--fixture-file", type=Path, required=True)
+    historical_market_data_gap.add_argument("--output-file", type=Path)
     domestic_regime_aware_validate = subparsers.add_parser("domestic-regime-aware-integration-config-validate")
     domestic_regime_aware_validate.add_argument("--fixture-file", type=Path, required=True)
     domestic_regime_aware_validate.add_argument("--output-file", type=Path)
@@ -3044,6 +3076,16 @@ def main(argv: list[str] | None = None) -> None:
         "feature-store-materialize",
         "feature-store-safety-report",
         "feature-store-gap-report",
+        "historical-market-data-api-catalog-report",
+        "historical-market-data-capture-plan",
+        "historical-market-data-normalized-manifest",
+        "historical-market-data-coverage-report",
+        "historical-market-data-v8-integration-report",
+        "historical-market-data-v10-integration-report",
+        "historical-market-data-v11-integration-report",
+        "historical-market-data-strategy-research-readiness-report",
+        "historical-market-data-safety-report",
+        "historical-market-data-gap-report",
         "domestic-regime-aware-integration-config-validate",
         "domestic-regime-aware-integration-build",
         "domestic-regime-aware-integration-report",
@@ -4580,6 +4622,96 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "feature-store-gap-report":
         try:
             result = _run_feature_store_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-api-catalog-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).api_catalog_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "capability_count": len(result.capabilities)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-capture-plan":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).capture_plan
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "task_count": len(result.tasks)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-normalized-manifest":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).dataset_manifest
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": result.row_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-coverage-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).coverage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": result.row_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-v8-integration-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).v8_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "chart_schema_alignment_ready": result.chart_schema_alignment_ready}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-v10-integration-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).v10_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "price_history_rows_ready": result.price_history_rows_ready}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-v11-integration-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).v11_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "paper_evaluation_replay_ready": result.paper_evaluation_replay_ready}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-strategy-research-readiness-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).strategy_research_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": len(result.rows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-safety-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-gap-report":
+        try:
+            result = _run_historical_market_data_pipeline(args.fixture_file).gap_report
             if args.output_file:
                 args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
@@ -9334,6 +9466,15 @@ def _load_feature_store_fixture_or_raise(fixture_file: Path):
 def _run_feature_store_pipeline(fixture_file: Path):
     fixture = _load_feature_store_fixture_or_raise(fixture_file)
     return build_feature_store_pipeline(fixture, repo_root=Path(__file__).resolve().parents[2])
+
+
+def _load_historical_market_data_fixture_or_raise(fixture_file: Path):
+    return load_historical_market_data_fixture(fixture_file)
+
+
+def _run_historical_market_data_pipeline(fixture_file: Path):
+    fixture = _load_historical_market_data_fixture_or_raise(fixture_file)
+    return build_historical_market_data_pipeline(fixture)
 
 
 def _load_breadth_leadership_routing_fixture_or_raise(fixture_file: Path):
