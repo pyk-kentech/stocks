@@ -942,6 +942,26 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["historical_market_data_no_env_read"] is True
     assert result["checks"]["historical_market_data_no_account_order_path"] is True
     assert result["checks"]["historical_market_data_real_capture_blocked"] is True
+    assert result["checks"]["historical_market_data_real_capture_fixture_run"] is True
+    assert result["checks"]["historical_market_data_real_capture_plan_generated"] is True
+    assert result["checks"]["historical_market_data_real_capture_run_generated"] is True
+    assert result["checks"]["historical_market_data_real_capture_audit_generated"] is True
+    assert result["checks"]["historical_market_data_real_capture_redacted"] is True
+    assert result["checks"]["historical_market_data_real_capture_no_account_order_path"] is True
+    assert result["checks"]["offline_strategy_fixture_run"] is True
+    assert result["checks"]["offline_strategy_template_catalog_generated"] is True
+    assert result["checks"]["offline_strategy_dataset_compatibility_generated"] is True
+    assert result["checks"]["offline_strategy_training_plan_generated"] is True
+    assert result["checks"]["offline_strategy_walk_forward_generated"] is True
+    assert result["checks"]["offline_strategy_backtest_generated"] is True
+    assert result["checks"]["offline_strategy_metric_generated"] is True
+    assert result["checks"]["offline_strategy_promotion_gate_generated"] is True
+    assert result["checks"]["offline_strategy_artifact_manifest_generated"] is True
+    assert result["checks"]["offline_strategy_report_only"] is True
+    assert result["checks"]["offline_strategy_no_network"] is True
+    assert result["checks"]["offline_strategy_no_env_read"] is True
+    assert result["checks"]["offline_strategy_no_account_order_path"] is True
+    assert result["checks"]["offline_strategy_non_executable"] is True
     assert result["checks"]["paper_evaluation_fixture_run"] is True
     assert result["checks"]["paper_evaluation_plan_generated"] is True
     assert result["checks"]["paper_evaluation_signal_replay_generated"] is True

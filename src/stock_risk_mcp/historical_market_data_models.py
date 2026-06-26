@@ -159,6 +159,7 @@ class HistoricalMarketDataCaptureProfile(StrEnum):
     DAILY_RESEARCH_PROFILE = "DAILY_RESEARCH_PROFILE"
     INTRADAY_CANDIDATE_PROFILE = "INTRADAY_CANDIDATE_PROFILE"
     FULL_INTRADAY_PROFILE = "FULL_INTRADAY_PROFILE"
+    FULL_INTRADAY_DISABLED = "FULL_INTRADAY_DISABLED"
 
 
 class HistoricalMarketDataStorageFormat(StrEnum):
@@ -193,6 +194,10 @@ class HistoricalMarketDataReadinessStatus(StrEnum):
     COVERAGE_READY = "COVERAGE_READY"
     V10_MANIFEST_READY = "V10_MANIFEST_READY"
     PROVIDER_SETUP_REQUIRED = "PROVIDER_SETUP_REQUIRED"
+    PREFLIGHT_READY = "PREFLIGHT_READY"
+    REAL_CAPTURE_READY = "REAL_CAPTURE_READY"
+    REAL_CAPTURE_EXECUTED = "REAL_CAPTURE_EXECUTED"
+    AUDIT_READY = "AUDIT_READY"
     DATA_GAP = "DATA_GAP"
     STALE = "STALE"
     CONFLICT = "CONFLICT"
@@ -220,6 +225,148 @@ class HistoricalMarketDataOptIn(StrictModel):
     acknowledge_no_orders: bool = False
     acknowledge_user_initiated: bool = False
     acknowledge_rate_limit_and_capacity: bool = False
+    acknowledge_credential_redaction: bool = False
+
+
+class HistoricalMarketDataTransportKind(StrEnum):
+    MOCK = "MOCK"
+    REAL_KIWOOM_CHART = "REAL_KIWOOM_CHART"
+
+
+class HistoricalMarketDataRedactionStatus(StrEnum):
+    PASSED = "PASSED"
+    BLOCKED = "BLOCKED"
+
+
+class HistoricalMarketDataCredentialRef(StrictModel):
+    credential_ref_id: str = Field(..., min_length=1)
+    appkey_ref_path: str = Field(..., min_length=1)
+    secretkey_ref_path: str = Field(..., min_length=1)
+    redaction_status: HistoricalMarketDataRedactionStatus = HistoricalMarketDataRedactionStatus.PASSED
+
+    @field_validator("credential_ref_id", mode="before")
+    @classmethod
+    def normalize_id(cls, value):
+        return _upper_required(value, "credential_ref_id")
+
+    @field_validator("appkey_ref_path", "secretkey_ref_path", mode="before")
+    @classmethod
+    def normalize_paths(cls, value, info):
+        return _string_required(value, info.field_name)
+
+
+class HistoricalMarketDataRealCaptureConfig(StrictModel):
+    provider: HistoricalMarketDataProvider = HistoricalMarketDataProvider.KIWOOM_REST
+    credential_ref: HistoricalMarketDataCredentialRef | None = None
+    max_request_count: int = Field(default=20, ge=1, le=500)
+    max_continuation_pages: int = Field(default=3, ge=1, le=100)
+    timeout_seconds: int = Field(default=10, ge=1, le=60)
+    retry_count: int = Field(default=1, ge=0, le=3)
+    allow_partial_success: bool = True
+    transport_kind: HistoricalMarketDataTransportKind = HistoricalMarketDataTransportKind.MOCK
+
+
+class _BaseSafety(StrictModel):
+    read_only: bool = True
+    report_only: bool = True
+    non_executable: bool = True
+    local_file_only: bool = True
+    offline_only: bool = True
+    no_network: bool = True
+    no_provider_api: bool = True
+    no_order: bool = True
+    no_account_mutation: bool = True
+    no_live_prod: bool = True
+    no_autonomous_trading: bool = True
+    no_broker_api: bool = True
+    no_kiwoom_api: bool = True
+    no_ls_api: bool = True
+    no_websocket: bool = True
+    no_cloud_llm: bool = True
+    no_local_llm_runtime: bool = True
+    no_env_read: bool = True
+    no_credential_read: bool = True
+    no_token_loading: bool = True
+    no_auth_header_generation: bool = True
+    no_model_training: bool = True
+    no_paper_trading: bool = True
+
+
+class HistoricalChartCaptureRunTaskResult(_BaseSafety):
+    task_id: str = Field(..., min_length=1)
+    request_id: str = Field(..., min_length=1)
+    execution_decision: HistoricalChartCaptureDecision
+    success: bool = False
+    page_count: int = Field(default=0, ge=0)
+    raw_response_count: int = Field(default=0, ge=0)
+    normalized_row_count: int = Field(default=0, ge=0)
+    blocked_reasons: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+    @field_validator("task_id", "request_id", mode="before")
+    @classmethod
+    def normalize_upper(cls, value, info):
+        return _upper_required(value, info.field_name)
+
+    @field_validator("blocked_reasons", "errors", mode="before")
+    @classmethod
+    def normalize_lists(cls, value, info):
+        return _normalize_list(value, info.field_name, upper=info.field_name == "blocked_reasons")
+
+    @model_validator(mode="after")
+    def validate_result(self):
+        return _validate_safety_flags(self, "capture run task result")
+
+
+class HistoricalChartCaptureRunAudit(_BaseSafety):
+    audit_id: str = Field(..., min_length=1)
+    dataset_id: str = Field(..., min_length=1)
+    transport_kind: HistoricalMarketDataTransportKind
+    credential_ref_present: bool = False
+    credential_policy: HistoricalMarketDataCredentialPolicy = HistoricalMarketDataCredentialPolicy.BLOCKED
+    redaction_status: HistoricalMarketDataRedactionStatus = HistoricalMarketDataRedactionStatus.PASSED
+    auth_header_present: bool = False
+    task_results: list[HistoricalChartCaptureRunTaskResult] = Field(default_factory=list)
+    blocked_reasons: list[str] = Field(default_factory=list)
+
+    @field_validator("audit_id", "dataset_id", mode="before")
+    @classmethod
+    def normalize_upper(cls, value, info):
+        return _upper_required(value, info.field_name)
+
+    @field_validator("blocked_reasons", mode="before")
+    @classmethod
+    def normalize_blocked(cls, value):
+        return _normalize_list(value, "blocked_reasons", upper=True)
+
+    @model_validator(mode="after")
+    def validate_audit(self):
+        return _validate_safety_flags(self, "capture run audit")
+
+
+class HistoricalChartCaptureRunResult(_BaseSafety):
+    run_id: str = Field(..., min_length=1)
+    dataset_id: str = Field(..., min_length=1)
+    readiness_status: HistoricalMarketDataReadinessStatus
+    task_results: list[HistoricalChartCaptureRunTaskResult] = Field(default_factory=list)
+    raw_response_count: int = Field(default=0, ge=0)
+    normalized_row_count: int = Field(default=0, ge=0)
+    manifest: "HistoricalOhlcvDatasetManifest | None" = None
+    coverage_report: "HistoricalMarketDataCoverageReport | None" = None
+    freshness_report: "HistoricalMarketDataFreshnessReport | None" = None
+    completeness_report: "HistoricalMarketDataCompletenessReport | None" = None
+    gap_report: "HistoricalMarketDataGapReport | None" = None
+    safety_report: "HistoricalMarketDataSafetyReport | None" = None
+    audit_report: HistoricalChartCaptureRunAudit | None = None
+
+    @field_validator("run_id", "dataset_id", mode="before")
+    @classmethod
+    def normalize_upper(cls, value, info):
+        return _upper_required(value, info.field_name)
+
+    @model_validator(mode="after")
+    def validate_result(self):
+        return _validate_safety_flags(self, "capture run result")
 
 
 class _BaseSafety(StrictModel):
@@ -845,6 +992,7 @@ class HistoricalMarketDataPipelineInput(StrictModel):
     requested_storage_formats: list[HistoricalMarketDataStorageFormat] = Field(default_factory=list)
     partition_spec: HistoricalOhlcvPartitionSpec
     opt_in: HistoricalMarketDataOptIn = Field(default_factory=HistoricalMarketDataOptIn)
+    real_capture_config: HistoricalMarketDataRealCaptureConfig | None = None
     request_specs: list[HistoricalChartRequestSpec] = Field(default_factory=list)
     manual_response_files: list[HistoricalChartImportFile] = Field(default_factory=list)
     mocked_responses: list[HistoricalChartRawResponse] = Field(default_factory=list)
@@ -862,7 +1010,7 @@ class HistoricalMarketDataPipelineInput(StrictModel):
 
     @model_validator(mode="after")
     def validate_input(self):
-        if self.capture_profile == HistoricalMarketDataCaptureProfile.FULL_INTRADAY_PROFILE and self.mode != HistoricalMarketDataMode.CAPTURE_PLAN_ONLY:
+        if self.capture_profile in {HistoricalMarketDataCaptureProfile.FULL_INTRADAY_PROFILE, HistoricalMarketDataCaptureProfile.FULL_INTRADAY_DISABLED} and self.mode != HistoricalMarketDataMode.CAPTURE_PLAN_ONLY:
             raise ValueError("full intraday profile remains blocked outside capture-plan-only mode")
         return self
 

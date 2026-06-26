@@ -224,7 +224,11 @@ from stock_risk_mcp.macro_regime_snapshot_engine import build_macro_regime_snaps
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
 from stock_risk_mcp.feature_store_models import FeatureStorePipelineInput
 from stock_risk_mcp.historical_market_data_integration_engine import build_historical_market_data_pipeline
+from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
 from stock_risk_mcp.historical_market_data_models import HistoricalMarketDataPipelineInput
+from stock_risk_mcp.historical_market_data_transport import MockHistoricalMarketDataTransport
+from stock_risk_mcp.offline_strategy_integration_engine import build_offline_strategy_pipeline
+from stock_risk_mcp.offline_strategy_models import OfflineStrategyPipelineInput
 from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
 from stock_risk_mcp.paper_evaluation_models import PaperEvaluationPipelineInput
 from stock_risk_mcp.account_read_snapshot_engine import build_account_read_snapshot_pipeline
@@ -2202,6 +2206,8 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     macro_regime = _run_macro_regime_smoke(output_dir)
     feature_store = _run_feature_store_smoke(output_dir)
     historical_market_data = _run_historical_market_data_smoke(output_dir)
+    historical_market_data_real_capture = _run_historical_market_data_real_capture_smoke(output_dir)
+    offline_strategy = _run_offline_strategy_smoke(output_dir)
     paper_evaluation = _run_paper_evaluation_smoke(output_dir)
     portfolio_reconciliation = _run_portfolio_reconciliation_smoke(output_dir)
     controlled_execution = _run_controlled_execution_smoke(output_dir)
@@ -3127,6 +3133,26 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "historical_market_data_no_env_read": historical_market_data["no_env_read"],
             "historical_market_data_no_account_order_path": historical_market_data["no_account_order_path"],
             "historical_market_data_real_capture_blocked": historical_market_data["real_capture_blocked"],
+            "historical_market_data_real_capture_fixture_run": historical_market_data_real_capture["fixture_run"],
+            "historical_market_data_real_capture_plan_generated": historical_market_data_real_capture["plan_generated"],
+            "historical_market_data_real_capture_run_generated": historical_market_data_real_capture["run_generated"],
+            "historical_market_data_real_capture_audit_generated": historical_market_data_real_capture["audit_generated"],
+            "historical_market_data_real_capture_redacted": historical_market_data_real_capture["redacted"],
+            "historical_market_data_real_capture_no_account_order_path": historical_market_data_real_capture["no_account_order_path"],
+            "offline_strategy_fixture_run": offline_strategy["fixture_run"],
+            "offline_strategy_template_catalog_generated": offline_strategy["template_catalog_generated"],
+            "offline_strategy_dataset_compatibility_generated": offline_strategy["dataset_compatibility_generated"],
+            "offline_strategy_training_plan_generated": offline_strategy["training_plan_generated"],
+            "offline_strategy_walk_forward_generated": offline_strategy["walk_forward_generated"],
+            "offline_strategy_backtest_generated": offline_strategy["backtest_generated"],
+            "offline_strategy_metric_generated": offline_strategy["metric_generated"],
+            "offline_strategy_promotion_gate_generated": offline_strategy["promotion_gate_generated"],
+            "offline_strategy_artifact_manifest_generated": offline_strategy["artifact_manifest_generated"],
+            "offline_strategy_report_only": offline_strategy["report_only"],
+            "offline_strategy_no_network": offline_strategy["no_network"],
+            "offline_strategy_no_env_read": offline_strategy["no_env_read"],
+            "offline_strategy_no_account_order_path": offline_strategy["no_account_order_path"],
+            "offline_strategy_non_executable": offline_strategy["non_executable"],
             "paper_evaluation_fixture_run": paper_evaluation["fixture_run"],
             "paper_evaluation_plan_generated": paper_evaluation["plan_generated"],
             "paper_evaluation_signal_replay_generated": paper_evaluation["signal_replay_generated"],
@@ -9133,6 +9159,162 @@ def _run_historical_market_data_smoke(output_dir: Path) -> dict[str, bool]:
         "no_account_order_path": result.dataset_manifest.no_order and result.dataset_manifest.no_account_mutation,
         "real_capture_blocked": result.safety_report.real_capture_blocked,
         "safe_local_only": "historical_market_data" in dumped and "http://" not in dumped and "https://" not in dumped,
+    }
+
+
+def _run_historical_market_data_real_capture_smoke(output_dir: Path) -> dict[str, bool]:
+    payload = {
+        "return_code": 0,
+        "return_msg": "MOCK_CAPTURE_READY",
+        "stk_cd": "005930",
+        "cont_yn": "N",
+        "next_key": "",
+        "stk_day_pole_chart_qry": [
+            {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
+            {"dt": "20260624", "open_pric": "81250", "high_pric": "82000", "low_pric": "80900", "cur_prc": "81800", "trde_qty": "980000"},
+        ],
+    }
+    pipeline = HistoricalMarketDataPipelineInput.model_validate(
+        {
+            "pipeline_id": "historical-market-data-real-capture-smoke",
+            "dataset_id": "historical-market-data-real-capture-smoke",
+            "mode": "REAL_OPT_IN_BOUNDARY",
+            "capture_profile": "DAILY_RESEARCH_PROFILE",
+            "store_root": str(output_dir / "historical_market_data_real_capture" / "normalized"),
+            "raw_lake_root": str(output_dir / "historical_market_data_real_capture" / "raw_lake"),
+            "requested_storage_formats": ["IN_MEMORY", "JSON"],
+            "partition_spec": {"partition_keys": ["DATASET_ID", "INTERVAL", "DATE"]},
+            "opt_in": {
+                "allow_real_chart_capture": True,
+                "acknowledge_readonly_only": True,
+                "acknowledge_no_orders": True,
+                "acknowledge_user_initiated": True,
+                "acknowledge_rate_limit_and_capacity": True,
+                "acknowledge_credential_redaction": True,
+            },
+            "real_capture_config": {
+                "credential_ref": {
+                    "credential_ref_id": "SMOKE_CREDENTIAL_REF",
+                    "appkey_ref_path": str(output_dir / "fake_appkey.txt"),
+                    "secretkey_ref_path": str(output_dir / "fake_secretkey.txt"),
+                },
+                "transport_kind": "MOCK",
+                "max_request_count": 2,
+                "max_continuation_pages": 2,
+            },
+            "request_specs": [
+                {
+                    "request_id": "ka10081-005930-real-capture-smoke",
+                    "api_id": "KA10081",
+                    "provider_symbol": "005930",
+                    "canonical_instrument_id": "005930",
+                    "interval": "1D",
+                    "base_dt": "20260624",
+                    "upd_stkpc_tp": "1",
+                    "source_ref": "SMOKE",
+                }
+            ],
+        }
+    )
+    (output_dir / "fake_appkey.txt").write_text("APPKEY_SMOKE", encoding="utf-8")
+    (output_dir / "fake_secretkey.txt").write_text("SECRETKEY_SMOKE", encoding="utf-8")
+    result = run_historical_market_data_real_capture(
+        pipeline,
+        transport=MockHistoricalMarketDataTransport(
+            {
+                "ka10081-005930-real-capture-smoke": {
+                    "status_code": 200,
+                    "headers": {"cont-yn": "N", "next-key": ""},
+                    "body_json": payload,
+                }
+            }
+        ),
+    )
+    return {
+        "fixture_run": True,
+        "plan_generated": result.run_id.endswith("RUN"),
+        "run_generated": result.normalized_row_count == 2,
+        "audit_generated": result.audit_report is not None and result.audit_report.audit_id.endswith("AUDIT"),
+        "redacted": all(response.raw_payload_redacted for response in []),
+        "no_account_order_path": result.audit_report is not None and all("ORDER" not in reason for reason in result.audit_report.blocked_reasons),
+    }
+
+
+def _run_offline_strategy_smoke(output_dir: Path) -> dict[str, bool]:
+    rows = [
+        {
+            "row_id": f"offline-strategy-smoke-{index}",
+            "dataset_id": "offline-strategy-smoke",
+            "instrument_id": "005930",
+            "provider_symbol": "005930",
+            "interval": "1D",
+            "api_id": "KA10081",
+            "observed_at": observed_at,
+            "available_at": observed_at.replace("15:30:00", "15:35:00"),
+            "open_price": open_price,
+            "high_price": high_price,
+            "low_price": low_price,
+            "close_price": close_price,
+            "volume": volume,
+            "adjusted": True,
+            "adjustment_policy": "UPD_STKPC_TP_1",
+            "source_ref": "offline_strategy_smoke.json",
+        }
+        for index, (observed_at, open_price, high_price, low_price, close_price, volume) in enumerate(
+            [
+                ("2026-06-01T15:30:00+09:00", 70000, 71000, 69800, 70800, 900000),
+                ("2026-06-02T15:30:00+09:00", 70800, 71500, 70500, 71400, 950000),
+                ("2026-06-03T15:30:00+09:00", 71400, 72000, 71000, 71900, 980000),
+                ("2026-06-04T15:30:00+09:00", 71900, 73000, 71800, 72800, 1200000),
+                ("2026-06-05T15:30:00+09:00", 72800, 73400, 72400, 73100, 1300000),
+                ("2026-06-08T15:30:00+09:00", 73100, 73800, 72900, 73600, 1250000),
+                ("2026-06-09T15:30:00+09:00", 73600, 74200, 73200, 73900, 1400000),
+                ("2026-06-10T15:30:00+09:00", 73900, 74800, 73800, 74600, 1450000),
+                ("2026-06-11T15:30:00+09:00", 74600, 75200, 74100, 75000, 1500000),
+                ("2026-06-12T15:30:00+09:00", 75000, 76000, 74800, 75800, 1600000),
+                ("2026-06-15T15:30:00+09:00", 75800, 76500, 75400, 76200, 1620000),
+                ("2026-06-16T15:30:00+09:00", 76200, 77000, 75900, 76800, 1680000),
+                ("2026-06-17T15:30:00+09:00", 76800, 77600, 76400, 77400, 1700000),
+                ("2026-06-18T15:30:00+09:00", 77400, 78100, 77000, 77900, 1720000),
+                ("2026-06-19T15:30:00+09:00", 77900, 78800, 77600, 78600, 1750000),
+                ("2026-06-22T15:30:00+09:00", 78600, 79500, 78300, 79200, 1800000),
+                ("2026-06-23T15:30:00+09:00", 79200, 80200, 79000, 80000, 1900000),
+                ("2026-06-24T15:30:00+09:00", 80000, 81200, 79800, 81000, 2200000),
+                ("2026-06-25T15:30:00+09:00", 81000, 82400, 80800, 82200, 2600000),
+                ("2026-06-26T15:30:00+09:00", 81800, 83100, 81600, 82800, 2400000),
+            ],
+            start=1,
+        )
+    ]
+    result = build_offline_strategy_pipeline(
+        OfflineStrategyPipelineInput.model_validate(
+            {
+                "pipeline_id": "offline-strategy-smoke",
+                "dataset_id": "offline-strategy-smoke",
+                "ohlcv_rows": rows,
+                "primary_walk_forward_mode": "ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+                "rolling_enabled": False,
+                "asset_liquidity_profile": "HIGH_VOLATILITY_MOMENTUM",
+                "fee_bps": 5.0,
+                "slippage_bps": 15.0,
+            }
+        )
+    )
+    return {
+        "fixture_run": True,
+        "template_catalog_generated": len(result.template_catalog) >= 4,
+        "dataset_compatibility_generated": result.dataset_compatibility_report.row_count >= 20,
+        "training_plan_generated": result.training_plan.plan_id.endswith("PLAN"),
+        "walk_forward_generated": len(result.walk_forward_result.splits) == 3,
+        "backtest_generated": len(result.backtest_results) >= 1,
+        "metric_generated": len(result.metric_summaries) >= 1,
+        "promotion_gate_generated": len(result.promotion_decisions) >= 1,
+        "artifact_manifest_generated": result.artifact_manifest.manifest_id.endswith("MANIFEST"),
+        "report_only": result.safety_report.report_only and all(signal.report_only for signal in result.signals),
+        "no_network": result.safety_report.no_network and all(signal.no_network for signal in result.signals),
+        "no_env_read": result.safety_report.no_env_read and all(intent.no_env_read for intent in result.intents),
+        "no_account_order_path": result.safety_report.no_order and result.safety_report.no_account_mutation,
+        "non_executable": all(intent.non_executable for intent in result.intents),
     }
 
 

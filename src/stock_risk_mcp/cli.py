@@ -294,8 +294,24 @@ from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
 from stock_risk_mcp.feature_store_fixture import load_feature_store_fixture
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
+from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
+from stock_risk_mcp.historical_market_data_credential_ref import redact_credential_ref_summary
 from stock_risk_mcp.historical_market_data_fixture import load_historical_market_data_fixture
 from stock_risk_mcp.historical_market_data_integration_engine import build_historical_market_data_pipeline
+from stock_risk_mcp.historical_market_data_models import (
+    HistoricalChartRequestSpec,
+    HistoricalMarketDataCredentialRef,
+    HistoricalMarketDataMode,
+    HistoricalMarketDataOptIn,
+    HistoricalMarketDataPipelineInput,
+    HistoricalMarketDataProvider,
+    HistoricalMarketDataRealCaptureConfig,
+    HistoricalMarketDataTransportKind,
+    HistoricalOhlcvPartitionSpec,
+)
+from stock_risk_mcp.historical_market_data_transport import MockHistoricalMarketDataTransport, RealKiwoomChartTransport
+from stock_risk_mcp.offline_strategy_fixture import load_offline_strategy_fixture
+from stock_risk_mcp.offline_strategy_integration_engine import build_offline_strategy_pipeline
 from stock_risk_mcp.paper_evaluation_fixture import load_paper_evaluation_fixture
 from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
 from stock_risk_mcp.account_read_fixture import load_account_read_fixture, load_account_read_fixture_from_payload
@@ -948,6 +964,67 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_gap = subparsers.add_parser("historical-market-data-gap-report")
     historical_market_data_gap.add_argument("--fixture-file", type=Path, required=True)
     historical_market_data_gap.add_argument("--output-file", type=Path)
+    historical_market_data_real_capture_preflight = subparsers.add_parser("historical-market-data-real-capture-preflight-report")
+    historical_market_data_real_capture_preflight.add_argument("--provider", default="kiwoom")
+    historical_market_data_real_capture_preflight.add_argument("--api-id", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--symbols", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--start-date", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--end-date", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--capture-profile", default="DAILY_RESEARCH_PROFILE")
+    historical_market_data_real_capture_preflight.add_argument("--store-root", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--raw-lake-root", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--max-request-count", type=int, default=20)
+    historical_market_data_real_capture_preflight.add_argument("--max-continuation-pages", type=int, default=3)
+    historical_market_data_real_capture_preflight.add_argument("--credential-ref")
+    historical_market_data_real_capture_preflight.add_argument("--allow-real-chart-capture", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--acknowledge-readonly-only", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--acknowledge-no-orders", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--acknowledge-user-initiated", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--acknowledge-rate-limit-and-capacity", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--acknowledge-credential-redaction", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--output-file", type=Path)
+    historical_market_data_real_capture_plan = subparsers.add_parser("historical-market-data-real-capture-plan-report")
+    for action in historical_market_data_real_capture_preflight._actions[1:]:
+        if action.dest != "help":
+            historical_market_data_real_capture_plan._add_action(action)
+    historical_market_data_real_capture_run = subparsers.add_parser("historical-market-data-real-capture-run")
+    for action in historical_market_data_real_capture_preflight._actions[1:]:
+        if action.dest != "help":
+            historical_market_data_real_capture_run._add_action(action)
+    historical_market_data_real_capture_audit = subparsers.add_parser("historical-market-data-real-capture-audit-report")
+    for action in historical_market_data_real_capture_preflight._actions[1:]:
+        if action.dest != "help":
+            historical_market_data_real_capture_audit._add_action(action)
+    offline_strategy_template_catalog = subparsers.add_parser("offline-strategy-template-catalog-report")
+    offline_strategy_template_catalog.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_template_catalog.add_argument("--output-file", type=Path)
+    offline_strategy_dataset_compatibility = subparsers.add_parser("offline-strategy-dataset-compatibility-report")
+    offline_strategy_dataset_compatibility.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_dataset_compatibility.add_argument("--output-file", type=Path)
+    offline_strategy_training_plan = subparsers.add_parser("offline-strategy-training-plan-report")
+    offline_strategy_training_plan.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_training_plan.add_argument("--output-file", type=Path)
+    offline_strategy_walk_forward = subparsers.add_parser("offline-strategy-walk-forward-report")
+    offline_strategy_walk_forward.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_walk_forward.add_argument("--output-file", type=Path)
+    offline_strategy_backtest = subparsers.add_parser("offline-strategy-backtest-report")
+    offline_strategy_backtest.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_backtest.add_argument("--output-file", type=Path)
+    offline_strategy_metric = subparsers.add_parser("offline-strategy-metric-report")
+    offline_strategy_metric.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_metric.add_argument("--output-file", type=Path)
+    offline_strategy_promotion_gate = subparsers.add_parser("offline-strategy-promotion-gate-report")
+    offline_strategy_promotion_gate.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_promotion_gate.add_argument("--output-file", type=Path)
+    offline_strategy_artifact_manifest = subparsers.add_parser("offline-strategy-artifact-manifest-report")
+    offline_strategy_artifact_manifest.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_artifact_manifest.add_argument("--output-file", type=Path)
+    offline_strategy_safety = subparsers.add_parser("offline-strategy-safety-report")
+    offline_strategy_safety.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_safety.add_argument("--output-file", type=Path)
+    offline_strategy_gap = subparsers.add_parser("offline-strategy-gap-report")
+    offline_strategy_gap.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_gap.add_argument("--output-file", type=Path)
     domestic_regime_aware_validate = subparsers.add_parser("domestic-regime-aware-integration-config-validate")
     domestic_regime_aware_validate.add_argument("--fixture-file", type=Path, required=True)
     domestic_regime_aware_validate.add_argument("--output-file", type=Path)
@@ -3086,6 +3163,20 @@ def main(argv: list[str] | None = None) -> None:
         "historical-market-data-strategy-research-readiness-report",
         "historical-market-data-safety-report",
         "historical-market-data-gap-report",
+        "historical-market-data-real-capture-preflight-report",
+        "historical-market-data-real-capture-plan-report",
+        "historical-market-data-real-capture-run",
+        "historical-market-data-real-capture-audit-report",
+        "offline-strategy-template-catalog-report",
+        "offline-strategy-dataset-compatibility-report",
+        "offline-strategy-training-plan-report",
+        "offline-strategy-walk-forward-report",
+        "offline-strategy-backtest-report",
+        "offline-strategy-metric-report",
+        "offline-strategy-promotion-gate-report",
+        "offline-strategy-artifact-manifest-report",
+        "offline-strategy-safety-report",
+        "offline-strategy-gap-report",
         "domestic-regime-aware-integration-config-validate",
         "domestic-regime-aware-integration-build",
         "domestic-regime-aware-integration-report",
@@ -4712,6 +4803,157 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "historical-market-data-gap-report":
         try:
             result = _run_historical_market_data_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-real-capture-preflight-report":
+        try:
+            pipeline = _build_historical_market_data_real_capture_input(args)
+            catalog, plan = __import__("stock_risk_mcp.historical_market_data_capture_plan_engine", fromlist=["build_historical_chart_capture_plan"]).build_historical_chart_capture_plan(pipeline)
+            result = {
+                "status": plan.readiness_status.value,
+                "dataset_id": pipeline.dataset_id,
+                "task_count": len(plan.tasks),
+                "blocked_task_count": len([task for task in plan.tasks if task.execution_decision.value == "BLOCKED"]),
+                "credential_summary": redact_credential_ref_summary(pipeline.real_capture_config.credential_ref if pipeline.real_capture_config else None),
+                "schema_ready_api_ids": catalog.schema_ready_api_ids,
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "task_count": result["task_count"]}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-real-capture-plan-report":
+        try:
+            result = __import__("stock_risk_mcp.historical_market_data_capture_plan_engine", fromlist=["build_historical_chart_capture_plan"]).build_historical_chart_capture_plan(_build_historical_market_data_real_capture_input(args))[1]
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "task_count": len(result.tasks)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-real-capture-run":
+        try:
+            pipeline = _build_historical_market_data_real_capture_input(args)
+            transport = RealKiwoomChartTransport(timeout_seconds=pipeline.real_capture_config.timeout_seconds)
+            result = run_historical_market_data_real_capture(pipeline, transport=transport)
+            output = {
+                "status": result.readiness_status.value,
+                "manifest_path": result.manifest.store_root if result.manifest else None,
+                "raw_response_count": result.raw_response_count,
+                "normalized_row_count": result.normalized_row_count,
+                "task_result_count": len(result.task_results),
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(output, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "normalized_row_count": result.normalized_row_count}
+            return output
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-real-capture-audit-report":
+        try:
+            pipeline = _build_historical_market_data_real_capture_input(args)
+            transport = MockHistoricalMarketDataTransport()
+            result = run_historical_market_data_real_capture(pipeline, transport=transport)
+            audit = result.audit_report
+            if args.output_file and audit is not None:
+                args.output_file.write_text(audit.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "task_result_count": len(audit.task_results)}
+            return audit.model_dump(mode="json") if audit is not None else {"status": "FAILED", "errors": ["audit unavailable"]}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-template-catalog-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).template_catalog
+            payload = [item.model_dump(mode="json") for item in result]
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "template_count": len(payload)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-dataset-compatibility-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).dataset_compatibility_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": result.row_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-training-plan-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).training_plan
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-walk-forward-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).walk_forward_result
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "split_count": len(result.splits)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-backtest-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).backtest_results
+            payload = [item.model_dump(mode="json") for item in result]
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "result_count": len(payload)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-metric-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).metric_summaries
+            payload = [item.model_dump(mode="json") for item in result]
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "result_count": len(payload)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-promotion-gate-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).promotion_decisions
+            payload = [item.model_dump(mode="json") for item in result]
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "decision_count": len(payload)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-artifact-manifest-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).artifact_manifest
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "path_count": len(result.relative_paths)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-safety-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-gap-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).gap_report
             if args.output_file:
                 args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
@@ -9475,6 +9717,69 @@ def _load_historical_market_data_fixture_or_raise(fixture_file: Path):
 def _run_historical_market_data_pipeline(fixture_file: Path):
     fixture = _load_historical_market_data_fixture_or_raise(fixture_file)
     return build_historical_market_data_pipeline(fixture)
+
+
+def _load_offline_strategy_fixture_or_raise(fixture_file: Path):
+    return load_offline_strategy_fixture(fixture_file)
+
+
+def _run_offline_strategy_pipeline(fixture_file: Path):
+    fixture = _load_offline_strategy_fixture_or_raise(fixture_file)
+    return build_offline_strategy_pipeline(fixture)
+
+
+def _build_historical_market_data_real_capture_input(args):
+    symbols = [item.strip().upper() for item in str(args.symbols).split(",") if item.strip()]
+    request_specs = []
+    for symbol in symbols:
+        request_payload = {
+            "request_id": f"{args.api_id}-{symbol}-{str(args.start_date).replace('-', '')}-{str(args.end_date).replace('-', '')}",
+            "api_id": args.api_id,
+            "provider_symbol": symbol,
+            "canonical_instrument_id": symbol,
+            "interval": "1D" if str(args.api_id).upper() == "KA10081" else "1M",
+            "base_dt": str(args.end_date).replace("-", ""),
+            "upd_stkpc_tp": "1",
+            "source_ref": "CLI_REAL_CAPTURE",
+        }
+        if str(args.api_id).upper() == "KA10080":
+            request_payload["tic_scope"] = "1"
+        request_specs.append(HistoricalChartRequestSpec.model_validate(request_payload))
+    credential_ref = None
+    if args.credential_ref:
+        base = Path(args.credential_ref)
+        credential_ref = HistoricalMarketDataCredentialRef(
+            credential_ref_id="KIWOOM_REAL_CAPTURE_CREDENTIAL_REF",
+            appkey_ref_path=str(base / "66787923_appkey.txt"),
+            secretkey_ref_path=str(base / "66787923_secretkey.txt"),
+        )
+    transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART if args.command == "historical-market-data-real-capture-run" else HistoricalMarketDataTransportKind.MOCK
+    return HistoricalMarketDataPipelineInput(
+        pipeline_id="HISTORICAL-MARKET-DATA-REAL-CAPTURE-CLI",
+        dataset_id=f"HISTORICAL-MARKET-DATA-{str(args.api_id).upper()}-{symbols[0] if symbols else 'EMPTY'}",
+        mode=HistoricalMarketDataMode.REAL_OPT_IN_BOUNDARY,
+        capture_profile=str(args.capture_profile).upper(),
+        store_root=str(args.store_root),
+        raw_lake_root=str(args.raw_lake_root),
+        requested_storage_formats=["IN_MEMORY", "JSON"],
+        partition_spec=HistoricalOhlcvPartitionSpec(partition_keys=["DATASET_ID", "INTERVAL", "DATE"]),
+        opt_in=HistoricalMarketDataOptIn(
+            allow_real_chart_capture=args.allow_real_chart_capture,
+            acknowledge_readonly_only=args.acknowledge_readonly_only,
+            acknowledge_no_orders=args.acknowledge_no_orders,
+            acknowledge_user_initiated=args.acknowledge_user_initiated,
+            acknowledge_rate_limit_and_capacity=args.acknowledge_rate_limit_and_capacity,
+            acknowledge_credential_redaction=args.acknowledge_credential_redaction,
+        ),
+        real_capture_config=HistoricalMarketDataRealCaptureConfig(
+            provider=HistoricalMarketDataProvider.KIWOOM_REST,
+            credential_ref=credential_ref,
+            max_request_count=args.max_request_count,
+            max_continuation_pages=args.max_continuation_pages,
+            transport_kind=transport_kind,
+        ),
+        request_specs=request_specs,
+    )
 
 
 def _load_breadth_leadership_routing_fixture_or_raise(fixture_file: Path):
