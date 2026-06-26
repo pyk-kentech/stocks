@@ -221,6 +221,8 @@ from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_cla
 from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
 from stock_risk_mcp.macro_regime_provider_models import MacroRegimePipelineInput
 from stock_risk_mcp.macro_regime_snapshot_engine import build_macro_regime_snapshot
+from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
+from stock_risk_mcp.feature_store_models import FeatureStorePipelineInput
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
@@ -2188,6 +2190,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     controlled_mock_readiness = _run_controlled_mock_readiness_smoke(output_dir)
     market_regime = _run_market_regime_smoke(output_dir)
     macro_regime = _run_macro_regime_smoke(output_dir)
+    feature_store = _run_feature_store_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
     position_sizing = _run_position_sizing_smoke(output_dir)
     event_risk = _run_event_risk_smoke(output_dir)
@@ -3081,6 +3084,23 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "macro_regime_no_executable_output": macro_regime["no_executable_output"],
             "macro_regime_boundary_only": macro_regime["provider_boundary_only"],
             "macro_regime_parquet_unsupported": macro_regime["parquet_unsupported"],
+            "feature_store_fixture_run": feature_store["fixture_run"],
+            "feature_store_cache_manifest_generated": feature_store["cache_manifest_generated"],
+            "feature_store_dataset_manifest_generated": feature_store["dataset_manifest_generated"],
+            "feature_store_training_dataset_manifest_generated": feature_store["training_dataset_manifest_generated"],
+            "feature_store_walk_forward_plan_generated": feature_store["walk_forward_plan_generated"],
+            "feature_store_leakage_report_generated": feature_store["leakage_report_generated"],
+            "feature_store_backend_capability_report_generated": feature_store["backend_capability_report_generated"],
+            "feature_store_v7_integration_report_generated": feature_store["v7_integration_report_generated"],
+            "feature_store_v8_integration_report_generated": feature_store["v8_integration_report_generated"],
+            "feature_store_v9_integration_report_generated": feature_store["v9_integration_report_generated"],
+            "feature_store_report_only": feature_store["report_only"],
+            "feature_store_no_network": feature_store["no_network"],
+            "feature_store_no_env_read": feature_store["no_env_read"],
+            "feature_store_no_account_order_path": feature_store["no_account_order_path"],
+            "feature_store_no_training": feature_store["no_training"],
+            "feature_store_no_paper_trading": feature_store["no_paper_trading"],
+            "feature_store_safe_local_materialization_only": feature_store["safe_local_materialization_only"],
             "market_data_provider_registry_fixture_run": provider_registry["fixture_run"],
             "market_data_provider_registry_report_generated": provider_registry["registry_report_generated"],
             "market_data_provider_module_requirement_report_generated": provider_registry["module_requirement_report_generated"],
@@ -8754,6 +8774,193 @@ def _run_macro_regime_smoke(output_dir: Path) -> dict[str, bool]:
         "no_executable_output": reviewed.snapshot.non_executable and reviewed.classification.non_executable and "order intent" not in dumped,
         "provider_boundary_only": "provider_setup_required" not in dumped,
         "parquet_unsupported": ".parquet" not in dumped,
+    }
+
+
+def _run_feature_store_smoke(output_dir: Path) -> dict[str, bool]:
+    result = build_feature_store_pipeline(
+        FeatureStorePipelineInput.model_validate(
+            {
+                "pipeline_id": "feature-store-smoke",
+                "dataset_id": "feature-store-smoke",
+                "dataset_profile": "SMOKE_PROFILE",
+                "store_root": str(output_dir / "feature_store"),
+                "requested_backends": ["IN_MEMORY", "JSON"],
+                "partition_spec": {"partition_keys": ["DATASET_ID", "MARKET", "DATE", "SPLIT"]},
+                "source_feature_inputs": [
+                    {
+                        "source_row_id": "row-005930-2026-06-23",
+                        "source_kind": "V8_DOMESTIC_STOCK_SNAPSHOT",
+                        "instrument_id": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "feature_asof": "2026-06-23T15:35:00+09:00",
+                        "available_at": "2026-06-23T15:35:00+09:00",
+                        "snapshot_at": "2026-06-23T15:35:00+09:00",
+                        "feature_namespace": "domestic.price",
+                        "feature_values": {"close_price": 81200.0, "volume_ratio": 1.2, "volatility_20d": 0.18},
+                        "source_ref": {
+                            "source_id": "v8-snapshot-1",
+                            "source_kind": "V8_DOMESTIC_STOCK_SNAPSHOT",
+                            "sanitized_basename": "snapshot_005930_20260623.json",
+                            "relative_path": "fixtures/feature_store/snapshot_005930_20260623.json",
+                            "available_at": "2026-06-23T15:35:00+09:00",
+                        },
+                    },
+                    {
+                        "source_row_id": "row-005930-2026-06-24",
+                        "source_kind": "V9_MACRO_REGIME_SNAPSHOT",
+                        "instrument_id": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "feature_asof": "2026-06-24T15:35:00+09:00",
+                        "available_at": "2026-06-24T15:35:00+09:00",
+                        "snapshot_at": "2026-06-24T15:35:00+09:00",
+                        "feature_namespace": "macro.regime_classification",
+                        "feature_values": {"macro_risk_on": True, "dollar_strength_score": 0.35, "volatility_20d": 0.19},
+                        "source_ref": {
+                            "source_id": "v9-macro-1",
+                            "source_kind": "V9_MACRO_REGIME_SNAPSHOT",
+                            "sanitized_basename": "macro_20260624.json",
+                            "relative_path": "fixtures/feature_store/macro_20260624.json",
+                            "available_at": "2026-06-24T15:35:00+09:00",
+                        },
+                    },
+                    {
+                        "source_row_id": "row-005930-2026-06-25",
+                        "source_kind": "V7_POINT_IN_TIME_UNIVERSE_CONTEXT",
+                        "instrument_id": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "feature_asof": "2026-06-25T15:35:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "snapshot_at": "2026-06-25T15:35:00+09:00",
+                        "feature_namespace": "risk.training_guard_context",
+                        "feature_values": {"pit_universe_member": True, "volatility_20d": 0.2},
+                        "source_ref": {
+                            "source_id": "v7-context-1",
+                            "source_kind": "V7_POINT_IN_TIME_UNIVERSE_CONTEXT",
+                            "sanitized_basename": "v7_context_20260625.json",
+                            "relative_path": "fixtures/feature_store/v7_context_20260625.json",
+                            "available_at": "2026-06-25T15:35:00+09:00",
+                        },
+                    },
+                ],
+                "price_history_rows": [
+                    {
+                        "instrument_id": "005930",
+                        "observed_at": "2026-06-23T15:30:00+09:00",
+                        "available_at": "2026-06-23T15:35:00+09:00",
+                        "open_price": 80000.0,
+                        "high_price": 81300.0,
+                        "low_price": 79800.0,
+                        "close_price": 81200.0,
+                        "volume": 1000000,
+                        "source_ref": {
+                            "source_id": "bar-20260623",
+                            "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                            "sanitized_basename": "bar_20260623.json",
+                            "relative_path": "fixtures/feature_store/bar_20260623.json",
+                            "available_at": "2026-06-23T15:35:00+09:00",
+                        },
+                    },
+                    {
+                        "instrument_id": "005930",
+                        "observed_at": "2026-06-24T15:30:00+09:00",
+                        "available_at": "2026-06-24T15:35:00+09:00",
+                        "open_price": 81250.0,
+                        "high_price": 82000.0,
+                        "low_price": 80900.0,
+                        "close_price": 81800.0,
+                        "volume": 980000,
+                        "source_ref": {
+                            "source_id": "bar-20260624",
+                            "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                            "sanitized_basename": "bar_20260624.json",
+                            "relative_path": "fixtures/feature_store/bar_20260624.json",
+                            "available_at": "2026-06-24T15:35:00+09:00",
+                        },
+                    },
+                    {
+                        "instrument_id": "005930",
+                        "observed_at": "2026-06-25T15:30:00+09:00",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                        "open_price": 81850.0,
+                        "high_price": 82600.0,
+                        "low_price": 81600.0,
+                        "close_price": 82400.0,
+                        "volume": 1010000,
+                        "source_ref": {
+                            "source_id": "bar-20260625",
+                            "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                            "sanitized_basename": "bar_20260625.json",
+                            "relative_path": "fixtures/feature_store/bar_20260625.json",
+                            "available_at": "2026-06-25T15:35:00+09:00",
+                        },
+                    },
+                    {
+                        "instrument_id": "005930",
+                        "observed_at": "2026-06-26T15:30:00+09:00",
+                        "available_at": "2026-06-26T15:35:00+09:00",
+                        "open_price": 82450.0,
+                        "high_price": 83300.0,
+                        "low_price": 82300.0,
+                        "close_price": 83100.0,
+                        "volume": 990000,
+                        "source_ref": {
+                            "source_id": "bar-20260626",
+                            "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                            "sanitized_basename": "bar_20260626.json",
+                            "relative_path": "fixtures/feature_store/bar_20260626.json",
+                            "available_at": "2026-06-26T15:35:00+09:00",
+                        },
+                    },
+                ],
+                "label_specs": [
+                    {
+                        "label_name": "FORWARD_RETURN",
+                        "label_horizon": "1D",
+                        "label_horizon_policy": "TRADING_SESSION",
+                        "derivation_method": "LOCAL_PRICE_HISTORY_FORWARD_RETURN",
+                        "label_direction": "LONG",
+                        "anchor_price_policy": "LAST_AVAILABLE_CLOSE",
+                    }
+                ],
+                "audit_records": [
+                    {
+                        "audit_record_id": "feature-store-audit-smoke",
+                        "created_at": "2026-06-26T16:00:00+09:00",
+                        "source_path": str(output_dir / "feature_store_smoke_fixture.json"),
+                        "operator_context": "offline feature store smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        ),
+        repo_root=Path(__file__).resolve().parents[2],
+    )
+    dumped = json.dumps(result.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "cache_manifest_generated": result.cache_manifest.manifest_id.endswith("MANIFEST"),
+        "dataset_manifest_generated": result.dataset_manifest.dataset_id.endswith("SMOKE"),
+        "training_dataset_manifest_generated": result.training_dataset_manifest.dataset_id.endswith("SMOKE"),
+        "walk_forward_plan_generated": result.walk_forward_plan.plan_id.endswith("PLAN"),
+        "leakage_report_generated": result.leakage_report.report_id.endswith("REPORT"),
+        "backend_capability_report_generated": result.backend_capability_report.report_id.endswith("REPORT"),
+        "v7_integration_report_generated": result.v7_integration_report.report_id.endswith("REPORT"),
+        "v8_integration_report_generated": result.v8_integration_report.report_id.endswith("REPORT"),
+        "v9_integration_report_generated": result.v9_integration_report.report_id.endswith("REPORT"),
+        "report_only": result.training_dataset_manifest.report_only and result.leakage_report.report_only,
+        "no_network": result.training_dataset_manifest.no_network and result.safety_report.no_network,
+        "no_env_read": result.training_dataset_manifest.no_env_read and result.safety_report.no_env_read,
+        "no_account_order_path": result.training_dataset_manifest.no_order and result.training_dataset_manifest.no_account_mutation,
+        "no_training": result.training_dataset_manifest.no_model_training,
+        "no_paper_trading": result.training_dataset_manifest.no_paper_trading,
+        "safe_local_materialization_only": "feature_store" in dumped and "rejected_path" not in dumped,
     }
 
 

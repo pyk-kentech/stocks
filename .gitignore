@@ -7,6 +7,7 @@ data/*.db
 demo_outputs/
 smoke_outputs/
 local_data/kiwoom_readonly_captures/
+local_data/feature_store/
 
 # Local broker/API secrets
 api_key/

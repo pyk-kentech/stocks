@@ -292,6 +292,8 @@ from stock_risk_mcp.kiwoom_readonly_final_transport_models import (
 )
 from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly_domestic_stock_snapshot
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
+from stock_risk_mcp.feature_store_fixture import load_feature_store_fixture
+from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
 from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_classification
 from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
 from stock_risk_mcp.macro_regime_provider_client import build_fred_request_preview, execute_fred_observations_request
@@ -864,6 +866,48 @@ def build_command_parser() -> argparse.ArgumentParser:
     macro_regime_fred_execute.add_argument("--allow-real-http", action="store_true")
     macro_regime_fred_execute.add_argument("--explicit-opt-in", action="store_true")
     macro_regime_fred_execute.add_argument("--output-file", type=Path)
+    feature_store_backend = subparsers.add_parser("feature-store-backend-capability-report")
+    feature_store_backend.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_backend.add_argument("--output-file", type=Path)
+    feature_store_cache = subparsers.add_parser("feature-store-cache-manifest-build")
+    feature_store_cache.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_cache.add_argument("--output-file", type=Path)
+    feature_store_dataset = subparsers.add_parser("feature-store-dataset-manifest-build")
+    feature_store_dataset.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_dataset.add_argument("--output-file", type=Path)
+    feature_store_training_dataset = subparsers.add_parser("feature-store-training-dataset-manifest-build")
+    feature_store_training_dataset.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_training_dataset.add_argument("--output-file", type=Path)
+    feature_store_walk_forward = subparsers.add_parser("feature-store-walk-forward-plan")
+    feature_store_walk_forward.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_walk_forward.add_argument("--output-file", type=Path)
+    feature_store_leakage = subparsers.add_parser("feature-store-leakage-report")
+    feature_store_leakage.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_leakage.add_argument("--output-file", type=Path)
+    feature_store_v7 = subparsers.add_parser("feature-store-v7-integration-report")
+    feature_store_v7.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_v7.add_argument("--output-file", type=Path)
+    feature_store_v8 = subparsers.add_parser("feature-store-v8-integration-report")
+    feature_store_v8.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_v8.add_argument("--output-file", type=Path)
+    feature_store_v9 = subparsers.add_parser("feature-store-v9-integration-report")
+    feature_store_v9.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_v9.add_argument("--output-file", type=Path)
+    feature_store_training_readiness = subparsers.add_parser("feature-store-training-readiness-report")
+    feature_store_training_readiness.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_training_readiness.add_argument("--output-file", type=Path)
+    feature_store_materialization_plan = subparsers.add_parser("feature-store-materialization-plan")
+    feature_store_materialization_plan.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_materialization_plan.add_argument("--output-file", type=Path)
+    feature_store_materialize = subparsers.add_parser("feature-store-materialize")
+    feature_store_materialize.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_materialize.add_argument("--output-file", type=Path)
+    feature_store_safety = subparsers.add_parser("feature-store-safety-report")
+    feature_store_safety.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_safety.add_argument("--output-file", type=Path)
+    feature_store_gap = subparsers.add_parser("feature-store-gap-report")
+    feature_store_gap.add_argument("--fixture-file", type=Path, required=True)
+    feature_store_gap.add_argument("--output-file", type=Path)
     domestic_regime_aware_validate = subparsers.add_parser("domestic-regime-aware-integration-config-validate")
     domestic_regime_aware_validate.add_argument("--fixture-file", type=Path, required=True)
     domestic_regime_aware_validate.add_argument("--output-file", type=Path)
@@ -2858,6 +2902,20 @@ def main(argv: list[str] | None = None) -> None:
         "macro-regime-v8-integration-report",
         "macro-regime-fred-request-preview",
         "macro-regime-fred-execute",
+        "feature-store-backend-capability-report",
+        "feature-store-cache-manifest-build",
+        "feature-store-dataset-manifest-build",
+        "feature-store-training-dataset-manifest-build",
+        "feature-store-walk-forward-plan",
+        "feature-store-leakage-report",
+        "feature-store-v7-integration-report",
+        "feature-store-v8-integration-report",
+        "feature-store-v9-integration-report",
+        "feature-store-training-readiness-report",
+        "feature-store-materialization-plan",
+        "feature-store-materialize",
+        "feature-store-safety-report",
+        "feature-store-gap-report",
         "domestic-regime-aware-integration-config-validate",
         "domestic-regime-aware-integration-build",
         "domestic-regime-aware-integration-report",
@@ -4252,6 +4310,139 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "keys": sorted(result.keys())}
             return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-backend-capability-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).backend_capability_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": len(result.rows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-cache-manifest-build":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).cache_manifest
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "cached_row_count": result.cached_row_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-dataset-manifest-build":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).dataset_manifest
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": result.row_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-training-dataset-manifest-build":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).training_dataset_manifest
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "training_row_count": result.training_row_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-walk-forward-plan":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).walk_forward_plan
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "split_count": len(result.splits)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-leakage-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).leakage_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "blocked_row_count": len(result.blocked_row_ids)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-v7-integration-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).v7_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "v71_ready": result.v71_point_in_time_universe_ready}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-v8-integration-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).v8_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "snapshot_ready": result.domestic_snapshot_feature_ready}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-v9-integration-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).v9_integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "macro_ready": result.macro_snapshot_feature_ready}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-training-readiness-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).training_readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-materialization-plan":
+        try:
+            pipeline = _load_feature_store_fixture_or_raise(args.fixture_file)
+            result = __import__("stock_risk_mcp.feature_store_models", fromlist=["FeatureStoreMaterializationPlan"]).FeatureStoreMaterializationPlan(
+                plan_id=f"{pipeline.dataset_id}-MATERIALIZATION-PLAN",
+                dataset_id=pipeline.dataset_id,
+                store_root=pipeline.store_root,
+                requested_backends=pipeline.requested_backends,
+                partition_spec=pipeline.partition_spec,
+            )
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "requested_backend_count": len(result.requested_backends)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-materialize":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).materialization_result
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "selected_backend": result.selected_backend.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-safety-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "feature-store-gap-report":
+        try:
+            result = _run_feature_store_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "domestic-regime-aware-integration-config-validate":
@@ -8583,6 +8774,15 @@ def _run_macro_regime_pipeline(fixture_file: Path):
         gap_report,
         safety_report,
     )
+
+
+def _load_feature_store_fixture_or_raise(fixture_file: Path):
+    return load_feature_store_fixture(fixture_file)
+
+
+def _run_feature_store_pipeline(fixture_file: Path):
+    fixture = _load_feature_store_fixture_or_raise(fixture_file)
+    return build_feature_store_pipeline(fixture, repo_root=Path(__file__).resolve().parents[2])
 
 
 def _load_breadth_leadership_routing_fixture_or_raise(fixture_file: Path):
