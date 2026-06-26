@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -18,7 +17,7 @@ _BLOCKED_TEXT = re.compile(r"authorization|bearer|token|secret|appkey|account|ac
 
 
 def is_pytest_runtime() -> bool:
-    return "PYTEST_CURRENT_TEST" in os.environ or "pytest" in Path(sys.argv[0]).name.lower()
+    return "pytest" in sys.modules or "pytest" in Path(sys.argv[0]).name.lower()
 
 
 def validate_safe_local_root(path: str, *, allow_tmp: bool = True) -> Path:
