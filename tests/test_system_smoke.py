@@ -945,6 +945,16 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["paper_evaluation_no_model_training"] is True
     assert result["checks"]["paper_evaluation_no_broker_paper_api"] is True
     assert result["checks"]["paper_evaluation_no_executable_output"] is True
+    assert result["checks"]["portfolio_reconciliation_fixture_run"] is True
+    assert result["checks"]["portfolio_reconciliation_plan_generated"] is True
+    assert result["checks"]["portfolio_reconciliation_report_generated"] is True
+    assert result["checks"]["portfolio_reconciliation_integration_generated"] is True
+    assert result["checks"]["portfolio_reconciliation_report_only"] is True
+    assert result["checks"]["portfolio_reconciliation_no_network"] is True
+    assert result["checks"]["portfolio_reconciliation_no_env_read"] is True
+    assert result["checks"]["portfolio_reconciliation_no_account_order_path"] is True
+    assert result["checks"]["portfolio_reconciliation_no_executable_output"] is True
+    assert result["checks"]["portfolio_reconciliation_redacted_account_ref"] is True
     assert result["checks"]["market_data_provider_registry_fixture_run"] is True
     assert result["checks"]["market_data_provider_registry_report_generated"] is True
     assert result["checks"]["market_data_provider_module_requirement_report_generated"] is True

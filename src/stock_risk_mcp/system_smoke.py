@@ -225,6 +225,10 @@ from stock_risk_mcp.feature_store_integration_engine import build_feature_store_
 from stock_risk_mcp.feature_store_models import FeatureStorePipelineInput
 from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
 from stock_risk_mcp.paper_evaluation_models import PaperEvaluationPipelineInput
+from stock_risk_mcp.account_read_snapshot_engine import build_account_read_snapshot_pipeline
+from stock_risk_mcp.account_read_models import AccountReadPipelineInput
+from stock_risk_mcp.portfolio_reconciliation_integration_engine import build_portfolio_reconciliation_pipeline
+from stock_risk_mcp.portfolio_reconciliation_models import PortfolioReconciliationPipelineInput
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
@@ -2194,6 +2198,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     macro_regime = _run_macro_regime_smoke(output_dir)
     feature_store = _run_feature_store_smoke(output_dir)
     paper_evaluation = _run_paper_evaluation_smoke(output_dir)
+    portfolio_reconciliation = _run_portfolio_reconciliation_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
     position_sizing = _run_position_sizing_smoke(output_dir)
     event_risk = _run_event_risk_smoke(output_dir)
@@ -3119,6 +3124,16 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "paper_evaluation_no_model_training": paper_evaluation["no_model_training"],
             "paper_evaluation_no_broker_paper_api": paper_evaluation["no_broker_paper_api"],
             "paper_evaluation_no_executable_output": paper_evaluation["no_executable_output"],
+            "portfolio_reconciliation_fixture_run": portfolio_reconciliation["fixture_run"],
+            "portfolio_reconciliation_plan_generated": portfolio_reconciliation["plan_generated"],
+            "portfolio_reconciliation_report_generated": portfolio_reconciliation["report_generated"],
+            "portfolio_reconciliation_integration_generated": portfolio_reconciliation["integration_generated"],
+            "portfolio_reconciliation_report_only": portfolio_reconciliation["report_only"],
+            "portfolio_reconciliation_no_network": portfolio_reconciliation["no_network"],
+            "portfolio_reconciliation_no_env_read": portfolio_reconciliation["no_env_read"],
+            "portfolio_reconciliation_no_account_order_path": portfolio_reconciliation["no_account_order_path"],
+            "portfolio_reconciliation_no_executable_output": portfolio_reconciliation["no_executable_output"],
+            "portfolio_reconciliation_redacted_account_ref": portfolio_reconciliation["redacted_account_ref"],
             "market_data_provider_registry_fixture_run": provider_registry["fixture_run"],
             "market_data_provider_registry_report_generated": provider_registry["registry_report_generated"],
             "market_data_provider_module_requirement_report_generated": provider_registry["module_requirement_report_generated"],
@@ -9196,6 +9211,226 @@ def _run_paper_evaluation_smoke(output_dir: Path) -> dict[str, bool]:
         "no_model_training": paper.plan.no_model_training and paper.safety_report.no_model_training,
         "no_broker_paper_api": paper.plan.no_broker_paper_api,
         "no_executable_output": paper.plan.non_executable and "authorization" not in dumped and "account_id" not in dumped,
+    }
+
+
+def _run_portfolio_reconciliation_smoke(output_dir: Path) -> dict[str, bool]:
+    feature_store_input = FeatureStorePipelineInput.model_validate(
+        {
+            "pipeline_id": "portfolio-reconciliation-feature-store-smoke",
+            "dataset_id": "portfolio-reconciliation-smoke",
+            "dataset_profile": "SMOKE_PROFILE",
+            "store_root": str(output_dir / "feature_store"),
+            "requested_backends": ["IN_MEMORY"],
+            "partition_spec": {"partition_keys": ["DATASET_ID", "MARKET", "DATE", "SPLIT"]},
+            "source_feature_inputs": [
+                {
+                    "source_row_id": "row-005930-2026-06-25",
+                    "source_kind": "V8_DOMESTIC_STOCK_SNAPSHOT",
+                    "instrument_id": "005930",
+                    "market": "KRX",
+                    "currency": "KRW",
+                    "feature_asof": "2026-06-25T15:35:00+09:00",
+                    "available_at": "2026-06-25T15:35:00+09:00",
+                    "snapshot_at": "2026-06-25T15:35:00+09:00",
+                    "feature_namespace": "domestic.price",
+                    "feature_values": {"close_price": 82400.0, "signal_score": 0.81, "volatility_20d": 0.2},
+                    "source_ref": {
+                        "source_id": "v8-recon-snapshot-1",
+                        "source_kind": "V8_DOMESTIC_STOCK_SNAPSHOT",
+                        "sanitized_basename": "recon_snapshot_1.json",
+                        "relative_path": "fixtures/reconciliation/snapshot_1.json",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                    },
+                }
+            ],
+            "price_history_rows": [
+                {
+                    "instrument_id": "005930",
+                    "observed_at": "2026-06-25T15:30:00+09:00",
+                    "available_at": "2026-06-25T15:35:00+09:00",
+                    "open_price": 81850.0,
+                    "high_price": 82600.0,
+                    "low_price": 81600.0,
+                    "close_price": 82400.0,
+                    "volume": 1010000,
+                    "source_ref": {
+                        "source_id": "recon-bar-20260625",
+                        "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                        "sanitized_basename": "recon_bar_20260625.json",
+                        "relative_path": "fixtures/reconciliation/bar_20260625.json",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                    },
+                },
+                {
+                    "instrument_id": "005930",
+                    "observed_at": "2026-06-26T15:30:00+09:00",
+                    "available_at": "2026-06-26T15:35:00+09:00",
+                    "open_price": 82450.0,
+                    "high_price": 83300.0,
+                    "low_price": 82300.0,
+                    "close_price": 83100.0,
+                    "volume": 990000,
+                    "source_ref": {
+                        "source_id": "recon-bar-20260626",
+                        "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                        "sanitized_basename": "recon_bar_20260626.json",
+                        "relative_path": "fixtures/reconciliation/bar_20260626.json",
+                        "available_at": "2026-06-26T15:35:00+09:00",
+                    },
+                },
+            ],
+            "label_specs": [
+                {
+                    "label_name": "FORWARD_RETURN",
+                    "label_horizon": "1D",
+                    "label_horizon_policy": "TRADING_SESSION",
+                    "derivation_method": "LOCAL_PRICE_HISTORY_FORWARD_RETURN",
+                    "label_direction": "LONG",
+                    "anchor_price_policy": "LAST_AVAILABLE_CLOSE",
+                }
+            ],
+            "audit_records": [
+                {
+                    "audit_record_id": "portfolio-reconciliation-feature-store-audit-smoke",
+                    "created_at": "2026-06-26T16:15:00+09:00",
+                    "source_path": str(output_dir / "portfolio_reconciliation_feature_store_smoke_fixture.json"),
+                    "operator_context": "offline reconciliation feature store smoke",
+                    "redaction_applied": True,
+                    "contains_secret_material": False,
+                    "contains_token_material": False,
+                    "contains_account_material": False,
+                }
+            ],
+        }
+    )
+    feature_store_result = build_feature_store_pipeline(feature_store_input, repo_root=Path(__file__).resolve().parents[2])
+    paper = build_paper_evaluation_pipeline(
+        PaperEvaluationPipelineInput.model_validate(
+            {
+                "pipeline_id": "portfolio-reconciliation-paper-evaluation-smoke",
+                "dataset_id": "portfolio-reconciliation-smoke",
+                "training_dataset_manifest": feature_store_result.training_dataset_manifest.model_dump(mode="json"),
+                "feature_rows": [row.model_dump(mode="json") for row in feature_store_result.feature_rows],
+                "training_rows": [row.model_dump(mode="json") for row in feature_store_result.training_rows],
+                "walk_forward_plan": feature_store_result.walk_forward_plan.model_dump(mode="json"),
+                "leakage_report": feature_store_result.leakage_report.model_dump(mode="json"),
+                "price_history_rows": [bar.model_dump(mode="json") for bar in feature_store_input.price_history_rows],
+                "config": {"fill_policy": "NEXT_BAR_OPEN", "starting_cash": 10000000.0},
+                "audit_records": [
+                    {
+                        "audit_record_id": "portfolio-reconciliation-paper-audit-smoke",
+                        "created_at": "2026-06-26T16:20:00+09:00",
+                        "source_path": str(output_dir / "portfolio_reconciliation_paper_smoke_fixture.json"),
+                        "operator_context": "offline reconciliation paper smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    account_read_input = AccountReadPipelineInput.model_validate(
+        {
+            "pipeline_id": "portfolio-reconciliation-account-read-smoke",
+            "provider": "LOCAL_MANUAL",
+            "mode": "MANUAL_FIXTURE",
+            "requested_at": "2026-06-26T16:30:00+09:00",
+            "snapshot_fixture": {
+                "metadata": {
+                    "snapshot_id": "ACCOUNT-SMOKE-SNAPSHOT",
+                    "provider": "LOCAL_MANUAL",
+                    "mode": "MANUAL_FIXTURE",
+                    "account_ref": "acct-redacted-9d3f",
+                    "account_ref_policy": "REDACTED_TEXT_PLUS_HASH",
+                    "observed_at": "2026-06-26T15:35:00+09:00",
+                    "available_at": "2026-06-26T15:36:00+09:00",
+                    "account_base_currency": "KRW",
+                    "source_ref": {
+                        "source_id": "account-smoke-source",
+                        "source_kind": "MANUAL_ACCOUNT_SNAPSHOT_FIXTURE",
+                        "sanitized_basename": "account_smoke_snapshot.json",
+                        "relative_path": "fixtures/reconciliation/account_snapshot.json",
+                        "available_at": "2026-06-26T15:36:00+09:00",
+                    },
+                    "metadata": {"capture_mode": "manual_fixture"},
+                },
+                "cash_balances": [{"currency": "KRW", "available_cash": 9800000.0, "settled_cash": 9800000.0}],
+                "holdings": [
+                    {
+                        "instrument_id": "005930",
+                        "market": "KRX",
+                        "currency": "KRW",
+                        "quantity": 1.0,
+                        "average_cost": 82450.0,
+                        "last_price": 83100.0,
+                        "market_value": 83100.0,
+                        "source_ref": {
+                            "source_id": "account-smoke-holding-source",
+                            "source_kind": "MANUAL_ACCOUNT_SNAPSHOT_FIXTURE",
+                            "sanitized_basename": "account_smoke_holding.json",
+                            "relative_path": "fixtures/reconciliation/account_holding.json",
+                            "available_at": "2026-06-26T15:36:00+09:00",
+                        },
+                    }
+                ],
+                "total_market_value": 83100.0,
+                "total_equity": 9883100.0,
+            },
+            "audit_records": [
+                {
+                    "audit_record_id": "portfolio-reconciliation-account-audit-smoke",
+                    "created_at": "2026-06-26T16:30:00+09:00",
+                    "source_path": str(output_dir / "portfolio_reconciliation_account_smoke_fixture.json"),
+                    "operator_context": "offline account read smoke",
+                    "redaction_applied": True,
+                    "contains_secret_material": False,
+                    "contains_token_material": False,
+                    "contains_account_material": False,
+                }
+            ],
+        }
+    )
+    account_snapshot_result = build_account_read_snapshot_pipeline(account_read_input)
+    reconciliation = build_portfolio_reconciliation_pipeline(
+        account_read_input,
+        PortfolioReconciliationPipelineInput.model_validate(
+            {
+                "pipeline_id": "portfolio-reconciliation-smoke",
+                "dataset_id": "portfolio-reconciliation-smoke",
+                "paper_evaluation": paper.model_dump(mode="json"),
+                "account_snapshot": account_snapshot_result.snapshot.model_dump(mode="json"),
+                "target_positions": [{"instrument_id": "005930", "market": "KRX", "currency": "KRW", "quantity": 1.0, "target_weight": 1.0}],
+                "audit_records": [
+                    {
+                        "audit_record_id": "portfolio-reconciliation-audit-smoke",
+                        "created_at": "2026-06-26T16:35:00+09:00",
+                        "source_path": str(output_dir / "portfolio_reconciliation_smoke_fixture.json"),
+                        "operator_context": "offline portfolio reconciliation smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+                "evaluated_at": "2026-06-26T16:35:00+09:00",
+            }
+        ),
+    )
+    dumped = json.dumps(reconciliation.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "plan_generated": reconciliation.plan_report.report_id.endswith("REPORT"),
+        "report_generated": reconciliation.reconciliation_report.report_id.endswith("REPORT"),
+        "integration_generated": reconciliation.integration_report.report_id.endswith("REPORT"),
+        "report_only": reconciliation.plan_report.report_only and reconciliation.safety_report.report_only,
+        "no_network": reconciliation.plan_report.no_network and reconciliation.safety_report.no_network,
+        "no_env_read": reconciliation.plan_report.no_env_read and reconciliation.safety_report.no_env_read,
+        "no_account_order_path": reconciliation.plan_report.no_order and reconciliation.plan_report.no_account_mutation,
+        "no_executable_output": reconciliation.plan_report.non_executable and "authorization" not in dumped and "account_number" not in dumped,
+        "redacted_account_ref": "redacted" in account_snapshot_result.snapshot.metadata.account_ref.lower() and "account_number" not in dumped,
     }
 
 

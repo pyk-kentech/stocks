@@ -296,6 +296,10 @@ from stock_risk_mcp.feature_store_fixture import load_feature_store_fixture
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
 from stock_risk_mcp.paper_evaluation_fixture import load_paper_evaluation_fixture
 from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
+from stock_risk_mcp.account_read_fixture import load_account_read_fixture, load_account_read_fixture_from_payload
+from stock_risk_mcp.account_read_snapshot_engine import build_account_read_snapshot_pipeline
+from stock_risk_mcp.portfolio_reconciliation_integration_engine import build_portfolio_reconciliation_pipeline
+from stock_risk_mcp.portfolio_reconciliation_models import PortfolioReconciliationPipelineInput
 from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_classification
 from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
 from stock_risk_mcp.macro_regime_provider_client import build_fred_request_preview, execute_fred_observations_request
@@ -1478,6 +1482,51 @@ def build_command_parser() -> argparse.ArgumentParser:
     paper_evaluation_gap_report = subparsers.add_parser("paper-evaluation-gap-report")
     paper_evaluation_gap_report.add_argument("--fixture-file", type=Path, required=True)
     paper_evaluation_gap_report.add_argument("--output-file", type=Path)
+    account_read_provider_capability_report = subparsers.add_parser("account-read-provider-capability-report")
+    account_read_provider_capability_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_provider_capability_report.add_argument("--output-file", type=Path)
+    account_read_request_preview_report = subparsers.add_parser("account-read-request-preview-report")
+    account_read_request_preview_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_request_preview_report.add_argument("--output-file", type=Path)
+    account_read_fixture_parse_report = subparsers.add_parser("account-read-fixture-parse-report")
+    account_read_fixture_parse_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_fixture_parse_report.add_argument("--output-file", type=Path)
+    account_read_snapshot_report = subparsers.add_parser("account-read-snapshot-report")
+    account_read_snapshot_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_snapshot_report.add_argument("--output-file", type=Path)
+    account_read_freshness_report = subparsers.add_parser("account-read-freshness-report")
+    account_read_freshness_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_freshness_report.add_argument("--output-file", type=Path)
+    account_read_completeness_report = subparsers.add_parser("account-read-completeness-report")
+    account_read_completeness_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_completeness_report.add_argument("--output-file", type=Path)
+    account_read_safety_report = subparsers.add_parser("account-read-safety-report")
+    account_read_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_safety_report.add_argument("--output-file", type=Path)
+    account_read_gap_report = subparsers.add_parser("account-read-gap-report")
+    account_read_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    account_read_gap_report.add_argument("--output-file", type=Path)
+    portfolio_reconciliation_plan_report = subparsers.add_parser("portfolio-reconciliation-plan-report")
+    portfolio_reconciliation_plan_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_reconciliation_plan_report.add_argument("--output-file", type=Path)
+    portfolio_reconciliation_report = subparsers.add_parser("portfolio-reconciliation-report")
+    portfolio_reconciliation_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_reconciliation_report.add_argument("--output-file", type=Path)
+    portfolio_mismatch_report = subparsers.add_parser("portfolio-mismatch-report")
+    portfolio_mismatch_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_mismatch_report.add_argument("--output-file", type=Path)
+    portfolio_reconciliation_readiness_report = subparsers.add_parser("portfolio-reconciliation-readiness-report")
+    portfolio_reconciliation_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_reconciliation_readiness_report.add_argument("--output-file", type=Path)
+    portfolio_reconciliation_integration_report = subparsers.add_parser("portfolio-reconciliation-integration-report")
+    portfolio_reconciliation_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_reconciliation_integration_report.add_argument("--output-file", type=Path)
+    portfolio_reconciliation_safety_report = subparsers.add_parser("portfolio-reconciliation-safety-report")
+    portfolio_reconciliation_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_reconciliation_safety_report.add_argument("--output-file", type=Path)
+    portfolio_reconciliation_gap_report = subparsers.add_parser("portfolio-reconciliation-gap-report")
+    portfolio_reconciliation_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    portfolio_reconciliation_gap_report.add_argument("--output-file", type=Path)
     controlled_mock_readiness_check = subparsers.add_parser("controlled-mock-readiness-check")
     controlled_mock_readiness_check.add_argument("--fixture-file", type=Path, required=True)
     controlled_mock_readiness_check.add_argument("--output-file", type=Path)
@@ -6251,6 +6300,141 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-provider-capability-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).capability_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": len(result.capability_rows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-request-preview-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).request_preview
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "preview_id": result.preview_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-fixture-parse-report":
+        try:
+            result = _load_account_read_fixture_or_raise(args.fixture_file).snapshot_fixture
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "snapshot_id": result.metadata.snapshot_id if result else None}
+            return result.model_dump(mode="json") if result else {"status": "NO_SNAPSHOT"}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-snapshot-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).snapshot
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "snapshot_id": result.metadata.snapshot_id if result else None}
+            return result.model_dump(mode="json") if result else {"status": "NO_SNAPSHOT"}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-freshness-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).freshness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "stale": result.stale if result else None}
+            return result.model_dump(mode="json") if result else {"status": "NO_REPORT"}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-completeness-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).completeness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "missing_fields": result.missing_fields if result else []}
+            return result.model_dump(mode="json") if result else {"status": "NO_REPORT"}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-safety-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "account-read-gap-report":
+        try:
+            result = _run_account_read_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-reconciliation-plan-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).plan_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-reconciliation-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).reconciliation_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "mismatch_count": len(result.mismatch_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-mismatch-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).mismatch_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "mismatch_count": len(result.mismatch_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-reconciliation-readiness-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "tier": result.v13_readiness_tier}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-reconciliation-integration-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "report_id": result.report_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-reconciliation-safety-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "portfolio-reconciliation-gap-report":
+        try:
+            result = _run_portfolio_reconciliation_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "virtual-portfolio-report":
         try:
             result = _run_risk_adjusted_paper_eval(args.fixture_file).virtual_portfolio_report
@@ -8727,6 +8911,34 @@ def _load_paper_evaluation_fixture_or_raise(fixture_file: Path):
 def _run_paper_evaluation_pipeline(fixture_file: Path):
     fixture = _load_paper_evaluation_fixture_or_raise(fixture_file)
     return build_paper_evaluation_pipeline(fixture)
+
+
+def _load_account_read_fixture_or_raise(fixture_file: Path):
+    payload = json.loads(fixture_file.read_text(encoding="utf-8"))
+    if "account_read_input" in payload:
+        return load_account_read_fixture_from_payload(payload["account_read_input"])
+    return load_account_read_fixture(fixture_file)
+
+
+def _run_account_read_pipeline(fixture_file: Path):
+    fixture = _load_account_read_fixture_or_raise(fixture_file)
+    return build_account_read_snapshot_pipeline(fixture, in_pytest="PYTEST_CURRENT_TEST" in os.environ)
+
+
+def _load_portfolio_reconciliation_fixture_or_raise(fixture_file: Path):
+    payload = json.loads(fixture_file.read_text(encoding="utf-8"))
+    account_read_input = load_account_read_fixture_from_payload(payload["account_read_input"])
+    reconciliation_input = PortfolioReconciliationPipelineInput.model_validate(payload["reconciliation_input"])
+    return account_read_input, reconciliation_input
+
+
+def _run_portfolio_reconciliation_pipeline(fixture_file: Path):
+    account_read_input, reconciliation_input = _load_portfolio_reconciliation_fixture_or_raise(fixture_file)
+    return build_portfolio_reconciliation_pipeline(
+        account_read_input,
+        reconciliation_input,
+        in_pytest="PYTEST_CURRENT_TEST" in os.environ,
+    )
 
 
 def _load_controlled_mock_readiness_fixture_or_raise(fixture_file: Path):
