@@ -1001,15 +1001,27 @@ def build_command_parser() -> argparse.ArgumentParser:
     offline_strategy_dataset_compatibility = subparsers.add_parser("offline-strategy-dataset-compatibility-report")
     offline_strategy_dataset_compatibility.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_dataset_compatibility.add_argument("--output-file", type=Path)
+    offline_strategy_parameter_search_plan = subparsers.add_parser("offline-strategy-parameter-search-plan-report")
+    offline_strategy_parameter_search_plan.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_parameter_search_plan.add_argument("--output-file", type=Path)
     offline_strategy_training_plan = subparsers.add_parser("offline-strategy-training-plan-report")
     offline_strategy_training_plan.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_training_plan.add_argument("--output-file", type=Path)
+    offline_strategy_training_launch_plan = subparsers.add_parser("offline-strategy-training-launch-plan-report")
+    offline_strategy_training_launch_plan.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_training_launch_plan.add_argument("--output-file", type=Path)
     offline_strategy_walk_forward = subparsers.add_parser("offline-strategy-walk-forward-report")
     offline_strategy_walk_forward.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_walk_forward.add_argument("--output-file", type=Path)
+    offline_strategy_walk_forward_plan = subparsers.add_parser("offline-strategy-walk-forward-plan-report")
+    offline_strategy_walk_forward_plan.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_walk_forward_plan.add_argument("--output-file", type=Path)
     offline_strategy_backtest = subparsers.add_parser("offline-strategy-backtest-report")
     offline_strategy_backtest.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_backtest.add_argument("--output-file", type=Path)
+    offline_strategy_backtest_smoke = subparsers.add_parser("offline-strategy-backtest-smoke-report")
+    offline_strategy_backtest_smoke.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_backtest_smoke.add_argument("--output-file", type=Path)
     offline_strategy_metric = subparsers.add_parser("offline-strategy-metric-report")
     offline_strategy_metric.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_metric.add_argument("--output-file", type=Path)
@@ -1019,6 +1031,9 @@ def build_command_parser() -> argparse.ArgumentParser:
     offline_strategy_artifact_manifest = subparsers.add_parser("offline-strategy-artifact-manifest-report")
     offline_strategy_artifact_manifest.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_artifact_manifest.add_argument("--output-file", type=Path)
+    offline_strategy_research_readiness = subparsers.add_parser("offline-strategy-research-readiness-report")
+    offline_strategy_research_readiness.add_argument("--fixture-file", type=Path, required=True)
+    offline_strategy_research_readiness.add_argument("--output-file", type=Path)
     offline_strategy_safety = subparsers.add_parser("offline-strategy-safety-report")
     offline_strategy_safety.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_safety.add_argument("--output-file", type=Path)
@@ -3169,12 +3184,17 @@ def main(argv: list[str] | None = None) -> None:
         "historical-market-data-real-capture-audit-report",
         "offline-strategy-template-catalog-report",
         "offline-strategy-dataset-compatibility-report",
+        "offline-strategy-parameter-search-plan-report",
         "offline-strategy-training-plan-report",
+        "offline-strategy-training-launch-plan-report",
         "offline-strategy-walk-forward-report",
+        "offline-strategy-walk-forward-plan-report",
         "offline-strategy-backtest-report",
+        "offline-strategy-backtest-smoke-report",
         "offline-strategy-metric-report",
         "offline-strategy-promotion-gate-report",
         "offline-strategy-artifact-manifest-report",
+        "offline-strategy-research-readiness-report",
         "offline-strategy-safety-report",
         "offline-strategy-gap-report",
         "domestic-regime-aware-integration-config-validate",
@@ -3677,7 +3697,7 @@ def main(argv: list[str] | None = None) -> None:
         "alerts",
         "watch-loop",
     }
-    if args_list and args_list[0] in commands:
+    if not args_list or args_list[0] in commands or args_list[0] in {"-h", "--help", "help"}:
         args = build_command_parser().parse_args(args_list)
         output = run_command(args)
     else:
@@ -4885,7 +4905,25 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-parameter-search-plan-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).training_plan
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "offline-strategy-training-plan-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).training_plan
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result.candidate_count}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-training-launch-plan-report":
         try:
             result = _run_offline_strategy_pipeline(args.fixture_file).training_plan
             if args.output_file:
@@ -4903,7 +4941,26 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-walk-forward-plan-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).walk_forward_result
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "split_count": len(result.splits)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "offline-strategy-backtest-report":
+        try:
+            result = _run_offline_strategy_pipeline(args.fixture_file).backtest_results
+            payload = [item.model_dump(mode="json") for item in result]
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "result_count": len(payload)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-backtest-smoke-report":
         try:
             result = _run_offline_strategy_pipeline(args.fixture_file).backtest_results
             payload = [item.model_dump(mode="json") for item in result]
@@ -4940,6 +4997,15 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "path_count": len(result.relative_paths)}
             return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "offline-strategy-research-readiness-report":
+        try:
+            result = _build_offline_strategy_research_readiness_report(args.fixture_file)
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "candidate_count": result["candidate_count"]}
+            return result
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "offline-strategy-safety-report":
@@ -9726,6 +9792,26 @@ def _load_offline_strategy_fixture_or_raise(fixture_file: Path):
 def _run_offline_strategy_pipeline(fixture_file: Path):
     fixture = _load_offline_strategy_fixture_or_raise(fixture_file)
     return build_offline_strategy_pipeline(fixture)
+
+
+def _build_offline_strategy_research_readiness_report(fixture_file: Path) -> dict[str, object]:
+    result = _run_offline_strategy_pipeline(fixture_file)
+    readiness = {
+        "dataset_id": result.pipeline_input.dataset_id,
+        "row_count": result.dataset_compatibility_report.row_count,
+        "support_status": result.dataset_compatibility_report.support_status.value,
+        "candidate_count": len(result.candidates),
+        "walk_forward_split_count": len(result.walk_forward_result.splits),
+        "backtest_result_count": len(result.backtest_results),
+        "promotion_decision_count": len(result.promotion_decisions),
+        "manifest_only_boundary": True,
+        "no_network": True,
+        "no_llm_runtime": True,
+        "long_only_default": result.pipeline_input.default_direction.value == "LONG_ONLY",
+        "safety_findings": result.safety_report.findings,
+        "gap_count": len(result.gap_report.gap_entries),
+    }
+    return readiness
 
 
 def _build_historical_market_data_real_capture_input(args):
