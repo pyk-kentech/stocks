@@ -44,6 +44,9 @@ Secondary report/control outputs include:
 - `FeatureStoreDatasetManifest`
 - `FeatureStoreCompletenessReport`
 - `FeatureStoreFreshnessReport`
+- `FeatureStoreV7IntegrationReport`
+- `FeatureStoreV8IntegrationReport`
+- `FeatureStoreV9IntegrationReport`
 - `FeatureStoreTrainingReadinessReport`
 - `FeatureStoreSafetyReport`
 - `FeatureStoreGapReport`
@@ -198,6 +201,9 @@ Create:
 - `FEATURE_ROWS_READY`
 - `MANUAL_LABELS_READY`
 - `DETERMINISTIC_LABELS_READY`
+- `DATA_GAP`
+- `STALE`
+- `CONFLICT`
 - `LABEL_GAP`
 - `UNLABELED_DATASET_READY`
 - `LABELED_DATASET_READY`
@@ -206,12 +212,17 @@ Create:
 - `DEPENDENCY_GAP`
 - `BACKEND_GAP`
 - `BLOCKED_LEAKAGE`
+- `BLOCKED_SURVIVORSHIP`
+- `BLOCKED_DATA_SNOOPING`
 - `RESEARCH_ONLY`
 
 ### Source Kinds
 
 `FeatureStoreSourceKind` must include:
 
+- `V7_POINT_IN_TIME_UNIVERSE_CONTEXT`
+- `V7_WALK_FORWARD_GUARD_CONTEXT`
+- `V7_TRAINING_PROMOTION_CONTEXT`
 - `V8_DOMESTIC_STOCK_SNAPSHOT`
 - `V8_CAPTURED_KIWOOM_CHART_HISTORY`
 - `V8_MANUAL_IMPORTED_KIWOOM_CHART_HISTORY`
@@ -278,6 +289,7 @@ Feature value policy:
 - `instrument_id`
 - `label_name`
 - `label_horizon`
+- `label_horizon_policy`
 - `label_value`
 - `label_unit`
 - `label_direction`
@@ -330,6 +342,25 @@ Window rules:
 - `label_available_at > feature_asof` is mandatory
 - insufficient future bars produces `LABEL_GAP`
 
+Supported horizon policies:
+
+- `TRADING_SESSION`
+- `CALENDAR_DAY`
+- `BAR_COUNT`
+- `EXPLICIT_FIXTURE_POLICY`
+- `UNKNOWN_HORIZON_POLICY`
+
+Default domestic-equity horizon semantics:
+
+- `1D` means next 1 trading session
+- `3D` means next 3 trading sessions
+- `5D` means next 5 trading sessions
+- `10D` means next 10 trading sessions
+- `20D` means next 20 trading sessions
+
+If a fixture uses calendar-day semantics, it must mark that explicitly with `label_horizon_policy`.
+Unknown horizon policy must degrade through `LABEL_GAP` or `RESEARCH_ONLY`.
+
 ### Training Rows
 
 `FeatureStoreTrainingRow` includes:
@@ -380,6 +411,9 @@ Create:
 - `FeatureStoreCompletenessReport`
 - `FeatureStoreFreshnessReport`
 - `FeatureStoreBackendCapabilityReport`
+- `FeatureStoreV7IntegrationReport`
+- `FeatureStoreV8IntegrationReport`
+- `FeatureStoreV9IntegrationReport`
 - `FeatureStoreMaterializationPlan`
 - `FeatureStoreMaterializationResult`
 - `FeatureStoreTrainingReadinessReport`
@@ -414,6 +448,25 @@ Create:
 - `materialization_summary`
 - `non_executable`
 - `report_only`
+
+Integration report requirements:
+
+- `FeatureStoreV7IntegrationReport`
+  - v7.1 point-in-time universe / survivorship readiness
+  - v7.2 walk-forward / data-snooping guard compatibility
+  - v7.3 training promotion readiness
+  - v7.10 position sizing context readiness
+  - v7.11 event-risk feature readiness
+  - v7.12 outlier/leadership feature separation readiness
+- `FeatureStoreV8IntegrationReport`
+  - domestic stock snapshot feature extraction readiness
+  - local Kiwoom chart history label-source readiness
+  - v8 lineage/source coverage
+- `FeatureStoreV9IntegrationReport`
+  - macro snapshot feature extraction readiness
+  - regime classification feature extraction readiness
+  - macro event-window feature extraction readiness
+  - macro provider-gap propagation
 
 ## Label Derivation Rules
 
@@ -514,6 +567,8 @@ Additional blocking checks:
   - `outcome`
 - split overlap by instrument and timestamp
 - split boundary lacks purge/embargo for max label horizon
+- v7.1 survivorship discipline fails for labeled promotion
+- v7.2 repeated test tuning or snooping risk is detected for promoted labeled datasets
 
 Blocking output:
 
@@ -651,6 +706,9 @@ Add commands:
 - `feature-store-training-dataset-manifest-build`
 - `feature-store-walk-forward-plan`
 - `feature-store-leakage-report`
+- `feature-store-v7-integration-report`
+- `feature-store-v8-integration-report`
+- `feature-store-v9-integration-report`
 - `feature-store-training-readiness-report`
 - `feature-store-materialization-plan`
 - `feature-store-materialize`
