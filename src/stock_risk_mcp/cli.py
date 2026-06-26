@@ -300,6 +300,8 @@ from stock_risk_mcp.account_read_fixture import load_account_read_fixture, load_
 from stock_risk_mcp.account_read_snapshot_engine import build_account_read_snapshot_pipeline
 from stock_risk_mcp.portfolio_reconciliation_integration_engine import build_portfolio_reconciliation_pipeline
 from stock_risk_mcp.portfolio_reconciliation_models import PortfolioReconciliationPipelineInput
+from stock_risk_mcp.controlled_execution_fixture import load_controlled_execution_fixture
+from stock_risk_mcp.controlled_execution_preflight_engine import build_controlled_execution_preflight
 from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_classification
 from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
 from stock_risk_mcp.macro_regime_provider_client import build_fred_request_preview, execute_fred_observations_request
@@ -1527,6 +1529,42 @@ def build_command_parser() -> argparse.ArgumentParser:
     portfolio_reconciliation_gap_report = subparsers.add_parser("portfolio-reconciliation-gap-report")
     portfolio_reconciliation_gap_report.add_argument("--fixture-file", type=Path, required=True)
     portfolio_reconciliation_gap_report.add_argument("--output-file", type=Path)
+    controlled_execution_readiness_report = subparsers.add_parser("controlled-execution-readiness-report")
+    controlled_execution_readiness_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_readiness_report.add_argument("--output-file", type=Path)
+    controlled_execution_preflight_report = subparsers.add_parser("controlled-execution-preflight-report")
+    controlled_execution_preflight_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_preflight_report.add_argument("--output-file", type=Path)
+    controlled_execution_approval_packet_report = subparsers.add_parser("controlled-execution-approval-packet-report")
+    controlled_execution_approval_packet_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_approval_packet_report.add_argument("--output-file", type=Path)
+    controlled_execution_manual_approval_check_report = subparsers.add_parser("controlled-execution-manual-approval-check-report")
+    controlled_execution_manual_approval_check_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_manual_approval_check_report.add_argument("--output-file", type=Path)
+    controlled_execution_kill_switch_report = subparsers.add_parser("controlled-execution-kill-switch-report")
+    controlled_execution_kill_switch_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_kill_switch_report.add_argument("--output-file", type=Path)
+    controlled_execution_duplicate_guard_report = subparsers.add_parser("controlled-execution-duplicate-guard-report")
+    controlled_execution_duplicate_guard_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_duplicate_guard_report.add_argument("--output-file", type=Path)
+    controlled_execution_adapter_capability_report = subparsers.add_parser("controlled-execution-adapter-capability-report")
+    controlled_execution_adapter_capability_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_adapter_capability_report.add_argument("--output-file", type=Path)
+    controlled_execution_mock_execution_report = subparsers.add_parser("controlled-execution-mock-execution-report")
+    controlled_execution_mock_execution_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_mock_execution_report.add_argument("--output-file", type=Path)
+    controlled_execution_dry_run_report = subparsers.add_parser("controlled-execution-dry-run-report")
+    controlled_execution_dry_run_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_dry_run_report.add_argument("--output-file", type=Path)
+    controlled_execution_audit_report = subparsers.add_parser("controlled-execution-audit-report")
+    controlled_execution_audit_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_audit_report.add_argument("--output-file", type=Path)
+    controlled_execution_safety_report = subparsers.add_parser("controlled-execution-safety-report")
+    controlled_execution_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_safety_report.add_argument("--output-file", type=Path)
+    controlled_execution_gap_report = subparsers.add_parser("controlled-execution-gap-report")
+    controlled_execution_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    controlled_execution_gap_report.add_argument("--output-file", type=Path)
     controlled_mock_readiness_check = subparsers.add_parser("controlled-mock-readiness-check")
     controlled_mock_readiness_check.add_argument("--fixture-file", type=Path, required=True)
     controlled_mock_readiness_check.add_argument("--output-file", type=Path)
@@ -6435,6 +6473,114 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-readiness-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).readiness_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "all_green": result.all_green}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-preflight-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).preflight_decision
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "all_green": result.all_green}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-approval-packet-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).approval_packet
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "packet_id": result.packet_id}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-manual-approval-check-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).manual_approval
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "valid": result.valid}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-kill-switch-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).kill_switch_state
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "clear_for_preflight": result.clear_for_preflight}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-duplicate-guard-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).duplicate_guard_state
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "clear_for_preflight": result.clear_for_preflight}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-adapter-capability-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).adapter_capability_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "row_count": len(result.adapter_rows)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-mock-execution-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).mock_execution_result
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "accepted": result.accepted}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-dry-run-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).dry_run_result
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "preview_status": result.preview_status}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-audit-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).audit_records
+            if args.output_file:
+                args.output_file.write_text(json.dumps([record.model_dump(mode="json") for record in result], indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "audit_count": len(result)}
+            return [record.model_dump(mode="json") for record in result]
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-safety-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "controlled-execution-gap-report":
+        try:
+            result = _run_controlled_execution_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "virtual-portfolio-report":
         try:
             result = _run_risk_adjusted_paper_eval(args.fixture_file).virtual_portfolio_report
@@ -8939,6 +9085,15 @@ def _run_portfolio_reconciliation_pipeline(fixture_file: Path):
         reconciliation_input,
         in_pytest="PYTEST_CURRENT_TEST" in os.environ,
     )
+
+
+def _load_controlled_execution_fixture_or_raise(fixture_file: Path):
+    return load_controlled_execution_fixture(fixture_file)
+
+
+def _run_controlled_execution_pipeline(fixture_file: Path):
+    fixture = _load_controlled_execution_fixture_or_raise(fixture_file)
+    return build_controlled_execution_preflight(fixture, in_pytest="PYTEST_CURRENT_TEST" in os.environ)
 
 
 def _load_controlled_mock_readiness_fixture_or_raise(fixture_file: Path):

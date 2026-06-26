@@ -955,6 +955,19 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["portfolio_reconciliation_no_account_order_path"] is True
     assert result["checks"]["portfolio_reconciliation_no_executable_output"] is True
     assert result["checks"]["portfolio_reconciliation_redacted_account_ref"] is True
+    assert result["checks"]["controlled_execution_fixture_run"] is True
+    assert result["checks"]["controlled_execution_readiness_generated"] is True
+    assert result["checks"]["controlled_execution_preflight_generated"] is True
+    assert result["checks"]["controlled_execution_approval_generated"] is True
+    assert result["checks"]["controlled_execution_mock_execution_generated"] is True
+    assert result["checks"]["controlled_execution_dry_run_generated"] is True
+    assert result["checks"]["controlled_execution_audit_generated"] is True
+    assert result["checks"]["controlled_execution_report_only"] is True
+    assert result["checks"]["controlled_execution_no_network"] is True
+    assert result["checks"]["controlled_execution_no_env_read"] is True
+    assert result["checks"]["controlled_execution_no_account_order_path"] is True
+    assert result["checks"]["controlled_execution_no_executable_output"] is True
+    assert result["checks"]["controlled_execution_live_boundary_blocked"] is True
     assert result["checks"]["market_data_provider_registry_fixture_run"] is True
     assert result["checks"]["market_data_provider_registry_report_generated"] is True
     assert result["checks"]["market_data_provider_module_requirement_report_generated"] is True

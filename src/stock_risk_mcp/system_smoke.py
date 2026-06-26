@@ -229,6 +229,8 @@ from stock_risk_mcp.account_read_snapshot_engine import build_account_read_snaps
 from stock_risk_mcp.account_read_models import AccountReadPipelineInput
 from stock_risk_mcp.portfolio_reconciliation_integration_engine import build_portfolio_reconciliation_pipeline
 from stock_risk_mcp.portfolio_reconciliation_models import PortfolioReconciliationPipelineInput
+from stock_risk_mcp.controlled_execution_models import ControlledExecutionPipelineInput
+from stock_risk_mcp.controlled_execution_preflight_engine import build_controlled_execution_preflight
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
@@ -2199,6 +2201,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     feature_store = _run_feature_store_smoke(output_dir)
     paper_evaluation = _run_paper_evaluation_smoke(output_dir)
     portfolio_reconciliation = _run_portfolio_reconciliation_smoke(output_dir)
+    controlled_execution = _run_controlled_execution_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
     position_sizing = _run_position_sizing_smoke(output_dir)
     event_risk = _run_event_risk_smoke(output_dir)
@@ -3134,6 +3137,19 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "portfolio_reconciliation_no_account_order_path": portfolio_reconciliation["no_account_order_path"],
             "portfolio_reconciliation_no_executable_output": portfolio_reconciliation["no_executable_output"],
             "portfolio_reconciliation_redacted_account_ref": portfolio_reconciliation["redacted_account_ref"],
+            "controlled_execution_fixture_run": controlled_execution["fixture_run"],
+            "controlled_execution_readiness_generated": controlled_execution["readiness_generated"],
+            "controlled_execution_preflight_generated": controlled_execution["preflight_generated"],
+            "controlled_execution_approval_generated": controlled_execution["approval_generated"],
+            "controlled_execution_mock_execution_generated": controlled_execution["mock_execution_generated"],
+            "controlled_execution_dry_run_generated": controlled_execution["dry_run_generated"],
+            "controlled_execution_audit_generated": controlled_execution["audit_generated"],
+            "controlled_execution_report_only": controlled_execution["report_only"],
+            "controlled_execution_no_network": controlled_execution["no_network"],
+            "controlled_execution_no_env_read": controlled_execution["no_env_read"],
+            "controlled_execution_no_account_order_path": controlled_execution["no_account_order_path"],
+            "controlled_execution_no_executable_output": controlled_execution["no_executable_output"],
+            "controlled_execution_live_boundary_blocked": controlled_execution["live_boundary_blocked"],
             "market_data_provider_registry_fixture_run": provider_registry["fixture_run"],
             "market_data_provider_registry_report_generated": provider_registry["registry_report_generated"],
             "market_data_provider_module_requirement_report_generated": provider_registry["module_requirement_report_generated"],
@@ -9431,6 +9447,96 @@ def _run_portfolio_reconciliation_smoke(output_dir: Path) -> dict[str, bool]:
         "no_account_order_path": reconciliation.plan_report.no_order and reconciliation.plan_report.no_account_mutation,
         "no_executable_output": reconciliation.plan_report.non_executable and "authorization" not in dumped and "account_number" not in dumped,
         "redacted_account_ref": "redacted" in account_snapshot_result.snapshot.metadata.account_ref.lower() and "account_number" not in dumped,
+    }
+
+
+def _run_controlled_execution_smoke(output_dir: Path) -> dict[str, bool]:
+    controlled_execution = build_controlled_execution_preflight(
+        ControlledExecutionPipelineInput.model_validate(
+            {
+                "pipeline_id": "controlled-execution-smoke",
+                "dataset_id": "paper-evaluation-smoke",
+                "mode": "MOCK_EXECUTION_ONLY",
+                "provider": "LOCAL_MOCK",
+                "opt_in": {
+                    "allow_mock_execution": True,
+                    "allow_dry_run": True,
+                    "acknowledge_readonly_only": True,
+                    "acknowledge_no_account_mutation": True,
+                    "acknowledge_manual_approval_required": True,
+                    "acknowledge_user_initiated": True,
+                },
+                "requested_by": "LOCAL_OPERATOR",
+                "requested_at": "2026-06-26T16:50:00+09:00",
+                "instrument_id": "005930",
+                "provider_symbol": "005930.KS",
+                "market": "KRX",
+                "side": "BUY",
+                "reference_price": 82450.0,
+                "quantity_proposal": 1.0,
+                "notional_proposal": 82450.0,
+                "risk_budget_ref": "RISK-BUDGET-REF-1",
+                "feature_store_manifest": {"dataset_id": "paper-evaluation-smoke", "ready": True},
+                "leakage_report": {"readiness_status": "TRAINING_DATASET_MANIFEST_READY"},
+                "paper_evaluation_report": {"readiness_status": "PLAN_READY", "signal_used_labels": False, "metrics_available": True},
+                "macro_regime_report": {"snapshot_ready": True, "stale": False},
+                "domestic_snapshot_report": {"snapshot_ready": True, "liquidity_safe": True, "stale": False},
+                "position_sizing_report": {"decision": "SIZE_READY", "risk_budget_ref": "RISK-BUDGET-REF-1", "unbounded_size": False},
+                "event_risk_report": {"decision": "ALLOW", "stale": False},
+                "breadth_routing_report": {"decision": "BROAD_MARKET_OK"},
+                "controlled_mock_rehearsal_report": {"decision": "MOCK_EXECUTION_REVIEW_READY"},
+                "account_read_report": {"read_only": True, "account_ref_redacted": True, "stale": False},
+                "reconciliation_report": {
+                    "readiness_status": "RECONCILIATION_REPORT_READY",
+                    "instrument_mapping_unambiguous": True,
+                    "cash_position_mismatch_classified": True,
+                },
+                "adapter_evidence": {
+                    "mock_ready": True,
+                    "dry_run_ready": True,
+                    "kiwoom_exact_schema": True,
+                    "kiwoom_allowlisted": True,
+                    "ls_exact_schema": False,
+                    "ls_allowlisted": False,
+                },
+                "manual_approval_fixture": {
+                    "approval_ref": "fake-approval-controlled-execution-smoke",
+                    "order_draft_hash": "DRAFT-CONTROLLED-EXECUTION-SMOKE-005930-BUY",
+                    "already_used": False,
+                    "expiry_at": "2026-06-26T17:20:00+09:00",
+                },
+                "live_boundary_evidence_ref": "fixtures/controlled_execution/live_boundary_evidence.json",
+                "idempotency_key": "IDEMPOTENCY-KEY-SMOKE",
+                "audit_records": [
+                    {
+                        "audit_record_id": "controlled-execution-smoke-audit",
+                        "created_at": "2026-06-26T16:49:00+09:00",
+                        "source_path": str(output_dir / "controlled_execution_smoke_fixture.json"),
+                        "operator_context": "offline controlled execution smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(controlled_execution.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "readiness_generated": controlled_execution.readiness_report.report_id.endswith("REPORT"),
+        "preflight_generated": controlled_execution.preflight_decision.decision_id.endswith("DECISION"),
+        "approval_generated": controlled_execution.approval_packet.packet_id.endswith("PACKET"),
+        "mock_execution_generated": controlled_execution.mock_execution_result.result_id.endswith("RESULT"),
+        "dry_run_generated": controlled_execution.dry_run_result.result_id.endswith("RESULT"),
+        "audit_generated": bool(controlled_execution.audit_records),
+        "report_only": controlled_execution.readiness_report.report_only and controlled_execution.safety_report.report_only,
+        "no_network": controlled_execution.readiness_report.no_network and controlled_execution.safety_report.no_network,
+        "no_env_read": controlled_execution.readiness_report.no_env_read and controlled_execution.safety_report.no_env_read,
+        "no_account_order_path": controlled_execution.readiness_report.no_order and controlled_execution.readiness_report.no_account_mutation,
+        "no_executable_output": controlled_execution.readiness_report.non_executable and "authorization" not in dumped and "account_number" not in dumped,
+        "live_boundary_blocked": controlled_execution.adapter_capability_report.blocked_submit_preview["blocked"] is True,
     }
 
 
