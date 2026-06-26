@@ -930,6 +930,21 @@ def test_system_smoke_validates_local_workflow(tmp_path) -> None:
     assert result["checks"]["feature_store_no_training"] is True
     assert result["checks"]["feature_store_no_paper_trading"] is True
     assert result["checks"]["feature_store_safe_local_materialization_only"] is True
+    assert result["checks"]["paper_evaluation_fixture_run"] is True
+    assert result["checks"]["paper_evaluation_plan_generated"] is True
+    assert result["checks"]["paper_evaluation_signal_replay_generated"] is True
+    assert result["checks"]["paper_evaluation_fill_simulation_generated"] is True
+    assert result["checks"]["paper_evaluation_ledger_generated"] is True
+    assert result["checks"]["paper_evaluation_metrics_generated"] is True
+    assert result["checks"]["paper_evaluation_integration_generated"] is True
+    assert result["checks"]["paper_evaluation_safety_generated"] is True
+    assert result["checks"]["paper_evaluation_report_only"] is True
+    assert result["checks"]["paper_evaluation_no_network"] is True
+    assert result["checks"]["paper_evaluation_no_env_read"] is True
+    assert result["checks"]["paper_evaluation_no_account_order_path"] is True
+    assert result["checks"]["paper_evaluation_no_model_training"] is True
+    assert result["checks"]["paper_evaluation_no_broker_paper_api"] is True
+    assert result["checks"]["paper_evaluation_no_executable_output"] is True
     assert result["checks"]["market_data_provider_registry_fixture_run"] is True
     assert result["checks"]["market_data_provider_registry_report_generated"] is True
     assert result["checks"]["market_data_provider_module_requirement_report_generated"] is True

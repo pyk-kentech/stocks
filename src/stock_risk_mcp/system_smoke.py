@@ -223,6 +223,8 @@ from stock_risk_mcp.macro_regime_provider_models import MacroRegimePipelineInput
 from stock_risk_mcp.macro_regime_snapshot_engine import build_macro_regime_snapshot
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
 from stock_risk_mcp.feature_store_models import FeatureStorePipelineInput
+from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
+from stock_risk_mcp.paper_evaluation_models import PaperEvaluationPipelineInput
 from stock_risk_mcp.kiwoom_manual_response_import_engine import build_kiwoom_manual_response_import_harness
 from stock_risk_mcp.kiwoom_manual_response_import_models import KiwoomManualResponseImportRequest
 from stock_risk_mcp.kiwoom_readonly_final_transport_engine import build_kiwoom_readonly_final_transport
@@ -2191,6 +2193,7 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
     market_regime = _run_market_regime_smoke(output_dir)
     macro_regime = _run_macro_regime_smoke(output_dir)
     feature_store = _run_feature_store_smoke(output_dir)
+    paper_evaluation = _run_paper_evaluation_smoke(output_dir)
     provider_registry = _run_market_data_provider_registry_smoke(output_dir)
     position_sizing = _run_position_sizing_smoke(output_dir)
     event_risk = _run_event_risk_smoke(output_dir)
@@ -3101,6 +3104,21 @@ def run_system_smoke(db_path, output_dir, as_of_date: date | None = None) -> dic
             "feature_store_no_training": feature_store["no_training"],
             "feature_store_no_paper_trading": feature_store["no_paper_trading"],
             "feature_store_safe_local_materialization_only": feature_store["safe_local_materialization_only"],
+            "paper_evaluation_fixture_run": paper_evaluation["fixture_run"],
+            "paper_evaluation_plan_generated": paper_evaluation["plan_generated"],
+            "paper_evaluation_signal_replay_generated": paper_evaluation["signal_replay_generated"],
+            "paper_evaluation_fill_simulation_generated": paper_evaluation["fill_simulation_generated"],
+            "paper_evaluation_ledger_generated": paper_evaluation["ledger_generated"],
+            "paper_evaluation_metrics_generated": paper_evaluation["metrics_generated"],
+            "paper_evaluation_integration_generated": paper_evaluation["integration_generated"],
+            "paper_evaluation_safety_generated": paper_evaluation["safety_generated"],
+            "paper_evaluation_report_only": paper_evaluation["report_only"],
+            "paper_evaluation_no_network": paper_evaluation["no_network"],
+            "paper_evaluation_no_env_read": paper_evaluation["no_env_read"],
+            "paper_evaluation_no_account_order_path": paper_evaluation["no_account_order_path"],
+            "paper_evaluation_no_model_training": paper_evaluation["no_model_training"],
+            "paper_evaluation_no_broker_paper_api": paper_evaluation["no_broker_paper_api"],
+            "paper_evaluation_no_executable_output": paper_evaluation["no_executable_output"],
             "market_data_provider_registry_fixture_run": provider_registry["fixture_run"],
             "market_data_provider_registry_report_generated": provider_registry["registry_report_generated"],
             "market_data_provider_module_requirement_report_generated": provider_registry["module_requirement_report_generated"],
@@ -8961,6 +8979,223 @@ def _run_feature_store_smoke(output_dir: Path) -> dict[str, bool]:
         "no_training": result.training_dataset_manifest.no_model_training,
         "no_paper_trading": result.training_dataset_manifest.no_paper_trading,
         "safe_local_materialization_only": "feature_store" in dumped and "rejected_path" not in dumped,
+    }
+
+
+def _run_paper_evaluation_smoke(output_dir: Path) -> dict[str, bool]:
+    feature_store_input = FeatureStorePipelineInput.model_validate(
+        {
+            "pipeline_id": "paper-evaluation-feature-store-smoke",
+            "dataset_id": "paper-evaluation-smoke",
+            "dataset_profile": "SMOKE_PROFILE",
+            "store_root": str(output_dir / "feature_store"),
+            "requested_backends": ["IN_MEMORY"],
+            "partition_spec": {"partition_keys": ["DATASET_ID", "MARKET", "DATE", "SPLIT"]},
+            "source_feature_inputs": [
+                {
+                    "source_row_id": "row-005930-2026-06-23",
+                    "source_kind": "V8_DOMESTIC_STOCK_SNAPSHOT",
+                    "instrument_id": "005930",
+                    "market": "KRX",
+                    "currency": "KRW",
+                    "feature_asof": "2026-06-23T15:35:00+09:00",
+                    "available_at": "2026-06-23T15:35:00+09:00",
+                    "snapshot_at": "2026-06-23T15:35:00+09:00",
+                    "feature_namespace": "domestic.price",
+                    "feature_values": {"close_price": 81200.0, "signal_score": 0.82, "volume_ratio": 1.2, "volatility_20d": 0.18},
+                    "source_ref": {
+                        "source_id": "v8-paper-snapshot-1",
+                        "source_kind": "V8_DOMESTIC_STOCK_SNAPSHOT",
+                        "sanitized_basename": "paper_snapshot_1.json",
+                        "relative_path": "fixtures/paper_evaluation/snapshot_1.json",
+                        "available_at": "2026-06-23T15:35:00+09:00",
+                    },
+                },
+                {
+                    "source_row_id": "row-005930-2026-06-24",
+                    "source_kind": "V9_MACRO_REGIME_SNAPSHOT",
+                    "instrument_id": "005930",
+                    "market": "KRX",
+                    "currency": "KRW",
+                    "feature_asof": "2026-06-24T15:35:00+09:00",
+                    "available_at": "2026-06-24T15:35:00+09:00",
+                    "snapshot_at": "2026-06-24T15:35:00+09:00",
+                    "feature_namespace": "macro.regime_classification",
+                    "feature_values": {"macro_risk_on": True, "signal_score": 0.78, "macro_block_score": 0.2, "volatility_20d": 0.19},
+                    "source_ref": {
+                        "source_id": "v9-paper-macro-1",
+                        "source_kind": "V9_MACRO_REGIME_SNAPSHOT",
+                        "sanitized_basename": "paper_macro_1.json",
+                        "relative_path": "fixtures/paper_evaluation/macro_1.json",
+                        "available_at": "2026-06-24T15:35:00+09:00",
+                    },
+                },
+                {
+                    "source_row_id": "row-005930-2026-06-25",
+                    "source_kind": "V7_EVENT_RISK_CONTEXT",
+                    "instrument_id": "005930",
+                    "market": "KRX",
+                    "currency": "KRW",
+                    "feature_asof": "2026-06-25T15:35:00+09:00",
+                    "available_at": "2026-06-25T15:35:00+09:00",
+                    "snapshot_at": "2026-06-25T15:35:00+09:00",
+                    "feature_namespace": "risk.event_risk_context",
+                    "feature_values": {"event_window_active": False, "signal_score": 0.81, "volatility_20d": 0.2},
+                    "source_ref": {
+                        "source_id": "v7-paper-event-1",
+                        "source_kind": "V7_EVENT_RISK_CONTEXT",
+                        "sanitized_basename": "paper_event_1.json",
+                        "relative_path": "fixtures/paper_evaluation/event_1.json",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                    },
+                },
+            ],
+            "price_history_rows": [
+                {
+                    "instrument_id": "005930",
+                    "observed_at": "2026-06-23T15:30:00+09:00",
+                    "available_at": "2026-06-23T15:35:00+09:00",
+                    "open_price": 80000.0,
+                    "high_price": 81300.0,
+                    "low_price": 79800.0,
+                    "close_price": 81200.0,
+                    "volume": 1000000,
+                    "source_ref": {
+                        "source_id": "paper-bar-20260623",
+                        "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                        "sanitized_basename": "paper_bar_20260623.json",
+                        "relative_path": "fixtures/paper_evaluation/bar_20260623.json",
+                        "available_at": "2026-06-23T15:35:00+09:00",
+                    },
+                },
+                {
+                    "instrument_id": "005930",
+                    "observed_at": "2026-06-24T15:30:00+09:00",
+                    "available_at": "2026-06-24T15:35:00+09:00",
+                    "open_price": 81250.0,
+                    "high_price": 82000.0,
+                    "low_price": 80900.0,
+                    "close_price": 81800.0,
+                    "volume": 980000,
+                    "source_ref": {
+                        "source_id": "paper-bar-20260624",
+                        "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                        "sanitized_basename": "paper_bar_20260624.json",
+                        "relative_path": "fixtures/paper_evaluation/bar_20260624.json",
+                        "available_at": "2026-06-24T15:35:00+09:00",
+                    },
+                },
+                {
+                    "instrument_id": "005930",
+                    "observed_at": "2026-06-25T15:30:00+09:00",
+                    "available_at": "2026-06-25T15:35:00+09:00",
+                    "open_price": 81850.0,
+                    "high_price": 82600.0,
+                    "low_price": 81600.0,
+                    "close_price": 82400.0,
+                    "volume": 1010000,
+                    "source_ref": {
+                        "source_id": "paper-bar-20260625",
+                        "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                        "sanitized_basename": "paper_bar_20260625.json",
+                        "relative_path": "fixtures/paper_evaluation/bar_20260625.json",
+                        "available_at": "2026-06-25T15:35:00+09:00",
+                    },
+                },
+                {
+                    "instrument_id": "005930",
+                    "observed_at": "2026-06-26T15:30:00+09:00",
+                    "available_at": "2026-06-26T15:35:00+09:00",
+                    "open_price": 82450.0,
+                    "high_price": 83300.0,
+                    "low_price": 82300.0,
+                    "close_price": 83100.0,
+                    "volume": 990000,
+                    "source_ref": {
+                        "source_id": "paper-bar-20260626",
+                        "source_kind": "V8_CAPTURED_KIWOOM_CHART_HISTORY",
+                        "sanitized_basename": "paper_bar_20260626.json",
+                        "relative_path": "fixtures/paper_evaluation/bar_20260626.json",
+                        "available_at": "2026-06-26T15:35:00+09:00",
+                    },
+                },
+            ],
+            "label_specs": [
+                {
+                    "label_name": "FORWARD_RETURN",
+                    "label_horizon": "1D",
+                    "label_horizon_policy": "TRADING_SESSION",
+                    "derivation_method": "LOCAL_PRICE_HISTORY_FORWARD_RETURN",
+                    "label_direction": "LONG",
+                    "anchor_price_policy": "LAST_AVAILABLE_CLOSE",
+                }
+            ],
+            "audit_records": [
+                {
+                    "audit_record_id": "paper-evaluation-feature-store-audit-smoke",
+                    "created_at": "2026-06-26T16:05:00+09:00",
+                    "source_path": str(output_dir / "paper_evaluation_feature_store_smoke_fixture.json"),
+                    "operator_context": "offline paper evaluation feature store smoke",
+                    "redaction_applied": True,
+                    "contains_secret_material": False,
+                    "contains_token_material": False,
+                    "contains_account_material": False,
+                }
+            ],
+        }
+    )
+    feature_store_result = build_feature_store_pipeline(feature_store_input, repo_root=Path(__file__).resolve().parents[2])
+    paper = build_paper_evaluation_pipeline(
+        PaperEvaluationPipelineInput.model_validate(
+            {
+                "pipeline_id": "paper-evaluation-smoke",
+                "dataset_id": "paper-evaluation-smoke",
+                "training_dataset_manifest": feature_store_result.training_dataset_manifest.model_dump(mode="json"),
+                "feature_rows": [row.model_dump(mode="json") for row in feature_store_result.feature_rows],
+                "training_rows": [row.model_dump(mode="json") for row in feature_store_result.training_rows],
+                "walk_forward_plan": feature_store_result.walk_forward_plan.model_dump(mode="json"),
+                "leakage_report": feature_store_result.leakage_report.model_dump(mode="json"),
+                "price_history_rows": [bar.model_dump(mode="json") for bar in feature_store_input.price_history_rows],
+                "config": {
+                    "fill_policy": "NEXT_BAR_OPEN",
+                    "starting_cash": 10000000.0,
+                    "commission_bps": 5.0,
+                    "tax_bps": 15.0,
+                    "slippage_bps": 10.0,
+                    "spread_penalty_bps": 5.0,
+                },
+                "audit_records": [
+                    {
+                        "audit_record_id": "paper-evaluation-audit-smoke",
+                        "created_at": "2026-06-26T16:10:00+09:00",
+                        "source_path": str(output_dir / "paper_evaluation_smoke_fixture.json"),
+                        "operator_context": "offline paper evaluation smoke",
+                        "redaction_applied": True,
+                        "contains_secret_material": False,
+                        "contains_token_material": False,
+                        "contains_account_material": False,
+                    }
+                ],
+            }
+        )
+    )
+    dumped = json.dumps(paper.model_dump(mode="json")).lower()
+    return {
+        "fixture_run": True,
+        "plan_generated": paper.plan.plan_id.endswith("PLAN"),
+        "signal_replay_generated": bool(paper.signals),
+        "fill_simulation_generated": bool(paper.fills),
+        "ledger_generated": bool(paper.ledger_entries),
+        "metrics_generated": paper.metrics_report.report_id.endswith("REPORT"),
+        "integration_generated": paper.integration_report.report_id.endswith("REPORT"),
+        "safety_generated": paper.safety_report.report_id.endswith("REPORT"),
+        "report_only": paper.plan.report_only and paper.metrics_report.report_only,
+        "no_network": paper.plan.no_network and paper.safety_report.no_network,
+        "no_env_read": paper.plan.no_env_read and paper.safety_report.no_env_read,
+        "no_account_order_path": paper.plan.no_order and paper.plan.no_account_mutation,
+        "no_model_training": paper.plan.no_model_training and paper.safety_report.no_model_training,
+        "no_broker_paper_api": paper.plan.no_broker_paper_api,
+        "no_executable_output": paper.plan.non_executable and "authorization" not in dumped and "account_id" not in dumped,
     }
 
 

@@ -294,6 +294,8 @@ from stock_risk_mcp.kiwoom_readonly_snapshot_engine import build_kiwoom_readonly
 from stock_risk_mcp.kiwoom_readonly_snapshot_fixture import load_kiwoom_readonly_snapshot_fixture
 from stock_risk_mcp.feature_store_fixture import load_feature_store_fixture
 from stock_risk_mcp.feature_store_integration_engine import build_feature_store_pipeline
+from stock_risk_mcp.paper_evaluation_fixture import load_paper_evaluation_fixture
+from stock_risk_mcp.paper_evaluation_integration_engine import build_paper_evaluation_pipeline
 from stock_risk_mcp.macro_regime_classifier_engine import build_macro_regime_classification
 from stock_risk_mcp.macro_regime_integration_engine import build_macro_regime_pipeline_result
 from stock_risk_mcp.macro_regime_provider_client import build_fred_request_preview, execute_fred_observations_request
@@ -1437,6 +1439,45 @@ def build_command_parser() -> argparse.ArgumentParser:
     paper_pass_readiness_report = subparsers.add_parser("paper-pass-readiness-report")
     paper_pass_readiness_report.add_argument("--fixture-file", type=Path, required=True)
     paper_pass_readiness_report.add_argument("--output-file", type=Path)
+    paper_evaluation_plan_report = subparsers.add_parser("paper-evaluation-plan-report")
+    paper_evaluation_plan_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_plan_report.add_argument("--output-file", type=Path)
+    paper_evaluation_signal_replay_report = subparsers.add_parser("paper-evaluation-signal-replay-report")
+    paper_evaluation_signal_replay_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_signal_replay_report.add_argument("--output-file", type=Path)
+    paper_evaluation_fill_simulation_report = subparsers.add_parser("paper-evaluation-fill-simulation-report")
+    paper_evaluation_fill_simulation_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_fill_simulation_report.add_argument("--output-file", type=Path)
+    paper_evaluation_ledger_report = subparsers.add_parser("paper-evaluation-ledger-report")
+    paper_evaluation_ledger_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_ledger_report.add_argument("--output-file", type=Path)
+    paper_evaluation_portfolio_report = subparsers.add_parser("paper-evaluation-portfolio-report")
+    paper_evaluation_portfolio_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_portfolio_report.add_argument("--output-file", type=Path)
+    paper_evaluation_metrics_report = subparsers.add_parser("paper-evaluation-metrics-report")
+    paper_evaluation_metrics_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_metrics_report.add_argument("--output-file", type=Path)
+    paper_evaluation_risk_report = subparsers.add_parser("paper-evaluation-risk-report")
+    paper_evaluation_risk_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_risk_report.add_argument("--output-file", type=Path)
+    paper_evaluation_split_report = subparsers.add_parser("paper-evaluation-split-report")
+    paper_evaluation_split_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_split_report.add_argument("--output-file", type=Path)
+    paper_evaluation_regime_report = subparsers.add_parser("paper-evaluation-regime-report")
+    paper_evaluation_regime_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_regime_report.add_argument("--output-file", type=Path)
+    paper_evaluation_event_window_report = subparsers.add_parser("paper-evaluation-event-window-report")
+    paper_evaluation_event_window_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_event_window_report.add_argument("--output-file", type=Path)
+    paper_evaluation_integration_report = subparsers.add_parser("paper-evaluation-integration-report")
+    paper_evaluation_integration_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_integration_report.add_argument("--output-file", type=Path)
+    paper_evaluation_safety_report = subparsers.add_parser("paper-evaluation-safety-report")
+    paper_evaluation_safety_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_safety_report.add_argument("--output-file", type=Path)
+    paper_evaluation_gap_report = subparsers.add_parser("paper-evaluation-gap-report")
+    paper_evaluation_gap_report.add_argument("--fixture-file", type=Path, required=True)
+    paper_evaluation_gap_report.add_argument("--output-file", type=Path)
     controlled_mock_readiness_check = subparsers.add_parser("controlled-mock-readiness-check")
     controlled_mock_readiness_check.add_argument("--fixture-file", type=Path, required=True)
     controlled_mock_readiness_check.add_argument("--output-file", type=Path)
@@ -3222,6 +3263,19 @@ def main(argv: list[str] | None = None) -> None:
         "cnn-fear-greed-audit-report",
         "risk-adjusted-paper-eval-check",
         "paper-evaluation-summary-report",
+        "paper-evaluation-plan-report",
+        "paper-evaluation-signal-replay-report",
+        "paper-evaluation-fill-simulation-report",
+        "paper-evaluation-ledger-report",
+        "paper-evaluation-portfolio-report",
+        "paper-evaluation-metrics-report",
+        "paper-evaluation-risk-report",
+        "paper-evaluation-split-report",
+        "paper-evaluation-regime-report",
+        "paper-evaluation-event-window-report",
+        "paper-evaluation-integration-report",
+        "paper-evaluation-safety-report",
+        "paper-evaluation-gap-report",
         "virtual-portfolio-report",
         "virtual-trade-ledger-report",
         "paper-cost-slippage-report",
@@ -6076,6 +6130,127 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             return result.model_dump(mode="json")
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-plan-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).plan
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-signal-replay-report":
+        try:
+            pipeline = _run_paper_evaluation_pipeline(args.fixture_file)
+            result = {"signals": [item.model_dump(mode="json") for item in pipeline.signals], "intents": [item.model_dump(mode="json") for item in pipeline.intents]}
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "signal_count": len(pipeline.signals)}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-fill-simulation-report":
+        try:
+            pipeline = _run_paper_evaluation_pipeline(args.fixture_file)
+            result = {"fills": [item.model_dump(mode="json") for item in pipeline.fills]}
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "fill_count": len(pipeline.fills)}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-ledger-report":
+        try:
+            pipeline = _run_paper_evaluation_pipeline(args.fixture_file)
+            result = {"ledger_entries": [item.model_dump(mode="json") for item in pipeline.ledger_entries], "trades": [item.model_dump(mode="json") for item in pipeline.trades]}
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "ledger_entry_count": len(pipeline.ledger_entries)}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-portfolio-report":
+        try:
+            pipeline = _run_paper_evaluation_pipeline(args.fixture_file)
+            result = {"portfolio_snapshots": [item.model_dump(mode="json") for item in pipeline.portfolio_snapshots], "equity_curve": pipeline.equity_curve.model_dump(mode="json")}
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "snapshot_count": len(pipeline.portfolio_snapshots)}
+            return result
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-metrics-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).metrics_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-risk-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).risk_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-split-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).split_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "split_count": len(result.split_metrics)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-regime-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).regime_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "regime_count": len(result.regime_metrics)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-event-window-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).event_window_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "event_bucket_count": len(result.event_window_metrics)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-integration-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).integration_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "readiness_status": result.readiness_status.value}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-safety-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).safety_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "finding_count": len(result.findings)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "paper-evaluation-gap-report":
+        try:
+            result = _run_paper_evaluation_pipeline(args.fixture_file).gap_report
+            if args.output_file:
+                args.output_file.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file), "gap_count": len(result.gap_entries)}
+            return result.model_dump(mode="json")
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "virtual-portfolio-report":
         try:
             result = _run_risk_adjusted_paper_eval(args.fixture_file).virtual_portfolio_report
@@ -8543,6 +8718,15 @@ def _load_risk_adjusted_paper_eval_fixture_or_raise(fixture_file: Path):
 def _run_risk_adjusted_paper_eval(fixture_file: Path):
     fixture = _load_risk_adjusted_paper_eval_fixture_or_raise(fixture_file)
     return build_risk_adjusted_paper_evaluation(fixture)
+
+
+def _load_paper_evaluation_fixture_or_raise(fixture_file: Path):
+    return load_paper_evaluation_fixture(fixture_file)
+
+
+def _run_paper_evaluation_pipeline(fixture_file: Path):
+    fixture = _load_paper_evaluation_fixture_or_raise(fixture_file)
+    return build_paper_evaluation_pipeline(fixture)
 
 
 def _load_controlled_mock_readiness_fixture_or_raise(fixture_file: Path):
