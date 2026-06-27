@@ -20,3 +20,17 @@ api_key_kiwoom/
 .env
 .env.*
 !.env.example
+
+api_key/
+
+# Local runtime artifacts
+local_data/
+logs/
+
+# Local credentials / API keys
+api_key/
+.secrets/
+*.key
+*.secret
+*_appkey.txt
+*_secretkey.txt
