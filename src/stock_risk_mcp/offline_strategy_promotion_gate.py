@@ -15,6 +15,8 @@ def build_offline_strategy_promotion_decision(
     candidate: OfflineStrategyCandidate,
     backtest_result: OfflineStrategyBacktestResult,
     metric_summary: OfflineStrategyMetricSummary,
+    *,
+    diagnostics: dict[str, int | float | str | bool | None] | None = None,
 ) -> OfflineStrategyPromotionDecision:
     reasons: list[str] = []
     status = OfflineStrategyStatus.PROMOTED_OFFLINE_CANDIDATE
@@ -60,6 +62,8 @@ def build_offline_strategy_promotion_decision(
     return OfflineStrategyPromotionDecision(
         decision_id=f"{pipeline_input.dataset_id}-{candidate.candidate_id}-PROMOTION-DECISION",
         candidate_id=candidate.candidate_id,
+        family=candidate.family,
         status=status,
         reasons=reasons or ["PROMOTION_GATE_PASSED"],
+        diagnostics=diagnostics or {},
     )

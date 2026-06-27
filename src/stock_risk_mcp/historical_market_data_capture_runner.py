@@ -199,6 +199,7 @@ def run_historical_market_data_real_capture(
         provider_return_code: int | None = None
         provider_return_msg: str | None = None
         chart_response_received = False
+        request_valid_raw_responses: list[HistoricalChartRawResponse] = []
         try:
             while True:
                 page_count += 1
@@ -230,6 +231,7 @@ def run_historical_market_data_real_capture(
                     )
                     raw_responses.append(built_response)
                     valid_raw_responses.append(built_response)
+                    request_valid_raw_responses.append(built_response)
                     next_cont_yn = "Y"
                     next_key = response_next_key
                 elif task_status == HistoricalMarketDataReadinessStatus.PROVIDER_CHART_ERROR:
@@ -268,7 +270,8 @@ def run_historical_market_data_real_capture(
                     provider_return_code=provider_return_code,
                     provider_return_msg=provider_return_msg,
                     chart_response_received=chart_response_received,
-                    row_count=_row_count_for_response(task, body_json),
+                    row_count=sum(_row_count_for_response(task, response.raw_payload) for response in request_valid_raw_responses)
+                    or _row_count_for_response(task, body_json),
                     blocked_reasons=[task_status.value],
                     errors=task_errors,
                 )
@@ -285,7 +288,7 @@ def run_historical_market_data_real_capture(
                 provider_return_code=provider_return_code,
                 provider_return_msg=provider_return_msg,
                 chart_response_received=chart_response_received,
-                row_count=sum(_row_count_for_response(task, response.raw_payload) for response in valid_raw_responses if response.request_id == task.request_spec.request_id),
+                row_count=sum(_row_count_for_response(task, response.raw_payload) for response in request_valid_raw_responses),
             )
         )
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from stock_risk_mcp.cli import _build_historical_market_data_real_capture_input, build_command_parser
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
@@ -299,6 +300,36 @@ def test_build_historical_market_data_real_capture_input_carries_upd_stkpc_tp() 
     assert pipeline.request_specs[0].base_dt == "20260627"
 
 
+def test_build_historical_market_data_real_capture_input_uses_multi_symbol_dataset_id() -> None:
+    parser = build_command_parser()
+    args = parser.parse_args(
+        [
+            "kiwoom-ka10081-capture-and-train-run",
+            "--kiwoom-environment",
+            "MOCK",
+            "--credential-ref",
+            "/tmp/kiwoom",
+            "--token-store-root",
+            "local_data/kiwoom_tokens",
+            "--api-id",
+            "KA10081",
+            "--symbols",
+            "005930,000660",
+            "--start-date",
+            "2020-01-01",
+            "--end-date",
+            "2026-06-27",
+            "--store-root",
+            "local_data/historical_market_data/store",
+            "--raw-lake-root",
+            "local_data/historical_market_data/raw_lake",
+        ]
+    )
+    pipeline = _build_historical_market_data_real_capture_input(args)
+    assert pipeline.dataset_id == "HISTORICAL-MARKET-DATA-KA10081-MULTI-2"
+    assert [spec.provider_symbol for spec in pipeline.request_specs] == ["005930", "000660"]
+
+
 def test_historical_market_data_capture_runner_blocks_without_auth_header(tmp_path, monkeypatch) -> None:
     fixture = _fixture(tmp_path)
     fixture = fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})})
@@ -309,7 +340,21 @@ def test_historical_market_data_capture_runner_blocks_without_auth_header(tmp_pa
 
 
 def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypatch) -> None:
-    fixture = _fixture(tmp_path)
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "dataset_id": "historical-market-data-ka10081-multi-2",
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={
+                        "request_id": "KA10081-000660-TEST",
+                        "provider_symbol": "000660",
+                        "canonical_instrument_id": "000660",
+                    }
+                )
+            ],
+        }
+    )
     token_store_root = tmp_path / "oauth_tokens"
     token_store_root.mkdir()
     token_ref_path = token_store_root / "mock_token.json"
@@ -335,6 +380,7 @@ def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypa
 
         def execute(self, preview, *, auth_header=None):
             assert auth_header == "Bearer REDACTED"
+            symbol = preview.body_json["stk_cd"]
             return {
                 "status_code": 200,
                 "headers": {"cont-yn": "N", "next-key": ""},
@@ -345,6 +391,7 @@ def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypa
                         {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
                         {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
                     ],
+                    "stk_cd": symbol,
                 },
             }
 
@@ -375,8 +422,8 @@ def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypa
         environment=KiwoomEnvironment.MOCK,
         token_store_root=str(token_store_root),
         training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
-        strategy_families=["MACD_RSI_MOMENTUM"],
-        search_mode="GRID",
+        strategy_families=["MACD_RSI", "RSI_OVERSOLD_REBOUND", "VOLUME_LONG_CANDLE_PULLBACK", "RANGE_BREAKOUT", "ADX_TREND_SCALPING"],
+        search_mode="SMOKE_SEARCH",
         walk_forward_mode="ROLLING",
         promotion_profile="STABILITY_FIRST",
         fill_policy="NEXT_BAR_CONSERVATIVE",
@@ -387,12 +434,31 @@ def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypa
     assert result["training_started"] is True
     assert result["training_completed"] is True
     assert Path(result["manifest_path"]).exists()
-    assert result["strategy_families"] == ["MACD_RSI_MOMENTUM"]
-    assert result["search_mode"] == "GRID"
+    assert result["strategy_families"] == ["ADX_TREND_SCALPING", "MACD_RSI", "RANGE_BREAKOUT", "RSI_OVERSOLD_REBOUND", "VOLUME_LONG_CANDLE_PULLBACK"]
+    assert result["requested_strategy_families"] == result["strategy_families"]
+    assert result["supported_strategy_families"] == ["MACD_RSI", "RSI_OVERSOLD_REBOUND", "VOLUME_LONG_CANDLE_PULLBACK"]
+    assert result["unsupported_strategy_families"] == ["ADX_TREND_SCALPING", "RANGE_BREAKOUT"]
+    assert result["generated_strategy_families"] == ["MACD_RSI_MOMENTUM", "RSI_OVERSOLD_REBOUND", "VOLUME_PULLBACK_LONG"]
+    assert result["candidate_count_by_family"] == {"MACD_RSI_MOMENTUM": 1, "RSI_OVERSOLD_REBOUND": 1, "VOLUME_PULLBACK_LONG": 1}
+    assert result["search_mode"] == "SMOKE_SEARCH"
     assert result["walk_forward_mode"] == "ROLLING_CHRONOLOGICAL_WALK_FORWARD"
     assert result["promotion_profile"] == "STABILITY_FIRST"
     assert result["fill_policy"] == "NEXT_BAR_CONSERVATIVE"
     assert result["direction"] == "LONG_ONLY"
+    assert result["manifest_id"].startswith("HISTORICAL-MARKET-DATA-KA10081-MULTI-2")
+    assert sorted(result["completed_symbols"]) == ["000660", "005930"]
+    assert result["failed_symbols"] == []
+    assert result["partial_symbols"] == []
+    assert len(result["symbol_results"]) == 2
+    assert sorted(item["requested_symbol"] for item in result["symbol_results"]) == ["000660", "005930"]
+    promotion_payload = json.loads(Path(result["promotion_gate_output_path"]).read_text(encoding="utf-8"))
+    assert all("family" in item for item in promotion_payload)
+    for item in promotion_payload:
+        if "NO_TRADES" in item["reasons"]:
+            assert "diagnostics" in item
+            assert "input_row_count" in item["diagnostics"]
+            assert "signal_count_before_filters" in item["diagnostics"]
+            assert "actual_trade_count" in item["diagnostics"]
 
 
 def test_capture_and_train_wrapper_stops_before_chart_request_on_token_failure(tmp_path, monkeypatch) -> None:
@@ -446,3 +512,87 @@ def test_capture_and_train_wrapper_stops_before_chart_request_on_token_failure(t
     assert result["manifest_written"] is False
     assert result["training_started"] is False
     assert chart_called["value"] is False
+
+
+def test_capture_and_train_wrapper_reports_partial_provider_limit(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path)
+    token_store_root = tmp_path / "oauth_tokens"
+    token_store_root.mkdir()
+    token_ref_path = token_store_root / "mock_token.json"
+    token_ref_path.write_text(
+        """
+        {
+          "token": "REDACTED",
+          "token_type": "Bearer",
+          "expires_dt": "2099-01-01T00:00:00+00:00",
+          "issued_at": "2026-06-27T00:00:00+00:00",
+          "environment": "MOCK",
+          "credential_fingerprint_redacted": "sha256:fixture"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+            self.calls = 0
+
+        def execute(self, preview, *, auth_header=None):
+            del auth_header
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "status_code": 200,
+                    "headers": {"cont-yn": "Y", "next-key": "PAGE2"},
+                    "body_json": {
+                        "return_code": 0,
+                        "return_msg": "OK",
+                        "stk_dt_pole_chart_qry": [
+                            {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
+                        ],
+                    },
+                }
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {"return_code": 5, "return_msg": "허용된 요청 개수를 초과하였습니다[1700:허용된 요청 개수를 초과하였습니다. API ID=ka10081]"},
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART", "max_continuation_pages": 2})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "COMPLETED_WITH_PROVIDER_LIMIT"
+    assert result["provider_limit_hit"] is True
+    assert result["partial_capture"] is True
+    assert result["partial_symbols"] == ["005930"]
+    assert result["completed_symbols"] == []

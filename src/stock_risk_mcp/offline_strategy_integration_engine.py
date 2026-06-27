@@ -35,6 +35,44 @@ def _gap(dataset_id: str, suffix: str, category: str, severity: str, message: st
     )
 
 
+def _candidate_diagnostics(
+    pipeline_input: OfflineStrategyPipelineInput,
+    candidate,
+    rows_by_instrument: dict[str, list],
+    candidate_signals,
+    backtest_result,
+) -> dict[str, int | float | str | bool | None]:
+    all_rows = [row for rows in rows_by_instrument.values() for row in rows]
+    signal_dates = sorted(signal.observed_at for signal in candidate_signals)
+    indicator_columns = sorted(
+        {
+            key.upper()
+            for signal in candidate_signals
+            for key, value in signal.signal_features.items()
+            if value is not None
+        }
+    )
+    action_counts = defaultdict(int)
+    for signal in candidate_signals:
+        action_counts[signal.action.value] += 1
+    return {
+        "input_row_count": len(all_rows),
+        "date_range_start": min((row.observed_at.isoformat() for row in all_rows), default=None),
+        "date_range_end": max((row.observed_at.isoformat() for row in all_rows), default=None),
+        "indicator_columns_available": ",".join(indicator_columns),
+        "signal_count_before_filters": len(candidate_signals),
+        "entry_signal_count": action_counts.get("ENTER_LONG", 0),
+        "exit_signal_count": action_counts.get("EXIT_LONG", 0),
+        "blocked_by_hold_count": action_counts.get("HOLD", 0),
+        "blocked_by_avoid_long_count": action_counts.get("AVOID_LONG", 0),
+        "blocked_by_risk_warning_count": action_counts.get("RISK_WARNING", 0),
+        "min_trade_count_threshold": pipeline_input.promotion_gate_config.min_trade_count,
+        "actual_trade_count": backtest_result.trade_count,
+        "first_signal_date": signal_dates[0].isoformat() if signal_dates else None,
+        "last_signal_date": signal_dates[-1].isoformat() if signal_dates else None,
+    }
+
+
 def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput) -> OfflineStrategyPipelineResult:
     gate_status, findings, gaps = validate_offline_strategy_input_gate(pipeline_input)
     rows = resolve_offline_strategy_rows(pipeline_input)
@@ -47,7 +85,10 @@ def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput
     ]
     candidates = []
     for template in selected_templates:
-        candidates.extend(expand_offline_strategy_candidates(pipeline_input.dataset_id, template, pipeline_input.asset_liquidity_profile))
+        expanded = expand_offline_strategy_candidates(pipeline_input.dataset_id, template, pipeline_input.asset_liquidity_profile)
+        if pipeline_input.search_mode == "SMOKE_SEARCH":
+            expanded = expanded[:1]
+        candidates.extend(expanded)
     training_plan = build_offline_strategy_training_plan(pipeline_input, len(candidates))
     walk_forward_result = build_offline_strategy_walk_forward_result(pipeline_input, rows)
     rows_by_instrument = defaultdict(list)
@@ -73,7 +114,15 @@ def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput
         backtest_results.append(backtest_result)
         metric_summary = build_offline_strategy_metric_summary(pipeline_input.dataset_id, backtest_result)
         metric_summaries.append(metric_summary)
-        promotion_decisions.append(build_offline_strategy_promotion_decision(pipeline_input, candidate, backtest_result, metric_summary))
+        promotion_decisions.append(
+            build_offline_strategy_promotion_decision(
+                pipeline_input,
+                candidate,
+                backtest_result,
+                metric_summary,
+                diagnostics=_candidate_diagnostics(pipeline_input, candidate, rows_by_instrument, candidate_signals, backtest_result),
+            )
+        )
     artifact_manifest = build_offline_strategy_artifact_manifest(pipeline_input.dataset_id)
     safety_report = OfflineStrategySafetyReport(
         report_id=f"{pipeline_input.dataset_id}-OFFLINE-STRATEGY-SAFETY-REPORT",

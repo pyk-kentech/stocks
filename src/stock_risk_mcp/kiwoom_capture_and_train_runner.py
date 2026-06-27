@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
 from stock_risk_mcp.historical_market_data_manifest_engine import load_historical_ohlcv_dataset_manifest
 from stock_risk_mcp.historical_market_data_models import (
     HistoricalChartCaptureRunResult,
+    HistoricalOhlcvRow,
     HistoricalMarketDataPipelineInput,
     HistoricalMarketDataReadinessStatus,
 )
@@ -66,11 +68,38 @@ def _resolve_requested_templates(
     requested_template_ids: list[str] | None,
     strategy_families: list[str] | None,
     direction: OfflineStrategyDirection,
-) -> list[str]:
+) -> tuple[list[str], dict[str, object]]:
     if requested_template_ids:
-        return [item.strip().upper() for item in requested_template_ids if item and item.strip()]
+        normalized = [item.strip().upper() for item in requested_template_ids if item and item.strip()]
+        return normalized, {
+            "requested_strategy_families": sorted({item.strip().upper() for item in (strategy_families or []) if item and item.strip()}),
+            "supported_strategy_families": [],
+            "unsupported_strategy_families": [],
+            "skipped_strategy_families": [],
+        }
     catalog = build_offline_strategy_template_catalog()
-    family_filters = {item.strip().upper() for item in (strategy_families or []) if item and item.strip()}
+    requested_families = sorted({item.strip().upper() for item in (strategy_families or []) if item and item.strip()})
+    family_aliases = {
+        "MACD_RSI": "MACD_RSI_MOMENTUM",
+        "MACD_RSI_MOMENTUM": "MACD_RSI_MOMENTUM",
+        "RSI_OVERSOLD_REBOUND": "RSI_OVERSOLD_REBOUND",
+        "VOLUME_LONG_CANDLE_PULLBACK": "VOLUME_PULLBACK_LONG",
+        "VOLUME_PULLBACK_LONG": "VOLUME_PULLBACK_LONG",
+        "RANGE_BREAKOUT": None,
+        "ADX_TREND_SCALPING": None,
+    }
+    supported_families: list[str] = []
+    unsupported_families: list[str] = []
+    skipped_strategy_families: list[str] = []
+    family_filters: set[str] = set()
+    for family in requested_families:
+        mapped = family_aliases.get(family, family if family in {template.family.value for template in catalog} else None)
+        if mapped is None:
+            unsupported_families.append(family)
+            skipped_strategy_families.append(f"{family}:UNSUPPORTED_TEMPLATE_FAMILY")
+            continue
+        family_filters.add(mapped)
+        supported_families.append(family)
     template_ids: list[str] = []
     for template in catalog:
         if template.direction != direction:
@@ -78,7 +107,50 @@ def _resolve_requested_templates(
         if family_filters and template.family.value not in family_filters:
             continue
         template_ids.append(template.template_id.value)
-    return template_ids
+    return template_ids, {
+        "requested_strategy_families": requested_families,
+        "supported_strategy_families": sorted(supported_families),
+        "unsupported_strategy_families": sorted(unsupported_families),
+        "skipped_strategy_families": sorted(skipped_strategy_families),
+    }
+
+
+def _symbol_status_summary(
+    pipeline_input: HistoricalMarketDataPipelineInput,
+    capture_result: HistoricalChartCaptureRunResult,
+    manifest_rows: list[HistoricalOhlcvRow],
+) -> list[dict[str, object]]:
+    task_by_symbol = {task.request_id.split("-")[1]: task for task in capture_result.task_results if "-" in task.request_id}
+    rows_by_symbol: dict[str, list[HistoricalOhlcvRow]] = defaultdict(list)
+    for row in manifest_rows:
+        rows_by_symbol[row.provider_symbol].append(row)
+    summaries: list[dict[str, object]] = []
+    for spec in pipeline_input.request_specs:
+        rows = sorted(rows_by_symbol.get(spec.provider_symbol, []), key=lambda item: item.observed_at)
+        task = task_by_symbol.get(spec.provider_symbol)
+        normalized_row_count = len(rows)
+        partial = bool(normalized_row_count and task and task.blocked_reasons)
+        status = (
+            "PARTIAL_CAPTURE_COMPLETED"
+            if partial
+            else "COMPLETED"
+            if normalized_row_count
+            else "FAILED"
+        )
+        summaries.append(
+            {
+                "requested_symbol": spec.provider_symbol,
+                "raw_lake_path": str(Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json"),
+                "provider_row_count": int(getattr(task, "row_count", 0) or 0),
+                "normalized_row_count": normalized_row_count,
+                "date_min": rows[0].observed_at.date().isoformat() if rows else None,
+                "date_max": rows[-1].observed_at.date().isoformat() if rows else None,
+                "status": status,
+                "provider_return_code": getattr(task, "provider_return_code", None),
+                "provider_return_msg": getattr(task, "provider_return_msg", None),
+            }
+        )
+    return summaries
 
 
 def run_historical_market_data_real_capture_and_manifest(
@@ -190,7 +262,7 @@ def run_kiwoom_ka10081_capture_and_train(
     )
     resolved_direction = _resolve_direction(direction)
     resolved_walk_forward_mode = _resolve_walk_forward_mode(walk_forward_mode)
-    resolved_template_ids = _resolve_requested_templates(
+    resolved_template_ids, family_resolution = _resolve_requested_templates(
         requested_template_ids=requested_template_ids,
         strategy_families=strategy_families,
         direction=resolved_direction,
@@ -224,7 +296,13 @@ def run_kiwoom_ka10081_capture_and_train(
             "transport_error_type": oauth_summary.get("transport_error_type"),
             "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
             "training_handoff_mode": training_handoff_mode,
-            "strategy_families": sorted({item.strip().upper() for item in (strategy_families or []) if item and item.strip()}),
+            "strategy_families": family_resolution["requested_strategy_families"],
+            "requested_strategy_families": family_resolution["requested_strategy_families"],
+            "supported_strategy_families": family_resolution["supported_strategy_families"],
+            "unsupported_strategy_families": family_resolution["unsupported_strategy_families"],
+            "skipped_strategy_families": family_resolution["skipped_strategy_families"],
+            "generated_strategy_families": [],
+            "candidate_count_by_family": {},
             "search_mode": str(search_mode or "BOUNDED_GRID").upper(),
             "walk_forward_mode": resolved_walk_forward_mode.value,
             "promotion_profile": str(promotion_profile or "STABILITY_FIRST").upper(),
@@ -234,6 +312,12 @@ def run_kiwoom_ka10081_capture_and_train(
             "chart_request_started": bool(oauth_summary.get("chart_request_started", False)),
             "chart_response_received": chart_response_received,
             "row_count": row_count,
+            "provider_limit_hit": bool(getattr(first_task, "provider_return_code", None) == 5),
+            "partial_capture": bool(row_count and getattr(first_task, "provider_return_code", None) == 5),
+            "completed_symbols": [],
+            "partial_symbols": [],
+            "failed_symbols": [spec.provider_symbol for spec in pipeline_input.request_specs],
+            "symbol_results": [],
             "raw_lake_paths": [],
             "normalized_ohlcv_paths": [],
             "manifest_written": False,
@@ -253,6 +337,7 @@ def run_kiwoom_ka10081_capture_and_train(
         requested_template_ids=resolved_template_ids,
         asset_liquidity_profile=asset_liquidity_profile,
         primary_walk_forward_mode=resolved_walk_forward_mode,
+        search_mode=str(search_mode or "BOUNDED_GRID").upper(),
     )
     if training_handoff_mode == "in_process":
         pipeline = pipeline.model_copy(update={"manifest": capture_result.manifest})
@@ -269,10 +354,26 @@ def run_kiwoom_ka10081_capture_and_train(
         json.dumps([item.model_dump(mode="json") for item in training_result.promotion_decisions], indent=2),
         encoding="utf-8",
     )
-    raw_lake_paths = sorted(str(path) for path in Path(pipeline_input.raw_lake_root).glob("*.json"))
+    raw_lake_paths = sorted(
+        str(Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json")
+        for spec in pipeline_input.request_specs
+        if (Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json").exists()
+    )
     normalized_paths = [path for path in [manifest.ohlcv_rows_path, manifest.manifest_path] if path]
+    manifest_rows = [
+        HistoricalOhlcvRow.model_validate(item)
+        for item in json.loads(Path(manifest.ohlcv_rows_path).read_text(encoding="utf-8"))
+    ] if manifest.ohlcv_rows_path else []
+    symbol_results = _symbol_status_summary(pipeline_input, capture_result, manifest_rows)
+    candidate_count_by_family = dict(sorted(Counter(candidate.family.value for candidate in training_result.candidates).items()))
+    generated_strategy_families = sorted(candidate_count_by_family)
+    completed_symbols = [item["requested_symbol"] for item in symbol_results if item["status"] == "COMPLETED"]
+    partial_symbols = [item["requested_symbol"] for item in symbol_results if item["status"] == "PARTIAL_CAPTURE_COMPLETED"]
+    failed_symbols = [item["requested_symbol"] for item in symbol_results if item["status"] == "FAILED"]
+    provider_limit_hit = any(item.get("provider_return_code") == 5 for item in symbol_results)
+    partial_capture = bool(partial_symbols)
     summary = {
-        "status": "COMPLETED",
+        "status": "COMPLETED_WITH_PROVIDER_LIMIT" if provider_limit_hit else "COMPLETED",
         "token_status": oauth_summary.get("token_status"),
         "stage": "TRAINING_COMPLETED",
         "kiwoom_environment": oauth_summary.get("kiwoom_environment", environment.value),
@@ -285,7 +386,13 @@ def run_kiwoom_ka10081_capture_and_train(
         "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
         "request_status": request_status,
         "training_handoff_mode": training_handoff_mode,
-        "strategy_families": sorted({item.strip().upper() for item in (strategy_families or []) if item and item.strip()}),
+        "strategy_families": family_resolution["requested_strategy_families"],
+        "requested_strategy_families": family_resolution["requested_strategy_families"],
+        "supported_strategy_families": family_resolution["supported_strategy_families"],
+        "unsupported_strategy_families": family_resolution["unsupported_strategy_families"],
+        "skipped_strategy_families": family_resolution["skipped_strategy_families"],
+        "generated_strategy_families": generated_strategy_families,
+        "candidate_count_by_family": candidate_count_by_family,
         "search_mode": str(search_mode or "BOUNDED_GRID").upper(),
         "walk_forward_mode": resolved_walk_forward_mode.value,
         "promotion_profile": str(promotion_profile or "STABILITY_FIRST").upper(),
@@ -295,6 +402,12 @@ def run_kiwoom_ka10081_capture_and_train(
         "chart_request_started": True,
         "chart_response_received": chart_response_received,
         "row_count": row_count,
+        "provider_limit_hit": provider_limit_hit,
+        "partial_capture": partial_capture,
+        "completed_symbols": completed_symbols,
+        "partial_symbols": partial_symbols,
+        "failed_symbols": failed_symbols,
+        "symbol_results": symbol_results,
         "manifest_written": True,
         "manifest_path": str(manifest_path),
         "manifest_id": manifest.manifest_id,

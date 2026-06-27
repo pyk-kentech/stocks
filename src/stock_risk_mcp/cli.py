@@ -9288,6 +9288,7 @@ def _build_offline_strategy_research_readiness_report(fixture_file: Path) -> dic
 
 def _build_historical_market_data_real_capture_input(args):
     symbols = [item.strip().upper() for item in str(args.symbols).split(",") if item.strip()]
+    dataset_suffix = symbols[0] if len(symbols) == 1 else f"MULTI-{len(symbols)}"
     request_specs = []
     for symbol in symbols:
         request_payload = {
@@ -9324,7 +9325,7 @@ def _build_historical_market_data_real_capture_input(args):
     )
     return HistoricalMarketDataPipelineInput(
         pipeline_id="HISTORICAL-MARKET-DATA-REAL-CAPTURE-CLI",
-        dataset_id=f"HISTORICAL-MARKET-DATA-{str(args.api_id).upper()}-{symbols[0] if symbols else 'EMPTY'}",
+        dataset_id=f"HISTORICAL-MARKET-DATA-{str(args.api_id).upper()}-{dataset_suffix if symbols else 'EMPTY'}",
         mode=HistoricalMarketDataMode.REAL_OPT_IN_BOUNDARY,
         capture_profile=str(args.capture_profile).upper(),
         store_root=str(args.store_root),

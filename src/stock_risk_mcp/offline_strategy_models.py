@@ -492,8 +492,10 @@ class OfflineStrategyPromotionGateConfig(StrictModel):
 class OfflineStrategyPromotionDecision(_BaseSafety):
     decision_id: str = Field(..., min_length=1)
     candidate_id: str = Field(..., min_length=1)
+    family: OfflineStrategyFamily
     status: OfflineStrategyStatus
     reasons: list[str] = Field(default_factory=list)
+    diagnostics: dict[str, ScalarValue] = Field(default_factory=dict)
 
     @field_validator("decision_id", "candidate_id", mode="before")
     @classmethod
@@ -504,6 +506,11 @@ class OfflineStrategyPromotionDecision(_BaseSafety):
     @classmethod
     def normalize_reasons(cls, value):
         return _normalize_list(value, "reasons", upper=True)
+
+    @field_validator("diagnostics", mode="before")
+    @classmethod
+    def normalize_diagnostics(cls, value):
+        return _validate_scalar_map(value or {}, "diagnostics")
 
     @model_validator(mode="after")
     def validate_decision(self):
@@ -629,10 +636,11 @@ class OfflineStrategyPipelineInput(StrictModel):
     asset_liquidity_profile: OfflineStrategyAssetLiquidityProfile = OfflineStrategyAssetLiquidityProfile.LARGE_CAP
     fee_bps: float = Field(default=5.0, ge=0)
     slippage_bps: float = Field(default=10.0, ge=0)
+    search_mode: str = "BOUNDED_GRID"
     promotion_gate_config: OfflineStrategyPromotionGateConfig = Field(default_factory=OfflineStrategyPromotionGateConfig)
     requested_template_ids: list[OfflineStrategyTemplateId] = Field(default_factory=list)
 
-    @field_validator("pipeline_id", "dataset_id", mode="before")
+    @field_validator("pipeline_id", "dataset_id", "search_mode", mode="before")
     @classmethod
     def normalize_upper(cls, value, info):
         return _upper_required(value, info.field_name)
