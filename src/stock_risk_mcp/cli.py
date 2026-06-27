@@ -1004,6 +1004,12 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_real_capture_preflight.add_argument("--raw-lake-root", required=True)
     historical_market_data_real_capture_preflight.add_argument("--max-request-count", type=int, default=20)
     historical_market_data_real_capture_preflight.add_argument("--max-continuation-pages", type=int, default=3)
+    historical_market_data_real_capture_preflight.add_argument("--request-sleep-seconds", type=float, default=0.25)
+    historical_market_data_real_capture_preflight.add_argument("--symbol-sleep-seconds", type=float, default=0.5)
+    historical_market_data_real_capture_preflight.add_argument("--max-symbols-per-run", type=int, default=0)
+    historical_market_data_real_capture_preflight.add_argument("--stop-on-provider-limit", action=argparse.BooleanOptionalAction, default=True)
+    historical_market_data_real_capture_preflight.add_argument("--resume-from-capture-state")
+    historical_market_data_real_capture_preflight.add_argument("--reuse-existing-raw-lake", action="store_true")
     historical_market_data_real_capture_preflight.add_argument("--credential-ref")
     historical_market_data_real_capture_preflight.add_argument("--allow-real-chart-capture", action="store_true")
     historical_market_data_real_capture_preflight.add_argument("--acknowledge-readonly-only", action="store_true")
@@ -1051,6 +1057,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_ka10081_capture_and_train.add_argument("--fill-policy")
     kiwoom_ka10081_capture_and_train.add_argument("--direction")
     kiwoom_ka10081_capture_and_train.add_argument("--asset-liquidity-profile", default="LARGE_CAP")
+    kiwoom_ka10081_capture_and_train.add_argument("--allow-training-on-partial-capture", action=argparse.BooleanOptionalAction, default=True)
     offline_strategy_template_catalog = subparsers.add_parser("offline-strategy-template-catalog-report")
     offline_strategy_template_catalog.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_template_catalog.add_argument("--output-file", type=Path)
@@ -4351,6 +4358,13 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 promotion_profile=args.promotion_profile,
                 fill_policy=args.fill_policy,
                 direction=args.direction,
+                request_sleep_seconds=float(args.request_sleep_seconds),
+                symbol_sleep_seconds=float(args.symbol_sleep_seconds),
+                max_symbols_per_run=int(args.max_symbols_per_run),
+                stop_on_provider_limit=bool(args.stop_on_provider_limit),
+                resume_from_capture_state=args.resume_from_capture_state,
+                reuse_existing_raw_lake=bool(args.reuse_existing_raw_lake),
+                allow_training_on_partial_capture=bool(args.allow_training_on_partial_capture),
             )
             if args.output_file:
                 result["output_file"] = str(args.output_file)

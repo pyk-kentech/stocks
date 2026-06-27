@@ -50,6 +50,11 @@ def test_kiwoom_capture_and_train_help_uses_command_router() -> None:
     assert "--training-handoff-mode" in result.stdout
     assert "--training-output-root" in result.stdout
     assert "--upd-stkpc-tp" in result.stdout
+    assert "--request-sleep-seconds" in result.stdout
+    assert "--symbol-sleep-seconds" in result.stdout
+    assert "--max-symbols-per-run" in result.stdout
+    assert "--resume-from-capture-state" in result.stdout
+    assert "--reuse-existing-raw-lake" in result.stdout
     assert "--strategy-families" in result.stdout
     assert "--search-mode" in result.stdout
     assert "--walk-forward-mode" in result.stdout

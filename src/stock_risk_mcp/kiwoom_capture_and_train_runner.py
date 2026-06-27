@@ -3,15 +3,20 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
+import time
 
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
-from stock_risk_mcp.historical_market_data_manifest_engine import load_historical_ohlcv_dataset_manifest
+from stock_risk_mcp.historical_market_data_manifest_engine import build_historical_ohlcv_dataset_manifest, load_historical_ohlcv_dataset_manifest
 from stock_risk_mcp.historical_market_data_models import (
+    HistoricalChartRawResponse,
+    HistoricalChartRequestSpec,
     HistoricalChartCaptureRunResult,
     HistoricalOhlcvRow,
     HistoricalMarketDataPipelineInput,
     HistoricalMarketDataReadinessStatus,
+    HistoricalMarketDataTransportKind,
 )
+from stock_risk_mcp.historical_market_data_normalizer import normalize_historical_ohlcv_rows
 from stock_risk_mcp.historical_market_data_transport import RealKiwoomChartTransport
 from stock_risk_mcp.historical_market_data_guard import validate_safe_local_root
 from stock_risk_mcp.kiwoom_oauth_engine import build_kiwoom_oauth_request, issue_kiwoom_oauth_token
@@ -153,6 +158,93 @@ def _symbol_status_summary(
     return summaries
 
 
+def _provider_limit_hit(provider_return_code: int | None, provider_return_msg: str | None) -> bool:
+    if provider_return_code == 5:
+        return True
+    return "허용된 요청 개수" in str(provider_return_msg or "")
+
+
+def _capture_state_path(pipeline_input: HistoricalMarketDataPipelineInput) -> Path:
+    dataset_dir = validate_safe_local_root(pipeline_input.store_root) / pipeline_input.dataset_id.lower()
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    return dataset_dir / "kiwoom_capture_state.json"
+
+
+def _load_capture_state(path: str | None) -> dict[str, object] | None:
+    if not path:
+        return None
+    state_path = Path(path)
+    if not state_path.exists():
+        return None
+    return json.loads(state_path.read_text(encoding="utf-8"))
+
+
+def _write_capture_state(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _build_single_symbol_pipeline(
+    pipeline_input: HistoricalMarketDataPipelineInput,
+    spec: HistoricalChartRequestSpec,
+) -> HistoricalMarketDataPipelineInput:
+    return pipeline_input.model_copy(
+        update={
+            "dataset_id": f"{pipeline_input.dataset_id}-{spec.provider_symbol}",
+            "request_specs": [spec],
+        }
+    )
+
+
+def _within_requested_window(spec: HistoricalChartRequestSpec, observed_at) -> bool:
+    if spec.start_at is not None and observed_at < spec.start_at:
+        return False
+    if spec.end_at is not None and observed_at > spec.end_at:
+        return False
+    return True
+
+
+def _raw_lake_path(pipeline_input: HistoricalMarketDataPipelineInput, spec: HistoricalChartRequestSpec) -> Path:
+    return Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json"
+
+
+def _load_cached_rows(
+    pipeline_input: HistoricalMarketDataPipelineInput,
+    spec: HistoricalChartRequestSpec,
+) -> tuple[list[HistoricalOhlcvRow], dict[str, object] | None]:
+    path = _raw_lake_path(pipeline_input, spec)
+    if not path.exists():
+        return [], None
+    response = HistoricalChartRawResponse.model_validate_json(path.read_text(encoding="utf-8"))
+    try:
+        normalized = normalize_historical_ohlcv_rows(pipeline_input.dataset_id, [response])
+    except Exception:
+        return [], None
+    rows = [
+        row
+        for row in normalized
+        if row.provider_symbol == spec.provider_symbol and _within_requested_window(spec, row.observed_at)
+    ]
+    meta = response.raw_payload.get("_capture_meta") if isinstance(response.raw_payload, dict) else None
+    return rows, meta if isinstance(meta, dict) else None
+
+
+class _RateLimitedTransport:
+    transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+    def __init__(self, delegate: RealKiwoomChartTransport, *, request_sleep_seconds: float) -> None:
+        self._delegate = delegate
+        self.base_url = getattr(delegate, "base_url", None)
+        self._request_sleep_seconds = max(float(request_sleep_seconds), 0.0)
+        self._request_count = 0
+
+    def execute(self, preview, *, auth_header=None):
+        if self._request_count > 0 and self._request_sleep_seconds > 0:
+            time.sleep(self._request_sleep_seconds)
+        self._request_count += 1
+        return self._delegate.execute(preview, auth_header=auth_header)
+
+
 def run_historical_market_data_real_capture_and_manifest(
     pipeline_input: HistoricalMarketDataPipelineInput,
     *,
@@ -254,12 +346,14 @@ def run_kiwoom_ka10081_capture_and_train(
     promotion_profile: str | None = None,
     fill_policy: str | None = None,
     direction: str | None = None,
+    request_sleep_seconds: float = 0.25,
+    symbol_sleep_seconds: float = 0.5,
+    max_symbols_per_run: int = 0,
+    stop_on_provider_limit: bool = True,
+    resume_from_capture_state: str | None = None,
+    reuse_existing_raw_lake: bool = False,
+    allow_training_on_partial_capture: bool = True,
 ) -> dict[str, object]:
-    capture_result, oauth_summary = run_historical_market_data_real_capture_and_manifest(
-        pipeline_input,
-        environment=environment,
-        token_store_root=token_store_root,
-    )
     resolved_direction = _resolve_direction(direction)
     resolved_walk_forward_mode = _resolve_walk_forward_mode(walk_forward_mode)
     resolved_template_ids, family_resolution = _resolve_requested_templates(
@@ -267,121 +361,331 @@ def run_kiwoom_ka10081_capture_and_train(
         strategy_families=strategy_families,
         direction=resolved_direction,
     )
-    first_task = capture_result.task_results[0] if capture_result.task_results else None
-    chart_response_received = bool(
-        getattr(first_task, "chart_response_received", False)
-        or capture_result.raw_response_count
-        or capture_result.normalized_row_count
-        or capture_result.readiness_status
-        in {
-            HistoricalMarketDataReadinessStatus.PROVIDER_EMPTY_RESPONSE,
-            HistoricalMarketDataReadinessStatus.PROVIDER_CHART_ERROR,
-            HistoricalMarketDataReadinessStatus.DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA,
-            HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED,
-        }
+    requested_specs = list(pipeline_input.request_specs)
+    state_path = _capture_state_path(pipeline_input)
+    prior_state = _load_capture_state(resume_from_capture_state)
+    previous_completed = set(prior_state.get("completed_symbols", [])) if isinstance(prior_state, dict) else set()
+    previous_partial = set(prior_state.get("partial_symbols", [])) if isinstance(prior_state, dict) else set()
+    previous_failed = set(prior_state.get("failed_symbols", [])) if isinstance(prior_state, dict) else set()
+    fetched_now: list[str] = []
+    reused_from_cache: list[str] = []
+    skipped_completed: list[str] = []
+    retried: list[str] = []
+    failed_again: list[str] = []
+    completed_symbols: list[str] = []
+    partial_symbols: list[str] = []
+    failed_symbols: list[str] = []
+    skipped_symbols: list[str] = []
+    symbol_results: list[dict[str, object]] = []
+    aggregate_rows: list[HistoricalOhlcvRow] = []
+    raw_lake_paths: list[str] = []
+    oauth_summary: dict[str, object] = {
+        "token_status": None,
+        "stage": "NOT_STARTED",
+        "kiwoom_environment": environment.value,
+        "endpoint_base_url": _kiwoom_base_url(environment),
+        "endpoint_path": "/oauth2/token",
+        "http_status_code": None,
+        "provider_return_code": None,
+        "provider_return_msg": None,
+        "transport_error_type": None,
+        "transport_error_message_redacted": None,
+        "token_written": False,
+        "chart_request_started": False,
+    }
+    transport = _RateLimitedTransport(
+        RealKiwoomChartTransport(
+        timeout_seconds=pipeline_input.real_capture_config.timeout_seconds if pipeline_input.real_capture_config else 10,
+        base_url=_kiwoom_base_url(environment),
+        ),
+        request_sleep_seconds=request_sleep_seconds,
     )
-    request_status = "CHART_ROWS_EXTRACTED" if capture_result.manifest is not None else capture_result.readiness_status.value
-    row_count = capture_result.normalized_row_count or int(getattr(first_task, "row_count", 0) or 0)
-    if capture_result.manifest is None or not capture_result.manifest.manifest_path:
-        return {
-            "status": "FAILED",
-            "token_status": oauth_summary.get("token_status"),
-            "stage": oauth_summary.get("stage", "TOKEN_STAGE"),
-            "kiwoom_environment": oauth_summary.get("kiwoom_environment", environment.value),
-            "endpoint_base_url": oauth_summary.get("endpoint_base_url"),
-            "endpoint_path": oauth_summary.get("endpoint_path"),
-            "http_status_code": oauth_summary.get("http_status_code"),
-            "provider_return_code": getattr(first_task, "provider_return_code", None) or oauth_summary.get("provider_return_code"),
-            "provider_return_msg": getattr(first_task, "provider_return_msg", None) or oauth_summary.get("provider_return_msg"),
-            "transport_error_type": oauth_summary.get("transport_error_type"),
-            "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
-            "training_handoff_mode": training_handoff_mode,
-            "strategy_families": family_resolution["requested_strategy_families"],
-            "requested_strategy_families": family_resolution["requested_strategy_families"],
-            "supported_strategy_families": family_resolution["supported_strategy_families"],
-            "unsupported_strategy_families": family_resolution["unsupported_strategy_families"],
-            "skipped_strategy_families": family_resolution["skipped_strategy_families"],
-            "generated_strategy_families": [],
-            "candidate_count_by_family": {},
-            "search_mode": str(search_mode or "BOUNDED_GRID").upper(),
-            "walk_forward_mode": resolved_walk_forward_mode.value,
-            "promotion_profile": str(promotion_profile or "STABILITY_FIRST").upper(),
-            "fill_policy": str(fill_policy or "NEXT_BAR_CONSERVATIVE").upper(),
-            "direction": resolved_direction.value,
-            "token_written": bool(oauth_summary.get("token_written")),
-            "chart_request_started": bool(oauth_summary.get("chart_request_started", False)),
-            "chart_response_received": chart_response_received,
-            "row_count": row_count,
-            "provider_limit_hit": bool(getattr(first_task, "provider_return_code", None) == 5),
-            "partial_capture": bool(row_count and getattr(first_task, "provider_return_code", None) == 5),
-            "completed_symbols": [],
-            "partial_symbols": [],
-            "failed_symbols": [spec.provider_symbol for spec in pipeline_input.request_specs],
-            "symbol_results": [],
-            "raw_lake_paths": [],
-            "normalized_ohlcv_paths": [],
-            "manifest_written": False,
-            "manifest_reloaded": False,
-            "training_started": False,
-            "training_completed": False,
-            "request_status": request_status,
+    auth_header: str | None = None
+    token_ready = False
+    provider_limit_hit = False
+    last_provider_return_code: int | None = None
+    last_provider_return_msg: str | None = None
+    can_resume = False
+
+    def ensure_token() -> bool:
+        nonlocal token_ready, auth_header, oauth_summary
+        if token_ready:
+            return True
+        if pipeline_input.real_capture_config is None or pipeline_input.real_capture_config.credential_ref is None:
+            return False
+        historical_ref = pipeline_input.real_capture_config.credential_ref
+        oauth_request = build_kiwoom_oauth_request(
+            environment=environment,
+            credential_ref=KiwoomCredentialRef(
+                credential_id=historical_ref.credential_ref_id,
+                credential_ref_dir=historical_ref.credential_ref_dir,
+                appkey_ref_path=historical_ref.appkey_ref_path,
+                secretkey_ref_path=historical_ref.secretkey_ref_path,
+            ),
+            token_store_root=token_store_root,
+            allow_real_network=pipeline_input.opt_in.allow_real_chart_capture,
+            allow_token_issue=True,
+            acknowledge_readonly_only=pipeline_input.opt_in.acknowledge_readonly_only,
+            acknowledge_user_initiated=pipeline_input.opt_in.acknowledge_user_initiated,
+            acknowledge_credential_redaction=pipeline_input.opt_in.acknowledge_credential_redaction,
+        )
+        token_response = issue_kiwoom_oauth_token(oauth_request)
+        oauth_summary = {
+            "token_status": token_response.status.value,
+            "stage": token_response.stage,
+            "kiwoom_environment": token_response.kiwoom_environment.value,
+            "endpoint_base_url": token_response.endpoint_base_url,
+            "endpoint_path": token_response.endpoint_path,
+            "http_status_code": token_response.http_status_code,
+            "provider_return_code": token_response.provider_return_code,
+            "provider_return_msg": token_response.provider_return_msg,
+            "transport_error_type": token_response.transport_error_type,
+            "transport_error_message_redacted": token_response.transport_error_message_redacted,
+            "token_written": token_response.token_written,
+            "chart_request_started": False,
+            "token_ref_path": token_response.token_ref.token_ref_path if token_response.token_ref else None,
         }
-    manifest_path = Path(capture_result.manifest.manifest_path)
-    if not manifest_path.exists():
-        raise ValueError("persisted manifest file missing after capture")
-    manifest = load_historical_ohlcv_dataset_manifest(manifest_path)
-    pipeline = OfflineStrategyPipelineInput(
-        pipeline_id=f"{pipeline_input.dataset_id}-OFFLINE-STRATEGY",
-        dataset_id=pipeline_input.dataset_id,
-        manifest=manifest,
-        requested_template_ids=resolved_template_ids,
-        asset_liquidity_profile=asset_liquidity_profile,
-        primary_walk_forward_mode=resolved_walk_forward_mode,
-        search_mode=str(search_mode or "BOUNDED_GRID").upper(),
-    )
-    if training_handoff_mode == "in_process":
-        pipeline = pipeline.model_copy(update={"manifest": capture_result.manifest})
+        if token_response.status not in {KiwoomOAuthStatus.TOKEN_ISSUED, KiwoomOAuthStatus.TOKEN_CACHE_HIT} or token_response.token_ref is None:
+            return False
+        auth_header = _read_bearer_header_from_token_ref(str(token_response.token_ref.token_ref_path))
+        token_ready = True
+        return True
+
+    specs_to_process = requested_specs
+    if max_symbols_per_run and max_symbols_per_run > 0:
+        specs_to_process = requested_specs[:max_symbols_per_run]
+        skipped_symbols.extend(spec.provider_symbol for spec in requested_specs[max_symbols_per_run:])
+
+    for index, spec in enumerate(specs_to_process):
+        if resume_from_capture_state and spec.provider_symbol in previous_completed:
+            skipped_completed.append(spec.provider_symbol)
+            rows, _meta = _load_cached_rows(pipeline_input, spec)
+            if rows:
+                aggregate_rows.extend(rows)
+                completed_symbols.append(spec.provider_symbol)
+                raw_lake_paths.append(str(_raw_lake_path(pipeline_input, spec)))
+                symbol_results.append(
+                    {
+                        "requested_symbol": spec.provider_symbol,
+                        "raw_lake_path": str(_raw_lake_path(pipeline_input, spec)),
+                        "provider_row_count": len(rows),
+                        "normalized_row_count": len(rows),
+                        "date_min": rows[0].observed_at.date().isoformat(),
+                        "date_max": rows[-1].observed_at.date().isoformat(),
+                        "status": "COMPLETED",
+                        "provider_return_code": None,
+                        "provider_return_msg": None,
+                    }
+                )
+            continue
+        if reuse_existing_raw_lake:
+            cached_rows, _meta = _load_cached_rows(pipeline_input, spec)
+            if cached_rows:
+                reused_from_cache.append(spec.provider_symbol)
+                aggregate_rows.extend(cached_rows)
+                completed_symbols.append(spec.provider_symbol)
+                raw_lake_paths.append(str(_raw_lake_path(pipeline_input, spec)))
+                symbol_results.append(
+                    {
+                        "requested_symbol": spec.provider_symbol,
+                        "raw_lake_path": str(_raw_lake_path(pipeline_input, spec)),
+                        "provider_row_count": len(cached_rows),
+                        "normalized_row_count": len(cached_rows),
+                        "date_min": cached_rows[0].observed_at.date().isoformat(),
+                        "date_max": cached_rows[-1].observed_at.date().isoformat(),
+                        "status": "COMPLETED",
+                        "provider_return_code": None,
+                        "provider_return_msg": "REUSED_FROM_CACHE",
+                    }
+                )
+                continue
+        if spec.provider_symbol in previous_partial or spec.provider_symbol in previous_failed:
+            retried.append(spec.provider_symbol)
+        if not ensure_token():
+            failed_symbols.append(spec.provider_symbol)
+            failed_again.append(spec.provider_symbol)
+            symbol_results.append(
+                {
+                    "requested_symbol": spec.provider_symbol,
+                    "raw_lake_path": str(_raw_lake_path(pipeline_input, spec)),
+                    "provider_row_count": 0,
+                    "normalized_row_count": 0,
+                    "date_min": None,
+                    "date_max": None,
+                    "status": "FAILED",
+                    "provider_return_code": oauth_summary.get("provider_return_code"),
+                    "provider_return_msg": oauth_summary.get("provider_return_msg"),
+                }
+            )
+            break
+        fetched_now.append(spec.provider_symbol)
+        single_pipeline = _build_single_symbol_pipeline(pipeline_input, spec)
+        capture_result = run_historical_market_data_real_capture(single_pipeline, transport=transport, auth_header=auth_header)
+        first_task = capture_result.task_results[0] if capture_result.task_results else None
+        rows: list[HistoricalOhlcvRow] = []
+        if capture_result.manifest and capture_result.manifest.ohlcv_rows_path:
+            rows = [
+                HistoricalOhlcvRow.model_validate(item)
+                for item in json.loads(Path(capture_result.manifest.ohlcv_rows_path).read_text(encoding="utf-8"))
+            ]
+        aggregate_rows.extend(rows)
+        last_provider_return_code = getattr(first_task, "provider_return_code", None)
+        last_provider_return_msg = getattr(first_task, "provider_return_msg", None)
+        limit_now = _provider_limit_hit(last_provider_return_code, last_provider_return_msg)
+        provider_limit_hit = provider_limit_hit or limit_now
+        if limit_now and rows:
+            partial_symbols.append(spec.provider_symbol)
+            status = "PARTIAL_CAPTURE_COMPLETED"
+        elif rows:
+            completed_symbols.append(spec.provider_symbol)
+            status = "COMPLETED"
+        else:
+            failed_symbols.append(spec.provider_symbol)
+            failed_again.append(spec.provider_symbol)
+            status = "FAILED"
+        raw_lake_path = _raw_lake_path(pipeline_input, spec)
+        if raw_lake_path.exists():
+            raw_lake_paths.append(str(raw_lake_path))
+        symbol_results.append(
+            {
+                "requested_symbol": spec.provider_symbol,
+                "raw_lake_path": str(raw_lake_path),
+                "provider_row_count": int(getattr(first_task, "row_count", 0) or 0),
+                "normalized_row_count": len(rows),
+                "date_min": rows[0].observed_at.date().isoformat() if rows else None,
+                "date_max": rows[-1].observed_at.date().isoformat() if rows else None,
+                "status": status,
+                "provider_return_code": last_provider_return_code,
+                "provider_return_msg": last_provider_return_msg,
+                "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
+                "last_next_key": getattr(first_task, "last_next_key", None),
+            }
+        )
+        capture_state = {
+            "run_id": f"{pipeline_input.dataset_id}-CAPTURE-STATE",
+            "api_id": requested_specs[0].api_id.value if requested_specs else "UNKNOWN",
+            "requested_symbols": [item.provider_symbol for item in requested_specs],
+            "completed_symbols": completed_symbols,
+            "partial_symbols": partial_symbols,
+            "failed_symbols": failed_symbols,
+            "skipped_symbols": skipped_symbols,
+            "per_symbol_status": symbol_results,
+            "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
+            "last_next_key": getattr(first_task, "last_next_key", None),
+            "raw_lake_paths": sorted(set(raw_lake_paths)),
+            "normalized_paths": [],
+            "provider_limit_hit": provider_limit_hit,
+            "last_provider_return_code": last_provider_return_code,
+            "last_provider_return_msg": last_provider_return_msg,
+            "can_resume": bool(provider_limit_hit or failed_symbols or partial_symbols or skipped_symbols),
+        }
+        can_resume = bool(capture_state["can_resume"])
+        _write_capture_state(state_path, capture_state)
+        if limit_now and stop_on_provider_limit:
+            skipped_symbols.extend(item.provider_symbol for item in specs_to_process[index + 1 :])
+            break
+        if symbol_sleep_seconds > 0 and index < len(specs_to_process) - 1:
+            time.sleep(symbol_sleep_seconds)
+
+    aggregate_rows.sort(key=lambda item: (item.instrument_id, item.observed_at))
+    manifest = None
+    if aggregate_rows:
+        manifest, _ = build_historical_ohlcv_dataset_manifest(pipeline_input, aggregate_rows)
+        capture_state = {
+            "run_id": f"{pipeline_input.dataset_id}-CAPTURE-STATE",
+            "api_id": requested_specs[0].api_id.value if requested_specs else "UNKNOWN",
+            "requested_symbols": [item.provider_symbol for item in requested_specs],
+            "completed_symbols": completed_symbols,
+            "partial_symbols": partial_symbols,
+            "failed_symbols": failed_symbols,
+            "skipped_symbols": skipped_symbols,
+            "per_symbol_status": symbol_results,
+            "last_successful_page": max((item.get("last_successful_page", 0) for item in symbol_results), default=0),
+            "last_next_key": next((item.get("last_next_key") for item in reversed(symbol_results) if item.get("last_next_key")), None),
+            "raw_lake_paths": sorted(set(raw_lake_paths)),
+            "normalized_paths": [path for path in [manifest.ohlcv_rows_path, manifest.manifest_path] if path],
+            "provider_limit_hit": provider_limit_hit,
+            "last_provider_return_code": last_provider_return_code,
+            "last_provider_return_msg": last_provider_return_msg,
+            "can_resume": bool(provider_limit_hit or failed_symbols or partial_symbols or skipped_symbols),
+        }
+        can_resume = bool(capture_state["can_resume"])
+        _write_capture_state(state_path, capture_state)
+
+    request_status = "CHART_ROWS_EXTRACTED" if aggregate_rows else "FAILED"
+    row_count = len(aggregate_rows)
+    chart_response_received = bool(symbol_results)
+    training_input_symbols = sorted({row.provider_symbol for row in aggregate_rows})
+    excluded_symbols = [item.provider_symbol for item in requested_specs if item.provider_symbol not in training_input_symbols]
+    exclusion_reasons = {
+        item["requested_symbol"]: ("PROVIDER_LIMIT_OR_NO_ROWS" if item["status"] != "COMPLETED" else "")
+        for item in symbol_results
+        if item["requested_symbol"] in excluded_symbols
+    }
+
+    training_started = False
+    training_completed = False
+    training_result = None
     output_root = validate_safe_local_root(training_output_root) / pipeline_input.dataset_id.lower()
     reports_dir = output_root / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
-    training_started = True
-    training_result = build_offline_strategy_pipeline(pipeline)
     training_plan_path = reports_dir / "offline_strategy_training_plan.json"
     promotion_gate_path = reports_dir / "offline_strategy_promotion_gate.json"
     summary_path = output_root / "capture_and_train_summary.json"
-    training_plan_path.write_text(training_result.training_plan.model_dump_json(indent=2), encoding="utf-8")
-    promotion_gate_path.write_text(
-        json.dumps([item.model_dump(mode="json") for item in training_result.promotion_decisions], indent=2),
-        encoding="utf-8",
+    manifest_path = Path(manifest.manifest_path) if manifest and manifest.manifest_path else None
+    manifest_reloaded = False
+    reloaded_manifest = None
+    if manifest_path and manifest_path.exists():
+        reloaded_manifest = load_historical_ohlcv_dataset_manifest(manifest_path)
+        manifest_reloaded = True
+
+    if aggregate_rows and (allow_training_on_partial_capture or not provider_limit_hit):
+        pipeline = OfflineStrategyPipelineInput(
+            pipeline_id=f"{pipeline_input.dataset_id}-OFFLINE-STRATEGY",
+            dataset_id=pipeline_input.dataset_id,
+            manifest=reloaded_manifest,
+            requested_template_ids=resolved_template_ids,
+            asset_liquidity_profile=asset_liquidity_profile,
+            primary_walk_forward_mode=resolved_walk_forward_mode,
+            search_mode=str(search_mode or "BOUNDED_GRID").upper(),
+        )
+        if training_handoff_mode == "in_process" and manifest is not None:
+            pipeline = pipeline.model_copy(update={"manifest": manifest})
+        training_started = True
+        training_result = build_offline_strategy_pipeline(pipeline)
+        training_completed = True
+        training_plan_path.write_text(training_result.training_plan.model_dump_json(indent=2), encoding="utf-8")
+        promotion_gate_path.write_text(json.dumps([item.model_dump(mode="json") for item in training_result.promotion_decisions], indent=2), encoding="utf-8")
+
+    candidate_count_by_family = (
+        dict(sorted(Counter(candidate.family.value for candidate in training_result.candidates).items()))
+        if training_result is not None
+        else {}
     )
-    raw_lake_paths = sorted(
-        str(Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json")
-        for spec in pipeline_input.request_specs
-        if (Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json").exists()
-    )
-    normalized_paths = [path for path in [manifest.ohlcv_rows_path, manifest.manifest_path] if path]
-    manifest_rows = [
-        HistoricalOhlcvRow.model_validate(item)
-        for item in json.loads(Path(manifest.ohlcv_rows_path).read_text(encoding="utf-8"))
-    ] if manifest.ohlcv_rows_path else []
-    symbol_results = _symbol_status_summary(pipeline_input, capture_result, manifest_rows)
-    candidate_count_by_family = dict(sorted(Counter(candidate.family.value for candidate in training_result.candidates).items()))
     generated_strategy_families = sorted(candidate_count_by_family)
-    completed_symbols = [item["requested_symbol"] for item in symbol_results if item["status"] == "COMPLETED"]
-    partial_symbols = [item["requested_symbol"] for item in symbol_results if item["status"] == "PARTIAL_CAPTURE_COMPLETED"]
-    failed_symbols = [item["requested_symbol"] for item in symbol_results if item["status"] == "FAILED"]
-    provider_limit_hit = any(item.get("provider_return_code") == 5 for item in symbol_results)
-    partial_capture = bool(partial_symbols)
+    all_symbols_completed = len(completed_symbols) >= len(requested_specs) and not partial_symbols and not failed_symbols
+    used_any_cache = bool(reused_from_cache or skipped_completed)
+    if not aggregate_rows:
+        top_status = "FAILED"
+    elif not training_completed:
+        top_status = "PARTIAL_CAPTURE_NO_TRAINING"
+    elif provider_limit_hit:
+        top_status = "COMPLETED_WITH_PROVIDER_LIMIT"
+    elif all_symbols_completed and used_any_cache:
+        top_status = "COMPLETED_WITH_CACHE"
+    else:
+        top_status = "COMPLETED"
+
     summary = {
-        "status": "COMPLETED_WITH_PROVIDER_LIMIT" if provider_limit_hit else "COMPLETED",
+        "status": top_status,
         "token_status": oauth_summary.get("token_status"),
-        "stage": "TRAINING_COMPLETED",
-        "kiwoom_environment": oauth_summary.get("kiwoom_environment", environment.value),
-        "endpoint_base_url": oauth_summary.get("endpoint_base_url"),
+        "stage": "TRAINING_COMPLETED" if training_completed else oauth_summary.get("stage", "CAPTURE_COMPLETED"),
+        "kiwoom_environment": environment.value,
+        "endpoint_base_url": oauth_summary.get("endpoint_base_url", _kiwoom_base_url(environment)),
         "endpoint_path": oauth_summary.get("endpoint_path"),
         "http_status_code": oauth_summary.get("http_status_code"),
-        "provider_return_code": getattr(first_task, "provider_return_code", None) or oauth_summary.get("provider_return_code"),
-        "provider_return_msg": getattr(first_task, "provider_return_msg", None) or oauth_summary.get("provider_return_msg"),
+        "provider_return_code": last_provider_return_code or oauth_summary.get("provider_return_code"),
+        "provider_return_msg": last_provider_return_msg or oauth_summary.get("provider_return_msg"),
         "transport_error_type": oauth_summary.get("transport_error_type"),
         "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
         "request_status": request_status,
@@ -399,28 +703,44 @@ def run_kiwoom_ka10081_capture_and_train(
         "fill_policy": str(fill_policy or "NEXT_BAR_CONSERVATIVE").upper(),
         "direction": resolved_direction.value,
         "token_written": bool(oauth_summary.get("token_written")),
-        "chart_request_started": True,
+        "chart_request_started": bool(fetched_now or token_ready),
         "chart_response_received": chart_response_received,
         "row_count": row_count,
         "provider_limit_hit": provider_limit_hit,
-        "partial_capture": partial_capture,
+        "partial_capture": bool(partial_symbols),
         "completed_symbols": completed_symbols,
         "partial_symbols": partial_symbols,
         "failed_symbols": failed_symbols,
+        "skipped_symbols": skipped_symbols,
         "symbol_results": symbol_results,
-        "manifest_written": True,
-        "manifest_path": str(manifest_path),
-        "manifest_id": manifest.manifest_id,
-        "manifest_reloaded": True,
-        "raw_lake_paths": raw_lake_paths,
-        "normalized_ohlcv_paths": normalized_paths,
+        "fetched_now": fetched_now,
+        "reused_from_cache": reused_from_cache,
+        "skipped_completed": skipped_completed,
+        "retried": retried,
+        "failed_again": failed_again,
+        "manifest_written": manifest is not None,
+        "manifest_path": str(manifest_path) if manifest_path else None,
+        "manifest_id": manifest.manifest_id if manifest else None,
+        "manifest_reloaded": manifest_reloaded,
+        "raw_lake_paths": sorted(set(raw_lake_paths)),
+        "normalized_ohlcv_paths": [path for path in ([manifest.ohlcv_rows_path, manifest.manifest_path] if manifest else []) if path],
         "training_started": training_started,
-        "training_completed": True,
+        "training_completed": training_completed,
+        "training_input_symbols": training_input_symbols,
+        "excluded_symbols": excluded_symbols,
+        "exclusion_reasons": exclusion_reasons,
         "offline_strategy_output_root": str(output_root),
-        "promotion_gate_output_path": str(promotion_gate_path),
-        "training_plan_output_path": str(training_plan_path),
-        "candidate_count": len(training_result.candidates),
-        "promotion_decision_count": len(training_result.promotion_decisions),
+        "promotion_gate_output_path": str(promotion_gate_path) if training_completed else None,
+        "training_plan_output_path": str(training_plan_path) if training_completed else None,
+        "candidate_count": len(training_result.candidates) if training_result is not None else 0,
+        "promotion_decision_count": len(training_result.promotion_decisions) if training_result is not None else 0,
+        "capture_state_path": str(state_path),
+        "can_resume": can_resume,
+        "request_sleep_seconds": request_sleep_seconds,
+        "symbol_sleep_seconds": symbol_sleep_seconds,
+        "max_symbols_per_run": max_symbols_per_run,
+        "stop_on_provider_limit": stop_on_provider_limit,
+        "allow_training_on_partial_capture": allow_training_on_partial_capture,
     }
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return summary

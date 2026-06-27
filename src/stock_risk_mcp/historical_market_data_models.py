@@ -322,6 +322,8 @@ class HistoricalChartCaptureRunTaskResult(_BaseSafety):
     provider_return_msg: str | None = None
     chart_response_received: bool = False
     row_count: int = Field(default=0, ge=0)
+    last_successful_page: int = Field(default=0, ge=0)
+    last_next_key: str | None = None
     blocked_reasons: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 

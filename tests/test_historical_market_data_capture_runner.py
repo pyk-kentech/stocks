@@ -6,7 +6,7 @@ from stock_risk_mcp.historical_market_data_capture_runner import run_historical_
 from stock_risk_mcp import historical_market_data_capture_runner as capture_runner_module
 from stock_risk_mcp import historical_market_data_guard as capture_guard_module
 from stock_risk_mcp import kiwoom_capture_and_train_runner as wrapper_module
-from stock_risk_mcp.historical_market_data_models import HistoricalMarketDataPipelineInput, HistoricalMarketDataTransportKind
+from stock_risk_mcp.historical_market_data_models import HistoricalChartRawResponse, HistoricalMarketDataPipelineInput, HistoricalMarketDataTransportKind
 from stock_risk_mcp.historical_market_data_transport import MockHistoricalMarketDataTransport, RealKiwoomChartTransport
 from stock_risk_mcp.kiwoom_oauth_models import KiwoomEnvironment, KiwoomOAuthStatus, KiwoomOAuthTokenIssueResponse, KiwoomOAuthTokenRef
 
@@ -124,6 +124,61 @@ def _fixture(tmp_path):
             ],
         }
     )
+
+
+def _token_ref_file(tmp_path: Path) -> Path:
+    token_store_root = tmp_path / "oauth_tokens"
+    token_store_root.mkdir(exist_ok=True)
+    token_ref_path = token_store_root / "mock_token.json"
+    token_ref_path.write_text(
+        """
+        {
+          "token": "REDACTED",
+          "token_type": "Bearer",
+          "expires_dt": "2099-01-01T00:00:00+00:00",
+          "issued_at": "2026-06-27T00:00:00+00:00",
+          "environment": "MOCK",
+          "credential_fingerprint_redacted": "sha256:fixture"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    return token_ref_path
+
+
+def _cached_raw_lake_file(tmp_path: Path, fixture: HistoricalMarketDataPipelineInput, symbol: str) -> Path:
+    spec = next(item for item in fixture.request_specs if item.provider_symbol == symbol)
+    raw_path = Path(fixture.raw_lake_root) / f"{spec.request_id.lower()}-response.json"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    response = HistoricalChartRawResponse.model_validate(
+        {
+            "response_id": f"{spec.request_id}-RESPONSE",
+            "request_id": spec.request_id,
+            "api_id": spec.api_id.value,
+            "provider": "KIWOOM_REST",
+            "provider_symbol": symbol,
+            "canonical_instrument_id": symbol,
+            "imported_at": "2026-06-27T00:00:00+09:00",
+            "available_at": "2026-06-27T00:00:00+09:00",
+            "source_kind": "RAW_LAKE_RECORD",
+            "source_ref": f"{spec.request_id}.json",
+            "cont_yn": "N",
+            "next_key": "",
+            "payload_summary": {"return_code": 0, "row_count": 2},
+            "raw_payload": {
+                "_capture_meta": {"row_count": 2},
+                "return_code": 0,
+                "return_msg": "OK",
+                "stk_cd": symbol,
+                "stk_dt_pole_chart_qry": [
+                    {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
+                    {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"},
+                ],
+            },
+        }
+    )
+    raw_path.write_text(response.model_dump_json(indent=2), encoding="utf-8")
+    return raw_path
 
 
 def test_historical_market_data_capture_runner_returns_provider_empty_response(tmp_path) -> None:
@@ -596,3 +651,133 @@ def test_capture_and_train_wrapper_reports_partial_provider_limit(tmp_path, monk
     assert result["partial_capture"] is True
     assert result["partial_symbols"] == ["005930"]
     assert result["completed_symbols"] == []
+    assert Path(result["capture_state_path"]).exists()
+    state = json.loads(Path(result["capture_state_path"]).read_text(encoding="utf-8"))
+    assert state["provider_limit_hit"] is True
+    assert state["partial_symbols"] == ["005930"]
+    dumped = json.dumps(state, ensure_ascii=False).lower()
+    assert "secretkey" not in dumped
+    assert "authorization" not in dumped
+    assert "\"token\"" not in dumped
+
+
+def test_capture_and_train_wrapper_reuses_existing_raw_lake_without_provider_call(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path)
+    _cached_raw_lake_file(tmp_path, fixture, "005930")
+    called = {"value": False}
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            del preview, auth_header
+            called["value"] = True
+            return {}
+
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "COMPLETED_WITH_CACHE"
+    assert result["reused_from_cache"] == ["005930"]
+    assert result["fetched_now"] == []
+    assert called["value"] is False
+
+
+def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "dataset_id": "historical-market-data-ka10081-multi-2",
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                )
+            ],
+        }
+    )
+    _cached_raw_lake_file(tmp_path, fixture, "005930")
+    state_path = tmp_path / "resume_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "completed_symbols": ["005930"],
+                "partial_symbols": [],
+                "failed_symbols": ["000660"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    token_ref_path = _token_ref_file(tmp_path)
+    seen_symbols: list[str] = []
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            seen_symbols.append(preview.body_json["stk_cd"])
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {
+                    "return_code": 0,
+                    "return_msg": "OK",
+                    "stk_cd": preview.body_json["stk_cd"],
+                    "stk_dt_pole_chart_qry": [
+                        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
+                        {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"},
+                    ],
+                },
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        resume_from_capture_state=str(state_path),
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["skipped_completed"] == ["005930"]
+    assert result["retried"] == ["000660"]
+    assert seen_symbols == ["000660"]
+    assert sorted(result["training_input_symbols"]) == ["000660", "005930"]
