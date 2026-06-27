@@ -378,6 +378,69 @@ def _merge_ohlcv_rows(existing_rows: list[HistoricalOhlcvRow], new_rows: list[Hi
     return sorted(merged.values(), key=lambda item: (item.instrument_id, item.observed_at))
 
 
+def _score_ranking_row(
+    *,
+    actual_trade_count: int,
+    signal_count_before_filters: int,
+    rejection_reason_count: int,
+    profit_factor: float | None,
+    max_drawdown: float | None,
+) -> float:
+    return (
+        float(actual_trade_count) * 100.0
+        + float(signal_count_before_filters) * 1.0
+        - float(rejection_reason_count) * 10.0
+        + float(profit_factor or 0.0) * 5.0
+        - float(max_drawdown or 0.0) * 100.0
+    )
+
+
+def _build_symbol_family_ranking_rows(
+    *,
+    training_symbols: list[str],
+    training_result,
+    symbol_results: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    if training_result is None:
+        return []
+    coverage_by_symbol = {item["requested_symbol"]: item for item in symbol_results}
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in training_result.candidates}
+    metrics_by_id = {metric.candidate_id: metric for metric in training_result.metric_summaries}
+    rows: list[dict[str, object]] = []
+    for decision in training_result.promotion_decisions:
+        candidate = candidates_by_id.get(decision.candidate_id)
+        metric = metrics_by_id.get(decision.candidate_id)
+        diagnostics = dict(decision.diagnostics or {})
+        for symbol in training_symbols or [None]:
+            coverage = coverage_by_symbol.get(symbol) if symbol else None
+            row = {
+                "symbol": symbol,
+                "strategy_family": decision.family.value,
+                "internal_family": candidate.family.value if candidate is not None else decision.family.value,
+                "candidate_id": decision.candidate_id,
+                "promotion_status": decision.status.value,
+                "rejection_reasons": list(decision.reasons),
+                "actual_trade_count": int(diagnostics.get("actual_trade_count") or (metric.trade_count if metric else 0) or 0),
+                "signal_count_before_filters": int(diagnostics.get("signal_count_before_filters") or 0),
+                "entry_signal_count": int(diagnostics.get("entry_signal_count") or 0),
+                "exit_signal_count": int(diagnostics.get("exit_signal_count") or 0),
+                "profit_factor": float(metric.profit_factor) if metric is not None else None,
+                "win_rate": float(metric.win_rate) if metric is not None else None,
+                "max_drawdown": float(metric.max_drawdown) if metric is not None else None,
+                "coverage_status": coverage.get("status") if coverage else None,
+                "coverage_basis": coverage.get("coverage_basis") if coverage else None,
+            }
+            row["score"] = _score_ranking_row(
+                actual_trade_count=row["actual_trade_count"],
+                signal_count_before_filters=row["signal_count_before_filters"],
+                rejection_reason_count=len(row["rejection_reasons"]),
+                profit_factor=row["profit_factor"],
+                max_drawdown=row["max_drawdown"],
+            )
+            rows.append(row)
+    return sorted(rows, key=lambda item: (-float(item["score"]), item["candidate_id"], str(item.get("symbol") or "")))
+
+
 def _load_cached_rows(
     pipeline_input: HistoricalMarketDataPipelineInput,
     spec: HistoricalChartRequestSpec,
@@ -948,6 +1011,7 @@ def run_kiwoom_ka10081_capture_and_train(
         raw_lake_path = _raw_lake_path(pipeline_input, spec)
         if raw_lake_path.exists():
             raw_lake_paths.append(str(raw_lake_path))
+        direct_coverage = _build_cache_coverage_summary(spec, rows) if rows else {}
         symbol_results.append(
             {
                 "requested_symbol": spec.provider_symbol,
@@ -967,18 +1031,33 @@ def run_kiwoom_ka10081_capture_and_train(
                 "backfill_attempted": False,
                 "backfill_status": "NOT_REQUIRED",
                 "post_backfill_coverage_status": "FULL_TRADING_COVERAGE" if rows else "FAILED",
-                "cache_found": False,
-                "cache_reused": False,
-                "cache_coverage_status": "NOT_USED",
-                "requested_date_min": _iso_date_or_none(spec.start_at),
-                "requested_date_max": _iso_date_or_none(spec.end_at),
-                "cached_date_min": None,
-                "cached_date_max": None,
-                "leading_gap_days": None,
-                "trailing_gap_days": None,
-                "coverage_ratio": None,
-                "cache_reuse_reason": None,
-                "cache_reuse_warning": None,
+                **(
+                    direct_coverage
+                    if rows
+                    else {
+                        "cache_found": False,
+                        "cache_reused": False,
+                        "cache_coverage_status": "NOT_USED",
+                        "requested_date_min": _iso_date_or_none(spec.start_at),
+                        "requested_date_max": _iso_date_or_none(spec.end_at),
+                        "effective_requested_trading_date_min": None,
+                        "effective_requested_trading_date_max": None,
+                        "cached_date_min": None,
+                        "cached_date_max": None,
+                        "calendar_leading_gap_days": None,
+                        "calendar_trailing_gap_days": None,
+                        "trading_leading_gap_days": None,
+                        "trading_trailing_gap_days": None,
+                        "leading_gap_days": None,
+                        "trailing_gap_days": None,
+                        "calendar_coverage_ratio": None,
+                        "trading_coverage_ratio": None,
+                        "coverage_ratio": None,
+                        "coverage_basis": None,
+                        "cache_reuse_reason": None,
+                        "cache_reuse_warning": None,
+                    }
+                ),
             }
         )
         capture_state = {
@@ -1151,6 +1230,25 @@ def run_kiwoom_ka10081_capture_and_train(
         else {}
     )
     generated_strategy_families = sorted(candidate_count_by_family)
+    ranking_report_rows = _build_symbol_family_ranking_rows(
+        training_symbols=training_input_symbols,
+        training_result=training_result,
+        symbol_results=symbol_results,
+    )
+    ranking_report_path = reports_dir / "offline_strategy_symbol_family_ranking.json"
+    ranking_report_payload = {
+        "dataset_id": pipeline_input.dataset_id,
+        "dataset_symbols": sorted({item.provider_symbol for item in requested_specs}),
+        "requested_strategy_families": family_resolution["requested_strategy_families"],
+        "supported_strategy_families": family_resolution["supported_strategy_families"],
+        "unsupported_strategy_families": family_resolution["unsupported_strategy_families"],
+        "skipped_strategy_families": family_resolution["skipped_strategy_families"],
+        "generated_strategy_families": generated_strategy_families,
+        "candidate_count_by_family": candidate_count_by_family,
+        "rows": ranking_report_rows,
+    }
+    if training_result is not None:
+        ranking_report_path.write_text(json.dumps(ranking_report_payload, indent=2, ensure_ascii=False), encoding="utf-8")
     all_symbols_completed = len(completed_symbols) >= len(requested_specs) and not partial_symbols and not failed_symbols
     used_any_cache = bool(reused_from_cache or skipped_completed)
     if not aggregate_rows:
@@ -1176,6 +1274,8 @@ def run_kiwoom_ka10081_capture_and_train(
 
     summary = {
         "status": top_status,
+        "dataset_id": pipeline_input.dataset_id,
+        "dataset_symbols": sorted({item.provider_symbol for item in requested_specs}),
         "token_status": oauth_summary.get("token_status"),
         "stage": "TRAINING_COMPLETED" if training_completed else oauth_summary.get("stage", "CAPTURE_COMPLETED"),
         "kiwoom_environment": environment.value,
@@ -1218,8 +1318,21 @@ def run_kiwoom_ka10081_capture_and_train(
         "partial_coverage_symbols": partial_coverage_symbols,
         "gap_symbols": gap_symbols,
         "symbol_results": symbol_results,
+        "per_symbol_row_count": {item["requested_symbol"]: item["normalized_row_count"] for item in symbol_results},
+        "per_symbol_date_min": {item["requested_symbol"]: item["date_min"] for item in symbol_results},
+        "per_symbol_date_max": {item["requested_symbol"]: item["date_max"] for item in symbol_results},
+        "per_symbol_coverage_status": {
+            item["requested_symbol"]: (
+                item.get("cache_coverage_status")
+                if item.get("cache_coverage_status") not in {None, "NOT_USED"}
+                else item.get("post_backfill_coverage_status") or item["status"]
+            )
+            for item in symbol_results
+        },
+        "per_symbol_coverage_basis": {item["requested_symbol"]: item.get("coverage_basis") for item in symbol_results},
         "fetched_now": fetched_now,
         "reused_from_cache": reused_from_cache,
+        "backfilled_symbols": sorted(set(backfill_completed_symbols + backfill_partial_symbols)),
         "skipped_completed": skipped_completed,
         "retried": retried,
         "failed_again": failed_again,
@@ -1247,6 +1360,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "offline_strategy_output_root": str(output_root),
         "promotion_gate_output_path": str(promotion_gate_path) if training_completed else None,
         "training_plan_output_path": str(training_plan_path) if training_completed else None,
+        "ranking_report_path": str(ranking_report_path) if training_result is not None else None,
         "candidate_count": len(training_result.candidates) if training_result is not None else 0,
         "promotion_decision_count": len(training_result.promotion_decisions) if training_result is not None else 0,
         "capture_state_path": str(state_path),

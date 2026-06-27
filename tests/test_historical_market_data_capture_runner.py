@@ -7,6 +7,7 @@ from stock_risk_mcp.historical_market_data_capture_runner import run_historical_
 from stock_risk_mcp import historical_market_data_capture_runner as capture_runner_module
 from stock_risk_mcp import historical_market_data_guard as capture_guard_module
 from stock_risk_mcp import kiwoom_capture_and_train_runner as wrapper_module
+from stock_risk_mcp import kiwoom_watchlist_batch_runner as batch_runner_module
 from stock_risk_mcp.historical_market_data_models import HistoricalChartRawResponse, HistoricalMarketDataPipelineInput, HistoricalMarketDataTransportKind
 from stock_risk_mcp.historical_market_data_transport import MockHistoricalMarketDataTransport, RealKiwoomChartTransport
 from stock_risk_mcp.kiwoom_oauth_models import KiwoomEnvironment, KiwoomOAuthStatus, KiwoomOAuthTokenIssueResponse, KiwoomOAuthTokenRef
@@ -705,6 +706,7 @@ def test_capture_and_train_wrapper_reuses_existing_raw_lake_without_provider_cal
     assert result["symbols_with_full_coverage"] == ["005930"]
     assert result["cache_coverage_gaps"] == []
     assert result["training_input_coverage_by_symbol"]["005930"] == "REUSED_FROM_CACHE_COMPLETED"
+    assert Path(result["ranking_report_path"]).exists()
 
 
 def test_capture_and_train_wrapper_partial_cache_is_not_completed_and_reports_coverage_gap(tmp_path, monkeypatch) -> None:
@@ -1114,6 +1116,105 @@ def test_actual_weekday_gap_remains_trading_coverage_gap(tmp_path, monkeypatch) 
     )
     assert result["symbol_results"][0]["cache_coverage_status"] == "TRADING_COVERAGE_GAP"
     assert result["symbol_results"][0]["trading_leading_gap_days"] == 1
+
+
+def test_watchlist_txt_csv_json_parsing_and_merge(tmp_path) -> None:
+    txt_path = tmp_path / "symbols.txt"
+    txt_path.write_text("005930\n000660\n", encoding="utf-8")
+    csv_path = tmp_path / "symbols.csv"
+    csv_path.write_text("symbol,name,sector,priority\n035420,NAVER,IT,1\n005930,Samsung,Tech,2\n", encoding="utf-8")
+    json_path = tmp_path / "symbols.json"
+    json_path.write_text(json.dumps(["051910", {"symbol": "035720", "name": "Kakao"}]), encoding="utf-8")
+    txt_entries = batch_runner_module.load_watchlist_symbols(str(txt_path))
+    csv_entries = batch_runner_module.load_watchlist_symbols(str(csv_path))
+    json_entries = batch_runner_module.load_watchlist_symbols(str(json_path))
+    merged = batch_runner_module.merge_symbol_sources(["000660", "035420"], txt_entries + csv_entries + json_entries)
+    assert [item["symbol"] for item in txt_entries] == ["005930", "000660"]
+    assert [item["symbol"] for item in csv_entries] == ["035420", "005930"]
+    assert [item["symbol"] for item in json_entries] == ["051910", "035720"]
+    assert merged == ["000660", "035420", "005930", "051910", "035720"]
+
+
+def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                ),
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-035420-TEST", "provider_symbol": "035420", "canonical_instrument_id": "035420"}
+                ),
+            ]
+        }
+    )
+
+    def fake_run(_pipeline, **kwargs):
+        del kwargs
+        return {
+            "status": "COMPLETED_WITH_PROVIDER_LIMIT",
+            "provider_limit_hit": True,
+            "can_resume": True,
+            "capture_state_path": str(tmp_path / "state.json"),
+            "capture_state_root": str(tmp_path),
+            "dataset_id": _pipeline.dataset_id,
+            "dataset_symbols": [spec.provider_symbol for spec in _pipeline.request_specs],
+            "completed_symbols": [_pipeline.request_specs[0].provider_symbol],
+            "partial_symbols": [],
+            "failed_symbols": [],
+            "skipped_symbols": [],
+            "reused_from_cache": [],
+            "fetched_now": [_pipeline.request_specs[0].provider_symbol],
+            "backfilled_symbols": [],
+            "manifest_path": "manifest.json",
+            "per_symbol_row_count": {_pipeline.request_specs[0].provider_symbol: 10},
+            "per_symbol_date_min": {_pipeline.request_specs[0].provider_symbol: "2020-01-02"},
+            "per_symbol_date_max": {_pipeline.request_specs[0].provider_symbol: "2026-06-26"},
+            "per_symbol_coverage_status": {_pipeline.request_specs[0].provider_symbol: "FULL_TRADING_COVERAGE"},
+            "per_symbol_coverage_basis": {_pipeline.request_specs[0].provider_symbol: "TRADING_DAYS"},
+            "excluded_symbols": [],
+            "exclusion_reasons": {},
+        }
+
+    monkeypatch.setattr(batch_runner_module, "run_kiwoom_ka10081_capture_and_train", fake_run)
+    result = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
+        fixture,
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "offline"),
+        training_handoff_mode="persisted_manifest",
+        requested_template_ids=[],
+        asset_liquidity_profile="LARGE_CAP",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+        walk_forward_mode="ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="CONSERVERVATIVE_NEXT_BAR_FILL",
+        direction="LONG_ONLY",
+        request_sleep_seconds=0.25,
+        symbol_sleep_seconds=0.5,
+        max_symbols_per_run=0,
+        stop_on_provider_limit=True,
+        resume_from_capture_state=None,
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=None,
+        prefer_full_coverage_training=True,
+        symbols=["005930", "000660", "035420"],
+        symbols_file="examples/kiwoom_watchlist_sample.txt",
+        batch_size=2,
+        batch_index=1,
+        max_batches=None,
+        resume_all=False,
+        capture_state_root=str(tmp_path / "capture_state"),
+    )
+    assert result["total_requested_symbols"] == 3
+    assert result["batch_size"] == 2
+    assert result["batch_index"] == 1
+    assert result["batch_symbols"] == ["005930", "000660"]
+    assert "resume-from-capture-state" in result["next_resume_command"]
 
 
 def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:

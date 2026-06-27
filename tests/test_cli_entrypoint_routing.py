@@ -58,6 +58,12 @@ def test_kiwoom_capture_and_train_help_uses_command_router() -> None:
     assert "--backfill-cache-gaps" in result.stdout
     assert "--max-backfill-pages-per-symbol" in result.stdout
     assert "--prefer-full-coverage-training" in result.stdout
+    assert "--symbols-file" in result.stdout
+    assert "--batch-size" in result.stdout
+    assert "--batch-index" in result.stdout
+    assert "--max-batches" in result.stdout
+    assert "--resume-all" in result.stdout
+    assert "--capture-state-root" in result.stdout
     assert "--strategy-families" in result.stdout
     assert "--search-mode" in result.stdout
     assert "--walk-forward-mode" in result.stdout

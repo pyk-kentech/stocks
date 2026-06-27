@@ -62,6 +62,11 @@ from stock_risk_mcp.kiwoom_capture_and_train_runner import (
     run_historical_market_data_real_capture_and_manifest,
     run_kiwoom_ka10081_capture_and_train,
 )
+from stock_risk_mcp.kiwoom_watchlist_batch_runner import (
+    load_watchlist_symbols,
+    merge_symbol_sources,
+    run_kiwoom_watchlist_capture_and_train,
+)
 from stock_risk_mcp.kiwoom_oauth_engine import build_kiwoom_oauth_preflight, build_kiwoom_oauth_request, issue_kiwoom_oauth_token
 from stock_risk_mcp.kiwoom_oauth_models import KiwoomCredentialRef as KiwoomOAuthCredentialRef, KiwoomEnvironment as KiwoomOAuthEnvironment
 from stock_risk_mcp.kiwoom_official_manifest_validator import validate_kiwoom_official_manifest
@@ -995,7 +1000,8 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_real_capture_preflight = subparsers.add_parser("historical-market-data-real-capture-preflight-report")
     historical_market_data_real_capture_preflight.add_argument("--provider", default="kiwoom")
     historical_market_data_real_capture_preflight.add_argument("--api-id", required=True)
-    historical_market_data_real_capture_preflight.add_argument("--symbols", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--symbols")
+    historical_market_data_real_capture_preflight.add_argument("--symbols-file")
     historical_market_data_real_capture_preflight.add_argument("--start-date", required=True)
     historical_market_data_real_capture_preflight.add_argument("--end-date", required=True)
     historical_market_data_real_capture_preflight.add_argument("--upd-stkpc-tp", default="1")
@@ -1012,6 +1018,11 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_real_capture_preflight.add_argument("--reuse-existing-raw-lake", action="store_true")
     historical_market_data_real_capture_preflight.add_argument("--backfill-cache-gaps", action=argparse.BooleanOptionalAction, default=False)
     historical_market_data_real_capture_preflight.add_argument("--max-backfill-pages-per-symbol", type=int)
+    historical_market_data_real_capture_preflight.add_argument("--batch-size", type=int, default=0)
+    historical_market_data_real_capture_preflight.add_argument("--batch-index", type=int, default=1)
+    historical_market_data_real_capture_preflight.add_argument("--max-batches", type=int)
+    historical_market_data_real_capture_preflight.add_argument("--resume-all", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--capture-state-root")
     historical_market_data_real_capture_preflight.add_argument("--credential-ref")
     historical_market_data_real_capture_preflight.add_argument("--allow-real-chart-capture", action="store_true")
     historical_market_data_real_capture_preflight.add_argument("--acknowledge-readonly-only", action="store_true")
@@ -4347,8 +4358,8 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
     if args.command == "kiwoom-ka10081-capture-and-train-run":
         try:
             pipeline = _build_historical_market_data_real_capture_input(args)
-            result = run_kiwoom_ka10081_capture_and_train(
-                pipeline,
+            resolved_symbols = [spec.provider_symbol for spec in pipeline.request_specs]
+            runner_kwargs = dict(
                 environment=KiwoomOAuthEnvironment(str(args.kiwoom_environment).upper()),
                 token_store_root=str(args.token_store_root),
                 training_output_root=str(args.training_output_root),
@@ -4372,6 +4383,23 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 max_backfill_pages_per_symbol=args.max_backfill_pages_per_symbol,
                 prefer_full_coverage_training=bool(args.prefer_full_coverage_training),
             )
+            if args.symbols_file or int(args.batch_size or 0) > 0 or args.resume_all or args.capture_state_root or args.max_batches:
+                result = run_kiwoom_watchlist_capture_and_train(
+                    pipeline,
+                    symbols=resolved_symbols,
+                    symbols_file=str(args.symbols_file) if args.symbols_file else None,
+                    batch_size=int(args.batch_size or 0),
+                    batch_index=int(args.batch_index or 1),
+                    max_batches=args.max_batches,
+                    resume_all=bool(args.resume_all),
+                    capture_state_root=str(args.capture_state_root) if args.capture_state_root else None,
+                    **runner_kwargs,
+                )
+            else:
+                result = run_kiwoom_ka10081_capture_and_train(
+                    pipeline,
+                    **runner_kwargs,
+                )
             if args.output_file:
                 result["output_file"] = str(args.output_file)
                 _write_cli_payload_if_requested(args.output_file, result)
@@ -9307,7 +9335,11 @@ def _build_offline_strategy_research_readiness_report(fixture_file: Path) -> dic
 
 
 def _build_historical_market_data_real_capture_input(args):
-    symbols = [item.strip().upper() for item in str(args.symbols).split(",") if item.strip()]
+    explicit_symbols = [item.strip().upper() for item in str(getattr(args, "symbols", "") or "").split(",") if item.strip()]
+    file_entries = load_watchlist_symbols(str(getattr(args, "symbols_file", "") or "") or None)
+    symbols = merge_symbol_sources(explicit_symbols, file_entries)
+    if not symbols:
+        raise ValueError("at least one symbol is required via --symbols or --symbols-file")
     dataset_suffix = symbols[0] if len(symbols) == 1 else f"MULTI-{len(symbols)}"
     request_specs = []
     for symbol in symbols:
