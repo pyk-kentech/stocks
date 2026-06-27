@@ -10,8 +10,13 @@ def load_historical_market_data_credential_ref(ref: HistoricalMarketDataCredenti
     if is_pytest_runtime():
         raise ValueError("credential refs must not be read in pytest")
     validate_no_sensitive_markers(ref.credential_ref_id, context="credential_ref_id")
-    appkey_path = Path(ref.appkey_ref_path).expanduser().resolve()
-    secretkey_path = Path(ref.secretkey_ref_path).expanduser().resolve()
+    if ref.credential_ref_dir:
+        base = Path(ref.credential_ref_dir).expanduser().resolve()
+        appkey_path = base / "66787923_appkey.txt"
+        secretkey_path = base / "66787923_secretkey.txt"
+    else:
+        appkey_path = Path(ref.appkey_ref_path).expanduser().resolve()
+        secretkey_path = Path(ref.secretkey_ref_path).expanduser().resolve()
     appkey = appkey_path.read_text(encoding="utf-8").strip()
     secretkey = secretkey_path.read_text(encoding="utf-8").strip()
     if not appkey or not secretkey:

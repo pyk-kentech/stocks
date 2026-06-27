@@ -4,7 +4,7 @@ from datetime import datetime
 
 from stock_risk_mcp.historical_market_data_capture_plan_engine import build_historical_chart_capture_plan
 from stock_risk_mcp.historical_market_data_coverage_engine import build_historical_market_data_coverage
-from stock_risk_mcp.historical_market_data_credential_ref import load_historical_market_data_credential_ref, redact_credential_ref_summary
+from stock_risk_mcp.historical_market_data_credential_ref import redact_credential_ref_summary
 from stock_risk_mcp.historical_market_data_guard import (
     is_pytest_runtime,
     validate_no_sensitive_markers,
@@ -29,15 +29,10 @@ from stock_risk_mcp.historical_market_data_models import (
     HistoricalMarketDataRedactionStatus,
     HistoricalMarketDataSafetyReport,
 )
-from stock_risk_mcp.historical_market_data_normalizer import normalize_historical_ohlcv_rows
+from stock_risk_mcp.historical_market_data_normalizer import classify_chart_payload, normalize_historical_ohlcv_rows
 from stock_risk_mcp.historical_market_data_raw_lake import persist_historical_chart_raw_lake
-from stock_risk_mcp.historical_market_data_real_capture import build_blocked_capture_run_result
+from stock_risk_mcp.historical_market_data_real_capture import build_blocked_capture_run_result, build_capture_run_result_with_status
 from stock_risk_mcp.historical_market_data_transport import HistoricalMarketDataTransport
-
-
-def _auth_header(appkey: str, secretkey: str) -> str:
-    # Never persist or print the raw value. This exists only in-memory for request execution.
-    return f"Bearer {appkey[:4]}{secretkey[:4]}<REDACTED>"
 
 
 def _build_response(task, body_json: dict[str, object]) -> HistoricalChartRawResponse:
@@ -119,14 +114,20 @@ def run_historical_market_data_real_capture(
         )
 
     if transport.transport_kind == "REAL_KIWOOM_CHART":
-        appkey, secretkey = load_historical_market_data_credential_ref(real_capture_config.credential_ref)
-        auth_header = _auth_header(appkey, secretkey)
-        credential_ref_present = True
+        return build_capture_run_result_with_status(
+            pipeline_input.dataset_id,
+            readiness_status=HistoricalMarketDataReadinessStatus.BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED,
+            blocked_reasons=["BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED"],
+            transport_kind=transport.transport_kind,
+            credential_ref_present=bool(real_capture_config and real_capture_config.credential_ref),
+        )
     else:
         auth_header = "Bearer <MOCK_ONLY>"
         credential_ref_present = bool(real_capture_config.credential_ref)
     raw_responses: list[HistoricalChartRawResponse] = []
+    valid_raw_responses: list[HistoricalChartRawResponse] = []
     task_results: list[HistoricalChartCaptureRunTaskResult] = []
+    final_status = HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED
     for task in capture_plan.tasks[: real_capture_config.max_request_count]:
         if task.execution_decision != HistoricalChartCaptureDecision.ALLOWED:
             task_results.append(
@@ -140,13 +141,28 @@ def run_historical_market_data_real_capture(
             continue
         page_count = 0
         body_json: dict[str, object] = {}
+        task_status = HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED
+        task_errors: list[str] = []
         try:
             while True:
                 page_count += 1
                 response = transport.execute(task.request_preview, auth_header=auth_header)
                 body_json = dict(response.get("body_json") or {})
-                raw_responses.append(_build_response(task, body_json))
                 cont_yn = str(body_json.get("cont_yn") or body_json.get("cont-yn") or body_json.get("contYn") or "N").upper()
+                task_status = HistoricalMarketDataReadinessStatus(classify_chart_payload(task.request_spec.api_id, body_json))
+                if task_status == HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED:
+                    built_response = _build_response(task, body_json)
+                    raw_responses.append(built_response)
+                    valid_raw_responses.append(built_response)
+                elif task_status == HistoricalMarketDataReadinessStatus.BLOCKED_AUTH_OR_TOKEN:
+                    task_errors.append("provider returned auth or token error")
+                    break
+                elif task_status == HistoricalMarketDataReadinessStatus.PROVIDER_EMPTY_RESPONSE:
+                    task_errors.append("provider returned no chart rows")
+                    break
+                else:
+                    task_errors.append("chart row schema not implemented or not recognized")
+                    break
                 if cont_yn != "Y" or page_count >= real_capture_config.max_continuation_pages:
                     break
         except Exception as exc:
@@ -156,6 +172,19 @@ def run_historical_market_data_real_capture(
                     request_id=task.request_spec.request_id,
                     execution_decision=HistoricalChartCaptureDecision.BLOCKED,
                     errors=[str(exc)],
+                )
+            )
+            continue
+        if task_status != HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED:
+            final_status = task_status
+            task_results.append(
+                HistoricalChartCaptureRunTaskResult(
+                    task_id=task.task_id,
+                    request_id=task.request_spec.request_id,
+                    execution_decision=HistoricalChartCaptureDecision.BLOCKED,
+                    page_count=page_count,
+                    blocked_reasons=[task_status.value],
+                    errors=task_errors,
                 )
             )
             continue
@@ -170,10 +199,19 @@ def run_historical_market_data_real_capture(
             )
         )
 
-    raw_lake_records = persist_historical_chart_raw_lake(pipeline_input, raw_responses)
-    ohlcv_rows = normalize_historical_ohlcv_rows(pipeline_input.dataset_id, raw_responses) if raw_responses else []
+    if not valid_raw_responses and final_status != HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED:
+        return build_capture_run_result_with_status(
+            pipeline_input.dataset_id,
+            readiness_status=final_status,
+            blocked_reasons=[final_status.value],
+            transport_kind=transport.transport_kind,
+            credential_ref_present=credential_ref_present,
+        )
+
+    raw_lake_records = persist_historical_chart_raw_lake(pipeline_input, valid_raw_responses)
+    ohlcv_rows = normalize_historical_ohlcv_rows(pipeline_input.dataset_id, valid_raw_responses) if valid_raw_responses else []
     coverage_report, freshness_report, completeness_report, gap_report = build_historical_market_data_coverage(
-        pipeline_input.dataset_id, raw_responses, ohlcv_rows
+        pipeline_input.dataset_id, valid_raw_responses, ohlcv_rows
     )
     manifest, _price_history_rows = build_historical_ohlcv_dataset_manifest(pipeline_input, ohlcv_rows)
     for result in task_results:
@@ -192,7 +230,7 @@ def run_historical_market_data_real_capture(
     safety_summary = redact_credential_ref_summary(real_capture_config.credential_ref if credential_ref_present else None)
     safety_report = HistoricalMarketDataSafetyReport(
         report_id=f"{pipeline_input.dataset_id}-REAL-CAPTURE-SAFETY-REPORT",
-        readiness_status=HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED if raw_responses else HistoricalMarketDataReadinessStatus.DATA_GAP,
+        readiness_status=HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED if valid_raw_responses else HistoricalMarketDataReadinessStatus.DATA_GAP,
         findings=[
             "real chart capture is explicit opt-in only",
             "raw lake remains redacted",
@@ -205,9 +243,9 @@ def run_historical_market_data_real_capture(
     return HistoricalChartCaptureRunResult(
         run_id=f"{pipeline_input.dataset_id}-REAL-CAPTURE-RUN",
         dataset_id=pipeline_input.dataset_id,
-        readiness_status=HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED if raw_responses else HistoricalMarketDataReadinessStatus.DATA_GAP,
+        readiness_status=HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED if valid_raw_responses else HistoricalMarketDataReadinessStatus.DATA_GAP,
         task_results=task_results,
-        raw_response_count=len(raw_responses),
+        raw_response_count=len(valid_raw_responses),
         normalized_row_count=len(ohlcv_rows),
         manifest=manifest,
         coverage_report=coverage_report,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from stock_risk_mcp.historical_market_data_models import (
+    HistoricalChartCaptureDecision,
     HistoricalChartCaptureRunAudit,
     HistoricalChartCaptureRunResult,
     HistoricalChartCaptureRunTaskResult,
@@ -18,6 +19,23 @@ def build_blocked_capture_run_result(
     transport_kind: HistoricalMarketDataTransportKind,
     credential_ref_present: bool,
 ) -> HistoricalChartCaptureRunResult:
+    return build_capture_run_result_with_status(
+        dataset_id,
+        readiness_status=HistoricalMarketDataReadinessStatus.BLOCKED,
+        blocked_reasons=blocked_reasons,
+        transport_kind=transport_kind,
+        credential_ref_present=credential_ref_present,
+    )
+
+
+def build_capture_run_result_with_status(
+    dataset_id: str,
+    *,
+    readiness_status: HistoricalMarketDataReadinessStatus,
+    blocked_reasons: list[str],
+    transport_kind: HistoricalMarketDataTransportKind,
+    credential_ref_present: bool,
+) -> HistoricalChartCaptureRunResult:
     audit = HistoricalChartCaptureRunAudit(
         audit_id=f"{dataset_id}-REAL-CAPTURE-AUDIT",
         dataset_id=dataset_id,
@@ -31,12 +49,12 @@ def build_blocked_capture_run_result(
     return HistoricalChartCaptureRunResult(
         run_id=f"{dataset_id}-REAL-CAPTURE-RUN",
         dataset_id=dataset_id,
-        readiness_status=HistoricalMarketDataReadinessStatus.BLOCKED,
+        readiness_status=readiness_status,
         task_results=[
             HistoricalChartCaptureRunTaskResult(
                 task_id=f"{dataset_id}-BLOCKED",
                 request_id=f"{dataset_id}-BLOCKED",
-                execution_decision="BLOCKED",
+                execution_decision=HistoricalChartCaptureDecision.BLOCKED,
                 blocked_reasons=blocked_reasons,
             )
         ],

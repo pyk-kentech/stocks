@@ -197,6 +197,10 @@ class HistoricalMarketDataReadinessStatus(StrEnum):
     PREFLIGHT_READY = "PREFLIGHT_READY"
     REAL_CAPTURE_READY = "REAL_CAPTURE_READY"
     REAL_CAPTURE_EXECUTED = "REAL_CAPTURE_EXECUTED"
+    PROVIDER_EMPTY_RESPONSE = "PROVIDER_EMPTY_RESPONSE"
+    BLOCKED_AUTH_OR_TOKEN = "BLOCKED_AUTH_OR_TOKEN"
+    DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA = "DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA"
+    BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED = "BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED"
     AUDIT_READY = "AUDIT_READY"
     DATA_GAP = "DATA_GAP"
     STALE = "STALE"
@@ -240,8 +244,9 @@ class HistoricalMarketDataRedactionStatus(StrEnum):
 
 class HistoricalMarketDataCredentialRef(StrictModel):
     credential_ref_id: str = Field(..., min_length=1)
-    appkey_ref_path: str = Field(..., min_length=1)
-    secretkey_ref_path: str = Field(..., min_length=1)
+    credential_ref_dir: str | None = Field(default=None, min_length=1)
+    appkey_ref_path: str | None = Field(default=None, min_length=1)
+    secretkey_ref_path: str | None = Field(default=None, min_length=1)
     redaction_status: HistoricalMarketDataRedactionStatus = HistoricalMarketDataRedactionStatus.PASSED
 
     @field_validator("credential_ref_id", mode="before")
@@ -249,10 +254,22 @@ class HistoricalMarketDataCredentialRef(StrictModel):
     def normalize_id(cls, value):
         return _upper_required(value, "credential_ref_id")
 
-    @field_validator("appkey_ref_path", "secretkey_ref_path", mode="before")
+    @field_validator("credential_ref_dir", "appkey_ref_path", "secretkey_ref_path", mode="before")
     @classmethod
     def normalize_paths(cls, value, info):
+        if value is None:
+            return None
         return _string_required(value, info.field_name)
+
+    @model_validator(mode="after")
+    def validate_ref(self):
+        has_dir = bool(self.credential_ref_dir)
+        has_explicit = bool(self.appkey_ref_path and self.secretkey_ref_path)
+        if not has_dir and not has_explicit:
+            raise ValueError("credential ref requires credential_ref_dir or both appkey_ref_path and secretkey_ref_path")
+        if (self.appkey_ref_path is None) != (self.secretkey_ref_path is None):
+            raise ValueError("explicit credential ref paths must include both appkey_ref_path and secretkey_ref_path")
+        return self
 
 
 class HistoricalMarketDataRealCaptureConfig(StrictModel):
