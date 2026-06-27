@@ -1043,6 +1043,12 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_ka10081_capture_and_train.add_argument("--training-output-root", default="local_data/offline_strategy")
     kiwoom_ka10081_capture_and_train.add_argument("--training-handoff-mode", default="persisted_manifest", choices=["persisted_manifest", "in_process"])
     kiwoom_ka10081_capture_and_train.add_argument("--requested-template-ids")
+    kiwoom_ka10081_capture_and_train.add_argument("--strategy-families")
+    kiwoom_ka10081_capture_and_train.add_argument("--search-mode")
+    kiwoom_ka10081_capture_and_train.add_argument("--walk-forward-mode")
+    kiwoom_ka10081_capture_and_train.add_argument("--promotion-profile")
+    kiwoom_ka10081_capture_and_train.add_argument("--fill-policy")
+    kiwoom_ka10081_capture_and_train.add_argument("--direction")
     kiwoom_ka10081_capture_and_train.add_argument("--asset-liquidity-profile", default="LARGE_CAP")
     offline_strategy_template_catalog = subparsers.add_parser("offline-strategy-template-catalog-report")
     offline_strategy_template_catalog.add_argument("--fixture-file", type=Path, required=True)
@@ -3068,11 +3074,24 @@ def add_policy_replay_args(
         parser.add_argument("--save-basket", action="store_true")
 
 
+def _should_exit_nonzero(args: argparse.Namespace, output: object) -> bool:
+    if not isinstance(output, dict) or output.get("status") != "FAILED":
+        return False
+    command = getattr(args, "command", None)
+    return command in {
+        "kiwoom-oauth-token-issue-run",
+        "historical-market-data-real-capture-and-manifest-run",
+        "kiwoom-ka10081-capture-and-train-run",
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = sys.argv[1:] if argv is None else argv
     args = build_command_parser().parse_args(args_list)
     output = run_command(args)
     print(json.dumps(output, ensure_ascii=False, indent=2))
+    if _should_exit_nonzero(args, output):
+        raise SystemExit(1)
 
 
 def run_command(args: argparse.Namespace) -> dict[str, object]:
@@ -4272,16 +4291,10 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
         try:
             request = _build_kiwoom_oauth_request_from_args(args)
             result = issue_kiwoom_oauth_token(request)
-            payload = {
-                "status": result.status.value,
-                "token_ref_path": result.token_ref.token_ref_path if result.token_ref else None,
-                "token_type": result.token_type,
-                "expires_dt": result.expires_dt,
-                "redaction_status": result.redaction_status,
-            }
+            payload = _build_token_issue_cli_payload(result)
             if args.output_file:
-                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+                payload["output_file"] = str(args.output_file)
+                _write_cli_payload_if_requested(args.output_file, payload)
             return payload
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
@@ -4295,16 +4308,28 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 force_refresh_token=bool(args.force_refresh_token),
             )
             payload = {
-                "status": result.readiness_status.value,
-                "oauth_status": oauth_summary.get("oauth_status"),
+                "status": "COMPLETED" if result.manifest is not None else "FAILED",
+                "token_status": oauth_summary.get("token_status"),
+                "stage": "CAPTURE_COMPLETED" if result.manifest is not None else oauth_summary.get("stage", "TOKEN_STAGE"),
+                "kiwoom_environment": oauth_summary.get("kiwoom_environment", str(args.kiwoom_environment).upper()),
+                "endpoint_base_url": oauth_summary.get("endpoint_base_url"),
+                "endpoint_path": oauth_summary.get("endpoint_path"),
+                "http_status_code": oauth_summary.get("http_status_code"),
+                "provider_return_code": oauth_summary.get("provider_return_code"),
+                "provider_return_msg": oauth_summary.get("provider_return_msg"),
+                "transport_error_type": oauth_summary.get("transport_error_type"),
+                "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
+                "token_written": oauth_summary.get("token_written"),
+                "chart_request_started": oauth_summary.get("chart_request_started", result.manifest is not None),
+                "manifest_written": result.manifest is not None,
                 "manifest_path": result.manifest.manifest_path if result.manifest else None,
                 "manifest_id": result.manifest.manifest_id if result.manifest else None,
                 "raw_response_count": result.raw_response_count,
                 "normalized_row_count": result.normalized_row_count,
             }
             if args.output_file:
-                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+                payload["output_file"] = str(args.output_file)
+                _write_cli_payload_if_requested(args.output_file, payload)
             return payload
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
@@ -4319,10 +4344,16 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 training_handoff_mode=str(args.training_handoff_mode),
                 requested_template_ids=[item.strip().upper() for item in str(args.requested_template_ids or "").split(",") if item.strip()],
                 asset_liquidity_profile=str(args.asset_liquidity_profile).upper(),
+                strategy_families=[item.strip().upper() for item in str(args.strategy_families or "").split(",") if item.strip()],
+                search_mode=args.search_mode,
+                walk_forward_mode=args.walk_forward_mode,
+                promotion_profile=args.promotion_profile,
+                fill_policy=args.fill_policy,
+                direction=args.direction,
             )
             if args.output_file:
-                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
-                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+                result["output_file"] = str(args.output_file)
+                _write_cli_payload_if_requested(args.output_file, result)
             return result
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
@@ -9342,6 +9373,44 @@ def _build_kiwoom_oauth_request_from_args(args):
         acknowledge_credential_redaction=bool(getattr(args, "acknowledge_credential_redaction", False)),
         force_refresh_token=bool(getattr(args, "force_refresh_token", False)),
     )
+
+
+def _command_status_from_token_status(token_status: str) -> str:
+    return "COMPLETED" if token_status in {"TOKEN_ISSUED", "TOKEN_CACHE_HIT"} else "FAILED"
+
+
+def _write_cli_payload_if_requested(output_file: Path | None, payload: dict[str, object]) -> None:
+    if output_file is None:
+        return
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _build_token_issue_cli_payload(result) -> dict[str, object]:
+    payload = {
+        "status": _command_status_from_token_status(result.status.value),
+        "token_status": result.status.value,
+        "stage": result.stage,
+        "kiwoom_environment": result.kiwoom_environment.value,
+        "endpoint_base_url": result.endpoint_base_url,
+        "endpoint_path": result.endpoint_path,
+        "method": result.endpoint_method,
+        "http_status_code": result.http_status_code,
+        "provider_return_code": result.provider_return_code,
+        "provider_return_msg": result.provider_return_msg,
+        "transport_error_type": result.transport_error_type,
+        "transport_error_message_redacted": result.transport_error_message_redacted,
+        "request_content_type": result.request_content_type,
+        "request_body_shape": result.request_body_shape,
+        "credential_ref_status": result.credential_ref_status,
+        "token_written": result.token_written,
+        "expires_dt": result.expires_dt,
+        "redaction_status": result.redaction_status,
+    }
+    if result.token_ref is not None:
+        payload["token_ref_path"] = result.token_ref.token_ref_path
+        payload["token_type"] = result.token_type
+    return payload
 
 
 def _load_breadth_leadership_routing_fixture_or_raise(fixture_file: Path):

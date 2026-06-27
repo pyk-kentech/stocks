@@ -18,6 +18,21 @@ from stock_risk_mcp.kiwoom_oauth_models import (
 from stock_risk_mcp.kiwoom_oauth_token_store import load_stored_token, persist_stored_token, stored_token_is_usable
 
 
+def _response_common(request: KiwoomOAuthTokenIssueRequest, *, now: datetime, stage: str, credential_ref_status: str) -> dict[str, object]:
+    return {
+        "stage": stage,
+        "kiwoom_environment": request.environment,
+        "endpoint_base_url": request.endpoint.base_url,
+        "endpoint_path": request.endpoint.token_path,
+        "endpoint_method": "POST",
+        "request_content_type": request.endpoint.content_type,
+        "request_body_shape": ["grant_type", "appkey", "secretkey"],
+        "credential_ref_status": credential_ref_status,
+        "issued_at": now,
+        "redaction_status": "PASSED",
+    }
+
+
 def build_kiwoom_oauth_request(
     *,
     environment: KiwoomEnvironment,
@@ -68,13 +83,16 @@ def issue_kiwoom_oauth_token(
     if findings:
         return KiwoomOAuthTokenIssueResponse(
             status=KiwoomOAuthStatus.REJECTED,
-            issued_at=now,
+            **_response_common(request, now=now, stage="TOKEN_REQUEST_REJECTED", credential_ref_status="NOT_LOADED"),
             return_msg_redacted=";".join(findings),
+            provider_return_msg=";".join(findings),
         )
     cached_token, cached_path = load_stored_token(request.token_store_root, request.environment, request.credential_ref)
     if cached_token is not None and not request.force_refresh_token and stored_token_is_usable(cached_token, now=now):
         return KiwoomOAuthTokenIssueResponse(
             status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            **_response_common(request, now=cached_token.issued_at, stage="TOKEN_CACHE_HIT", credential_ref_status="CACHE_HIT"),
+            token_written=False,
             token_type=cached_token.token_type,
             token_ref=KiwoomOAuthTokenRef(
                 token_ref_path=str(cached_path),
@@ -85,11 +103,30 @@ def issue_kiwoom_oauth_token(
                 credential_fingerprint_redacted=cached_token.credential_fingerprint_redacted,
             ),
             expires_dt=cached_token.expires_dt,
-            issued_at=cached_token.issued_at,
             expires_at=datetime.fromisoformat(cached_token.expires_dt) if cached_token.expires_dt else None,
             return_msg_redacted="TOKEN_CACHE_HIT",
+            provider_return_msg="TOKEN_CACHE_HIT",
         )
-    appkey, secretkey = load_kiwoom_oauth_credentials(request.credential_ref, allow_pytest_fixture_read=allow_pytest_fixture_read)
+    try:
+        appkey, secretkey = load_kiwoom_oauth_credentials(request.credential_ref, allow_pytest_fixture_read=allow_pytest_fixture_read)
+    except FileNotFoundError as error:
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.BLOCKED_CREDENTIAL_MISSING,
+            **_response_common(request, now=now, stage="CREDENTIAL_LOAD", credential_ref_status="MISSING"),
+            return_msg_redacted="credential ref file missing",
+            provider_return_msg="credential ref file missing",
+            transport_error_type=type(error).__name__,
+            transport_error_message_redacted="credential ref file missing",
+        )
+    except ValueError as error:
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.BLOCKED_CREDENTIAL_FORMAT,
+            **_response_common(request, now=now, stage="CREDENTIAL_LOAD", credential_ref_status="INVALID"),
+            return_msg_redacted="credential ref format invalid",
+            provider_return_msg="credential ref format invalid",
+            transport_error_type=type(error).__name__,
+            transport_error_message_redacted=str(error),
+        )
     response = (client or LocalOAuthHttpClient()).issue_token(
         f"{request.endpoint.base_url}{request.endpoint.token_path}",
         content_type=request.endpoint.content_type,
@@ -99,24 +136,47 @@ def issue_kiwoom_oauth_token(
         timeout_seconds=request.endpoint.timeout_seconds,
     )
     body_json = dict(response.get("body_json") or {})
-    status_code = int(response.get("status_code") or 0)
+    status_code = int(response.get("status_code")) if response.get("status_code") is not None else None
+    transport_error_type = response.get("transport_error_type")
+    transport_error_message_redacted = response.get("transport_error_message_redacted")
     token = body_json.get("token") or body_json.get("access_token")
-    token_type = str(body_json.get("token_type") or "Bearer")
+    token_type = str(body_json.get("token_type") or "Bearer") if token else None
     return_code = body_json.get("return_code")
     return_msg = str(body_json.get("return_msg") or body_json.get("msg") or "").strip()
+    response_common = _response_common(request, now=now, stage="TOKEN_ISSUE_HTTP", credential_ref_status="LOADED")
+    if transport_error_type:
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TRANSPORT_ERROR,
+            **response_common,
+            http_status_code=status_code,
+            provider_return_code=return_code if isinstance(return_code, int) else None,
+            provider_return_msg=return_msg or None,
+            transport_error_type=str(transport_error_type),
+            transport_error_message_redacted=str(transport_error_message_redacted or "transport error"),
+            return_code=return_code if isinstance(return_code, int) else None,
+            return_msg_redacted=return_msg or "TRANSPORT_ERROR",
+        )
     if status_code not in range(200, 300):
         return KiwoomOAuthTokenIssueResponse(
             status=KiwoomOAuthStatus.PROVIDER_AUTH_ERROR if status_code in {401, 403} else KiwoomOAuthStatus.PROVIDER_TOKEN_ERROR,
+            **response_common,
+            http_status_code=status_code,
+            provider_return_code=return_code if isinstance(return_code, int) else None,
+            provider_return_msg=return_msg or (transport_error_message_redacted if transport_error_type else None),
+            transport_error_type=transport_error_type,
+            transport_error_message_redacted=transport_error_message_redacted,
             return_code=return_code if isinstance(return_code, int) else None,
             return_msg_redacted=return_msg or f"HTTP_{status_code}",
-            issued_at=now,
         )
     if not token:
         return KiwoomOAuthTokenIssueResponse(
             status=KiwoomOAuthStatus.PROVIDER_TOKEN_ERROR,
+            **response_common,
+            http_status_code=status_code,
+            provider_return_code=return_code if isinstance(return_code, int) else None,
+            provider_return_msg=return_msg or "TOKEN_MISSING",
             return_code=return_code if isinstance(return_code, int) else None,
             return_msg_redacted=return_msg or "TOKEN_MISSING",
-            issued_at=now,
         )
     expires_in_seconds = int(body_json.get("expires_in") or 86400)
     expires_at = now + timedelta(seconds=max(expires_in_seconds, 1))
@@ -132,6 +192,11 @@ def issue_kiwoom_oauth_token(
     token_path = persist_stored_token(request.token_store_root, request.environment, request.credential_ref, stored)
     return KiwoomOAuthTokenIssueResponse(
         status=KiwoomOAuthStatus.TOKEN_ISSUED,
+        **response_common,
+        token_written=True,
+        http_status_code=status_code,
+        provider_return_code=return_code if isinstance(return_code, int) else None,
+        provider_return_msg=return_msg or "TOKEN_ISSUED",
         token_type=token_type,
         token_ref=KiwoomOAuthTokenRef(
             token_ref_path=str(token_path),
@@ -142,7 +207,6 @@ def issue_kiwoom_oauth_token(
             credential_fingerprint_redacted=fingerprint,
         ),
         expires_dt=stored.expires_dt,
-        issued_at=now,
         expires_at=expires_at,
         return_code=return_code if isinstance(return_code, int) else None,
         return_msg_redacted=return_msg or "TOKEN_ISSUED",

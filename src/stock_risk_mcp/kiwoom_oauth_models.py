@@ -145,6 +145,20 @@ class KiwoomOAuthTokenRef(StrictModel):
 
 class KiwoomOAuthTokenIssueResponse(StrictModel):
     status: KiwoomOAuthStatus
+    stage: str = "UNKNOWN_STAGE"
+    kiwoom_environment: KiwoomEnvironment = KiwoomEnvironment.MOCK
+    endpoint_base_url: str = "UNKNOWN_ENDPOINT_BASE_URL"
+    endpoint_path: str = "UNKNOWN_ENDPOINT_PATH"
+    endpoint_method: str = Field(default="POST", min_length=1)
+    http_status_code: int | None = None
+    provider_return_code: int | None = None
+    provider_return_msg: str | None = None
+    transport_error_type: str | None = None
+    transport_error_message_redacted: str | None = None
+    request_content_type: str = "UNKNOWN_CONTENT_TYPE"
+    request_body_shape: list[str] = Field(default_factory=list)
+    credential_ref_status: str = "UNKNOWN_CREDENTIAL_REF_STATUS"
+    token_written: bool = False
     token_type: str | None = None
     token_ref: KiwoomOAuthTokenRef | None = None
     expires_dt: str | None = None
@@ -154,10 +168,25 @@ class KiwoomOAuthTokenIssueResponse(StrictModel):
     expires_at: datetime | None = None
     redaction_status: str = "PASSED"
 
-    @field_validator("token_type", "return_msg_redacted", "redaction_status", mode="before")
+    @field_validator(
+        "stage",
+        "endpoint_base_url",
+        "endpoint_path",
+        "endpoint_method",
+        "request_content_type",
+        "credential_ref_status",
+        "return_msg_redacted",
+        "redaction_status",
+        mode="before",
+    )
+    @classmethod
+    def normalize_required_strings(cls, value, info):
+        return _string_required(value, info.field_name)
+
+    @field_validator("token_type", "provider_return_msg", "transport_error_type", "transport_error_message_redacted", mode="before")
     @classmethod
     def normalize_optional_strings(cls, value, info):
-        if value is None and info.field_name == "token_type":
+        if value is None:
             return None
         return _string_required(value, info.field_name)
 
@@ -167,6 +196,13 @@ class KiwoomOAuthTokenIssueResponse(StrictModel):
         if value is None:
             return None
         return _aware(value)
+
+    @field_validator("request_body_shape", mode="before")
+    @classmethod
+    def normalize_request_shape(cls, value):
+        if value is None:
+            return []
+        return [_string_required(item, "request_body_shape").lower() for item in value]
 
 
 class KiwoomOAuthStoredToken(StrictModel):

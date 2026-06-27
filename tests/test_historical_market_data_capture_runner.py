@@ -266,9 +266,74 @@ def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypa
         environment=KiwoomEnvironment.MOCK,
         token_store_root=str(token_store_root),
         training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        strategy_families=["MACD_RSI_MOMENTUM"],
+        search_mode="GRID",
+        walk_forward_mode="ROLLING",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="NEXT_BAR_CONSERVATIVE",
+        direction="LONG_ONLY",
     )
     assert result["manifest_written"] is True
     assert result["manifest_reloaded"] is True
     assert result["training_started"] is True
     assert result["training_completed"] is True
     assert Path(result["manifest_path"]).exists()
+    assert result["strategy_families"] == ["MACD_RSI_MOMENTUM"]
+    assert result["search_mode"] == "GRID"
+    assert result["walk_forward_mode"] == "ROLLING_CHRONOLOGICAL_WALK_FORWARD"
+    assert result["promotion_profile"] == "STABILITY_FIRST"
+    assert result["fill_policy"] == "NEXT_BAR_CONSERVATIVE"
+    assert result["direction"] == "LONG_ONLY"
+
+
+def test_capture_and_train_wrapper_stops_before_chart_request_on_token_failure(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path)
+    token_store_root = tmp_path / "oauth_tokens"
+    token_store_root.mkdir()
+    chart_called = {"value": False}
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            del preview, auth_header
+            chart_called["value"] = True
+            return {}
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.PROVIDER_TOKEN_ERROR,
+            stage="TOKEN_ISSUE_HTTP",
+            kiwoom_environment=KiwoomEnvironment.MOCK,
+            endpoint_base_url="https://mockapi.kiwoom.com",
+            endpoint_path="/oauth2/token",
+            request_content_type="application/json;charset=UTF-8",
+            request_body_shape=["grant_type", "appkey", "secretkey"],
+            credential_ref_status="LOADED",
+            token_written=False,
+            provider_return_code=5001,
+            provider_return_msg="mock provider token rejected",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="mock provider token rejected",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+    )
+    assert result["status"] == "FAILED"
+    assert result["token_status"] == "PROVIDER_TOKEN_ERROR"
+    assert result["chart_request_started"] is False
+    assert result["manifest_written"] is False
+    assert result["training_started"] is False
+    assert chart_called["value"] is False

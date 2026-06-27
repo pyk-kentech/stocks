@@ -17,6 +17,36 @@ class FakeOAuthClient:
         }
 
 
+class FakeOAuthProviderErrorClient:
+    def issue_token(self, url, *, content_type, grant_type, appkey, secretkey, timeout_seconds):
+        del url, content_type, grant_type, appkey, secretkey, timeout_seconds
+        return {
+            "status_code": 200,
+            "body_json": {
+                "return_code": 5001,
+                "return_msg": "mock provider token rejected",
+            },
+            "transport_error_type": None,
+            "transport_error_message_redacted": None,
+            "request_body_shape": ["grant_type", "appkey", "secretkey"],
+        }
+
+
+class FakeOAuthHttpErrorClient:
+    def issue_token(self, url, *, content_type, grant_type, appkey, secretkey, timeout_seconds):
+        del url, content_type, grant_type, appkey, secretkey, timeout_seconds
+        return {
+            "status_code": 401,
+            "body_json": {
+                "return_code": 4011,
+                "return_msg": "mock auth denied",
+            },
+            "transport_error_type": None,
+            "transport_error_message_redacted": None,
+            "request_body_shape": ["grant_type", "appkey", "secretkey"],
+        }
+
+
 def _request(tmp_path):
     appkey_path = tmp_path / "appkey.txt"
     secretkey_path = tmp_path / "secretkey.txt"
@@ -55,3 +85,30 @@ def test_kiwoom_oauth_issue_persists_redacted_token_ref(tmp_path, monkeypatch) -
     token_payload = result.token_ref.token_ref_path
     assert "APPKEY" not in token_payload
     assert "SECRETKEY" not in token_payload
+    assert result.token_written is True
+    assert result.request_body_shape == ["grant_type", "appkey", "secretkey"]
+
+
+def test_kiwoom_oauth_issue_reports_provider_token_error_without_fake_token_ref(tmp_path, monkeypatch) -> None:
+    request = _request(tmp_path)
+    monkeypatch.setattr("stock_risk_mcp.kiwoom_oauth_guard.is_pytest_runtime", lambda: False)
+    monkeypatch.setattr("stock_risk_mcp.kiwoom_oauth_credential_ref.is_pytest_runtime", lambda: False)
+    result = issue_kiwoom_oauth_token(request, client=FakeOAuthProviderErrorClient())
+    assert result.status.value == "PROVIDER_TOKEN_ERROR"
+    assert result.provider_return_code == 5001
+    assert result.provider_return_msg == "mock provider token rejected"
+    assert result.token_ref is None
+    assert result.token_type is None
+    assert result.token_written is False
+
+
+def test_kiwoom_oauth_issue_captures_non_2xx_provider_error(tmp_path, monkeypatch) -> None:
+    request = _request(tmp_path)
+    monkeypatch.setattr("stock_risk_mcp.kiwoom_oauth_guard.is_pytest_runtime", lambda: False)
+    monkeypatch.setattr("stock_risk_mcp.kiwoom_oauth_credential_ref.is_pytest_runtime", lambda: False)
+    result = issue_kiwoom_oauth_token(request, client=FakeOAuthHttpErrorClient())
+    assert result.status.value == "PROVIDER_AUTH_ERROR"
+    assert result.http_status_code == 401
+    assert result.provider_return_code == 4011
+    assert result.provider_return_msg == "mock auth denied"
+    assert result.token_ref is None

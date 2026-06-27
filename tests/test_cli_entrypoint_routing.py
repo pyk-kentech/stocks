@@ -5,6 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from stock_risk_mcp.cli import build_command_parser, main, run_command
+from stock_risk_mcp.kiwoom_oauth_models import KiwoomEnvironment, KiwoomOAuthStatus, KiwoomOAuthTokenIssueResponse
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYTHONPATH = str(REPO_ROOT / "src")
@@ -44,6 +49,12 @@ def test_kiwoom_capture_and_train_help_uses_command_router() -> None:
     assert result.returncode == 0
     assert "--training-handoff-mode" in result.stdout
     assert "--training-output-root" in result.stdout
+    assert "--strategy-families" in result.stdout
+    assert "--search-mode" in result.stdout
+    assert "--walk-forward-mode" in result.stdout
+    assert "--promotion-profile" in result.stdout
+    assert "--fill-policy" in result.stdout
+    assert "--direction" in result.stdout
     assert "--ticker" not in result.stdout
     assert "--side" not in result.stdout
     assert "--confidence" not in result.stdout
@@ -75,3 +86,53 @@ def test_legacy_behavior_requires_explicit_route() -> None:
     assert "--side" in result.stdout
     assert "--confidence" in result.stdout
     assert "Evaluate a stock trade proposal" in result.stdout
+
+
+def test_token_command_reports_failed_top_level_status(monkeypatch, tmp_path) -> None:
+    parser = build_command_parser()
+    output_file = tmp_path / "token_issue.json"
+    args = parser.parse_args(
+        [
+            "kiwoom-oauth-token-issue-run",
+            "--kiwoom-environment",
+            "MOCK",
+            "--credential-ref",
+            str(tmp_path),
+            "--acknowledge-readonly-only",
+            "--acknowledge-user-initiated",
+            "--acknowledge-credential-redaction",
+            "--allow-real-chart-capture",
+            "--output-file",
+            str(output_file),
+        ]
+    )
+    monkeypatch.setattr(
+        "stock_risk_mcp.cli.issue_kiwoom_oauth_token",
+        lambda _request: KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.PROVIDER_TOKEN_ERROR,
+            stage="TOKEN_ISSUE_HTTP",
+            kiwoom_environment=KiwoomEnvironment.MOCK,
+            endpoint_base_url="https://mockapi.kiwoom.com",
+            endpoint_path="/oauth2/token",
+            request_content_type="application/json;charset=UTF-8",
+            request_body_shape=["grant_type", "appkey", "secretkey"],
+            credential_ref_status="LOADED",
+            token_written=False,
+            provider_return_code=5001,
+            provider_return_msg="mock provider token rejected",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="mock provider token rejected",
+        ),
+    )
+    result = run_command(args)
+    assert result["status"] == "FAILED"
+    assert result["token_status"] == "PROVIDER_TOKEN_ERROR"
+    assert result["provider_return_code"] == 5001
+    assert output_file.exists()
+
+
+def test_main_exits_nonzero_on_failed_token_command(monkeypatch) -> None:
+    monkeypatch.setattr("stock_risk_mcp.cli.run_command", lambda args: {"status": "FAILED", "args_seen": bool(args.command)})
+    with pytest.raises(SystemExit) as exc:
+        main(["kiwoom-oauth-token-issue-run", "--kiwoom-environment", "MOCK", "--credential-ref", "/tmp/ref"])
+    assert exc.value.code == 1
