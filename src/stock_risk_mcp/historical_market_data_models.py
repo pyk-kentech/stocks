@@ -777,6 +777,8 @@ class HistoricalOhlcvDatasetManifest(_BaseSafety):
     manifest_id: str = Field(..., min_length=1)
     dataset_id: str = Field(..., min_length=1)
     store_root: str = Field(..., min_length=1)
+    manifest_path: str | None = None
+    ohlcv_rows_path: str | None = None
     partition_spec: HistoricalOhlcvPartitionSpec
     row_count: int = Field(0, ge=0)
     intervals: list[str] = Field(default_factory=list)
@@ -791,6 +793,13 @@ class HistoricalOhlcvDatasetManifest(_BaseSafety):
         if info.field_name == "store_root":
             return _string_required(value, "store_root")
         return _upper_required(value, info.field_name)
+
+    @field_validator("manifest_path", "ohlcv_rows_path", mode="before")
+    @classmethod
+    def normalize_optional_paths(cls, value, info):
+        if value is None:
+            return None
+        return _string_required(value, info.field_name)
 
     @field_validator("intervals", "instrument_ids", "storage_refs", mode="before")
     @classmethod

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from urllib import request
+from urllib.error import HTTPError
 
 from stock_risk_mcp.historical_market_data_guard import is_pytest_runtime
 from stock_risk_mcp.historical_market_data_models import HistoricalChartRequestPreview, HistoricalMarketDataTransportKind
@@ -38,15 +39,16 @@ class MockHistoricalMarketDataTransport(HistoricalMarketDataTransport):
 class RealKiwoomChartTransport(HistoricalMarketDataTransport):
     transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
 
-    def __init__(self, *, timeout_seconds: int = 10) -> None:
+    def __init__(self, *, timeout_seconds: int = 10, base_url: str = "https://api.kiwoom.com") -> None:
         if is_pytest_runtime():
             raise ValueError("real chart transport must remain unavailable in pytest")
         self.timeout_seconds = timeout_seconds
+        self.base_url = base_url.rstrip("/")
 
     def execute(self, preview: HistoricalChartRequestPreview, *, auth_header: str | None = None) -> dict[str, object]:
         body = json.dumps(preview.body_json).encode("utf-8")
         req = request.Request(
-            f"https://api.kiwoom.com{preview.path}",
+            f"{self.base_url}{preview.path}",
             data=body,
             method="POST",
             headers={
@@ -57,7 +59,12 @@ class RealKiwoomChartTransport(HistoricalMarketDataTransport):
                 "next-key": str(preview.headers.get("next-key") or ""),
             },
         )
-        with request.urlopen(req, timeout=self.timeout_seconds) as response:
+        opener = request.build_opener(request.ProxyHandler({}))
+        try:
+            response = opener.open(req, timeout=self.timeout_seconds)
+        except HTTPError as error:
+            response = error
+        with response:
             payload = json.loads(response.read().decode("utf-8"))
             return {
                 "status_code": response.status,

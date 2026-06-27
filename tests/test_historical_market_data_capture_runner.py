@@ -1,8 +1,12 @@
+from pathlib import Path
+
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
 from stock_risk_mcp import historical_market_data_capture_runner as capture_runner_module
 from stock_risk_mcp import historical_market_data_guard as capture_guard_module
-from stock_risk_mcp.historical_market_data_models import HistoricalMarketDataPipelineInput
+from stock_risk_mcp import kiwoom_capture_and_train_runner as wrapper_module
+from stock_risk_mcp.historical_market_data_models import HistoricalMarketDataPipelineInput, HistoricalMarketDataTransportKind
 from stock_risk_mcp.historical_market_data_transport import MockHistoricalMarketDataTransport, RealKiwoomChartTransport
+from stock_risk_mcp.kiwoom_oauth_models import KiwoomEnvironment, KiwoomOAuthStatus, KiwoomOAuthTokenIssueResponse, KiwoomOAuthTokenRef
 
 
 def test_historical_market_data_capture_runner_runs_with_mock_transport(tmp_path) -> None:
@@ -69,7 +73,10 @@ def test_historical_market_data_capture_runner_runs_with_mock_transport(tmp_path
     result = run_historical_market_data_real_capture(fixture, transport=transport)
     assert result.normalized_row_count == 1
     assert result.manifest is not None
+    assert result.manifest.manifest_path is not None
+    assert result.manifest.ohlcv_rows_path is not None
     assert (tmp_path / "raw_lake" / "ka10081-005930-test-response.json").exists()
+    assert (tmp_path / "normalized" / "historical-market-data-test" / "historical_ohlcv_dataset_manifest.json").exists()
 
 
 def _fixture(tmp_path):
@@ -183,10 +190,85 @@ def test_historical_market_data_capture_runner_returns_dependency_gap_for_missin
     assert result.raw_response_count == 0
 
 
-def test_historical_market_data_capture_runner_blocks_real_network_not_implemented(tmp_path, monkeypatch) -> None:
+def test_historical_market_data_capture_runner_blocks_without_auth_header(tmp_path, monkeypatch) -> None:
     fixture = _fixture(tmp_path)
     fixture = fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})})
     monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
     monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
     result = run_historical_market_data_real_capture(fixture, transport=RealKiwoomChartTransport.__new__(RealKiwoomChartTransport))
-    assert result.readiness_status.value == "BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED"
+    assert result.readiness_status.value == "BLOCKED_AUTH_OR_TOKEN"
+
+
+def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path)
+    token_store_root = tmp_path / "oauth_tokens"
+    token_store_root.mkdir()
+    token_ref_path = token_store_root / "mock_token.json"
+    token_ref_path.write_text(
+        """
+        {
+          "token": "REDACTED",
+          "token_type": "Bearer",
+          "expires_dt": "2099-01-01T00:00:00+00:00",
+          "issued_at": "2026-06-27T00:00:00+00:00",
+          "environment": "MOCK",
+          "credential_fingerprint_redacted": "sha256:fixture"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {
+                    "return_code": 0,
+                    "return_msg": "OK",
+                    "stk_day_pole_chart_qry": [
+                        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
+                        {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
+                    ],
+                },
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+    )
+    assert result["manifest_written"] is True
+    assert result["manifest_reloaded"] is True
+    assert result["training_started"] is True
+    assert result["training_completed"] is True
+    assert Path(result["manifest_path"]).exists()

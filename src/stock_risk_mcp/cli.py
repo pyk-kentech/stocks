@@ -58,6 +58,12 @@ from stock_risk_mcp.kiwoom_official_manifest import (
     KiwoomOfficialEndpointClass,
     load_kiwoom_official_manifest,
 )
+from stock_risk_mcp.kiwoom_capture_and_train_runner import (
+    run_historical_market_data_real_capture_and_manifest,
+    run_kiwoom_ka10081_capture_and_train,
+)
+from stock_risk_mcp.kiwoom_oauth_engine import build_kiwoom_oauth_preflight, build_kiwoom_oauth_request, issue_kiwoom_oauth_token
+from stock_risk_mcp.kiwoom_oauth_models import KiwoomCredentialRef as KiwoomOAuthCredentialRef, KiwoomEnvironment as KiwoomOAuthEnvironment
 from stock_risk_mcp.kiwoom_official_manifest_validator import validate_kiwoom_official_manifest
 from stock_risk_mcp.kiwoom_credentials import load_kiwoom_credentials
 from stock_risk_mcp.kiwoom_real_readonly_models import (
@@ -995,6 +1001,39 @@ def build_command_parser() -> argparse.ArgumentParser:
     for action in historical_market_data_real_capture_preflight._actions[1:]:
         if action.dest != "help":
             historical_market_data_real_capture_audit._add_action(action)
+    kiwoom_oauth_token_preflight = subparsers.add_parser("kiwoom-oauth-token-preflight-report")
+    kiwoom_oauth_token_preflight.add_argument("--kiwoom-environment", default="MOCK", choices=["MOCK", "REAL"])
+    kiwoom_oauth_token_preflight.add_argument("--credential-ref")
+    kiwoom_oauth_token_preflight.add_argument("--appkey-ref-path")
+    kiwoom_oauth_token_preflight.add_argument("--secretkey-ref-path")
+    kiwoom_oauth_token_preflight.add_argument("--token-store-root", default="local_data/kiwoom_oauth_tokens")
+    kiwoom_oauth_token_preflight.add_argument("--allow-real-chart-capture", action="store_true")
+    kiwoom_oauth_token_preflight.add_argument("--acknowledge-readonly-only", action="store_true")
+    kiwoom_oauth_token_preflight.add_argument("--acknowledge-user-initiated", action="store_true")
+    kiwoom_oauth_token_preflight.add_argument("--acknowledge-credential-redaction", action="store_true")
+    kiwoom_oauth_token_preflight.add_argument("--output-file", type=Path)
+    kiwoom_oauth_token_issue = subparsers.add_parser("kiwoom-oauth-token-issue-run")
+    for action in kiwoom_oauth_token_preflight._actions[1:]:
+        if action.dest != "help":
+            kiwoom_oauth_token_issue._add_action(action)
+    kiwoom_oauth_token_issue.add_argument("--force-refresh-token", action="store_true")
+    historical_market_data_real_capture_and_manifest = subparsers.add_parser("historical-market-data-real-capture-and-manifest-run")
+    for action in historical_market_data_real_capture_preflight._actions[1:]:
+        if action.dest != "help":
+            historical_market_data_real_capture_and_manifest._add_action(action)
+    historical_market_data_real_capture_and_manifest.add_argument("--kiwoom-environment", default="MOCK", choices=["MOCK", "REAL"])
+    historical_market_data_real_capture_and_manifest.add_argument("--token-store-root", default="local_data/kiwoom_oauth_tokens")
+    historical_market_data_real_capture_and_manifest.add_argument("--force-refresh-token", action="store_true")
+    historical_market_data_real_capture_and_manifest.add_argument("--appkey-ref-path")
+    historical_market_data_real_capture_and_manifest.add_argument("--secretkey-ref-path")
+    kiwoom_ka10081_capture_and_train = subparsers.add_parser("kiwoom-ka10081-capture-and-train-run")
+    for action in historical_market_data_real_capture_and_manifest._actions[1:]:
+        if action.dest != "help":
+            kiwoom_ka10081_capture_and_train._add_action(action)
+    kiwoom_ka10081_capture_and_train.add_argument("--training-output-root", default="local_data/offline_strategy")
+    kiwoom_ka10081_capture_and_train.add_argument("--training-handoff-mode", default="persisted_manifest", choices=["persisted_manifest", "in_process"])
+    kiwoom_ka10081_capture_and_train.add_argument("--requested-template-ids")
+    kiwoom_ka10081_capture_and_train.add_argument("--asset-liquidity-profile", default="LARGE_CAP")
     offline_strategy_template_catalog = subparsers.add_parser("offline-strategy-template-catalog-report")
     offline_strategy_template_catalog.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_template_catalog.add_argument("--output-file", type=Path)
@@ -4884,6 +4923,75 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 args.output_file.write_text(audit.model_dump_json(indent=2), encoding="utf-8")
                 return {"status": "COMPLETED", "output_file": str(args.output_file), "task_result_count": len(audit.task_results)}
             return audit.model_dump(mode="json") if audit is not None else {"status": "FAILED", "errors": ["audit unavailable"]}
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-oauth-token-preflight-report":
+        try:
+            request = _build_kiwoom_oauth_request_from_args(args)
+            report = build_kiwoom_oauth_preflight(request)
+            payload = report.model_dump(mode="json")
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-oauth-token-issue-run":
+        try:
+            request = _build_kiwoom_oauth_request_from_args(args)
+            result = issue_kiwoom_oauth_token(request)
+            payload = {
+                "status": result.status.value,
+                "token_ref_path": result.token_ref.token_ref_path if result.token_ref else None,
+                "token_type": result.token_type,
+                "expires_dt": result.expires_dt,
+                "redaction_status": result.redaction_status,
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "historical-market-data-real-capture-and-manifest-run":
+        try:
+            pipeline = _build_historical_market_data_real_capture_input(args)
+            result, oauth_summary = run_historical_market_data_real_capture_and_manifest(
+                pipeline,
+                environment=KiwoomOAuthEnvironment(str(args.kiwoom_environment).upper()),
+                token_store_root=str(args.token_store_root),
+                force_refresh_token=bool(args.force_refresh_token),
+            )
+            payload = {
+                "status": result.readiness_status.value,
+                "oauth_status": oauth_summary.get("oauth_status"),
+                "manifest_path": result.manifest.manifest_path if result.manifest else None,
+                "manifest_id": result.manifest.manifest_id if result.manifest else None,
+                "raw_response_count": result.raw_response_count,
+                "normalized_row_count": result.normalized_row_count,
+            }
+            if args.output_file:
+                args.output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+            return payload
+        except Exception as exc:
+            return {"status": "FAILED", "errors": [str(exc)]}
+    if args.command == "kiwoom-ka10081-capture-and-train-run":
+        try:
+            pipeline = _build_historical_market_data_real_capture_input(args)
+            result = run_kiwoom_ka10081_capture_and_train(
+                pipeline,
+                environment=KiwoomOAuthEnvironment(str(args.kiwoom_environment).upper()),
+                token_store_root=str(args.token_store_root),
+                training_output_root=str(args.training_output_root),
+                training_handoff_mode=str(args.training_handoff_mode),
+                requested_template_ids=[item.strip().upper() for item in str(args.requested_template_ids or "").split(",") if item.strip()],
+                asset_liquidity_profile=str(args.asset_liquidity_profile).upper(),
+            )
+            if args.output_file:
+                args.output_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                return {"status": "COMPLETED", "output_file": str(args.output_file)}
+            return result
         except Exception as exc:
             return {"status": "FAILED", "errors": [str(exc)]}
     if args.command == "offline-strategy-template-catalog-report":
@@ -9832,14 +9940,22 @@ def _build_historical_market_data_real_capture_input(args):
             request_payload["tic_scope"] = "1"
         request_specs.append(HistoricalChartRequestSpec.model_validate(request_payload))
     credential_ref = None
-    if args.credential_ref:
-        base = Path(args.credential_ref)
+    if getattr(args, "credential_ref", None):
         credential_ref = HistoricalMarketDataCredentialRef(
             credential_ref_id="KIWOOM_REAL_CAPTURE_CREDENTIAL_REF",
-            appkey_ref_path=str(base / "66787923_appkey.txt"),
-            secretkey_ref_path=str(base / "66787923_secretkey.txt"),
+            credential_ref_dir=str(Path(args.credential_ref)),
         )
-    transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART if args.command == "historical-market-data-real-capture-run" else HistoricalMarketDataTransportKind.MOCK
+    elif getattr(args, "appkey_ref_path", None) and getattr(args, "secretkey_ref_path", None):
+        credential_ref = HistoricalMarketDataCredentialRef(
+            credential_ref_id="KIWOOM_REAL_CAPTURE_CREDENTIAL_REF",
+            appkey_ref_path=str(args.appkey_ref_path),
+            secretkey_ref_path=str(args.secretkey_ref_path),
+        )
+    transport_kind = (
+        HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+        if args.command in {"historical-market-data-real-capture-run", "historical-market-data-real-capture-and-manifest-run", "kiwoom-ka10081-capture-and-train-run"}
+        else HistoricalMarketDataTransportKind.MOCK
+    )
     return HistoricalMarketDataPipelineInput(
         pipeline_id="HISTORICAL-MARKET-DATA-REAL-CAPTURE-CLI",
         dataset_id=f"HISTORICAL-MARKET-DATA-{str(args.api_id).upper()}-{symbols[0] if symbols else 'EMPTY'}",
@@ -9865,6 +9981,34 @@ def _build_historical_market_data_real_capture_input(args):
             transport_kind=transport_kind,
         ),
         request_specs=request_specs,
+    )
+
+
+def _build_kiwoom_oauth_request_from_args(args):
+    credential_ref = None
+    if getattr(args, "credential_ref", None):
+        credential_ref = KiwoomOAuthCredentialRef(
+            credential_id="KIWOOM_OAUTH_CREDENTIAL_REF",
+            credential_ref_dir=str(Path(args.credential_ref)),
+        )
+    elif getattr(args, "appkey_ref_path", None) and getattr(args, "secretkey_ref_path", None):
+        credential_ref = KiwoomOAuthCredentialRef(
+            credential_id="KIWOOM_OAUTH_CREDENTIAL_REF",
+            appkey_ref_path=str(args.appkey_ref_path),
+            secretkey_ref_path=str(args.secretkey_ref_path),
+        )
+    else:
+        raise ValueError("credential-ref or explicit appkey/secretkey ref paths are required")
+    return build_kiwoom_oauth_request(
+        environment=KiwoomOAuthEnvironment(str(args.kiwoom_environment).upper()),
+        credential_ref=credential_ref,
+        token_store_root=str(args.token_store_root),
+        allow_real_network=bool(getattr(args, "allow_real_chart_capture", False)),
+        allow_token_issue=True,
+        acknowledge_readonly_only=bool(getattr(args, "acknowledge_readonly_only", False)),
+        acknowledge_user_initiated=bool(getattr(args, "acknowledge_user_initiated", False)),
+        acknowledge_credential_redaction=bool(getattr(args, "acknowledge_credential_redaction", False)),
+        force_refresh_token=bool(getattr(args, "force_refresh_token", False)),
     )
 
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+from pathlib import Path
 
 from stock_risk_mcp.historical_market_data_guard import validate_safe_local_root
 from stock_risk_mcp.historical_market_data_models import (
@@ -51,10 +53,17 @@ def build_historical_ohlcv_dataset_manifest(
     root = validate_safe_local_root(pipeline_input.store_root)
     root.mkdir(parents=True, exist_ok=True)
     storage_refs = sorted({row.source_ref for row in ohlcv_rows})
+    dataset_dir = root / pipeline_input.dataset_id.lower()
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    rows_path = dataset_dir / "ohlcv_rows.json"
+    manifest_path = dataset_dir / "historical_ohlcv_dataset_manifest.json"
+    rows_path.write_text(json.dumps([row.model_dump(mode="json") for row in ohlcv_rows], indent=2), encoding="utf-8")
     manifest = HistoricalOhlcvDatasetManifest(
         manifest_id=f"{pipeline_input.dataset_id}-NORMALIZED-MANIFEST",
         dataset_id=pipeline_input.dataset_id,
         store_root=str(root),
+        manifest_path=str(manifest_path),
+        ohlcv_rows_path=str(rows_path),
         partition_spec=pipeline_input.partition_spec,
         row_count=len(ohlcv_rows),
         intervals=sorted({row.interval.value for row in ohlcv_rows}),
@@ -63,4 +72,16 @@ def build_historical_ohlcv_dataset_manifest(
         storage_refs=storage_refs,
         readiness_status=HistoricalMarketDataReadinessStatus.V10_MANIFEST_READY if ohlcv_rows else HistoricalMarketDataReadinessStatus.DATA_GAP,
     )
+    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     return manifest, [to_feature_store_price_bar(row) for row in ohlcv_rows]
+
+
+def load_historical_ohlcv_dataset_manifest(path: str | Path) -> HistoricalOhlcvDatasetManifest:
+    return HistoricalOhlcvDatasetManifest.model_validate_json(Path(path).read_text(encoding="utf-8"))
+
+
+def load_historical_ohlcv_rows_from_manifest(manifest: HistoricalOhlcvDatasetManifest) -> list[HistoricalOhlcvRow]:
+    if not manifest.ohlcv_rows_path:
+        return []
+    payload = json.loads(Path(manifest.ohlcv_rows_path).read_text(encoding="utf-8"))
+    return [HistoricalOhlcvRow.model_validate(item) for item in payload]

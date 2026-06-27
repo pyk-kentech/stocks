@@ -62,6 +62,7 @@ def run_historical_market_data_real_capture(
     pipeline_input: HistoricalMarketDataPipelineInput,
     *,
     transport: HistoricalMarketDataTransport,
+    auth_header: str | None = None,
 ) -> HistoricalChartCaptureRunResult:
     real_capture_config = pipeline_input.real_capture_config
     blocked_reasons: list[str] = []
@@ -113,17 +114,17 @@ def run_historical_market_data_real_capture(
             credential_ref_present=credential_ref_present,
         )
 
-    if transport.transport_kind == "REAL_KIWOOM_CHART":
+    credential_ref_present = bool(real_capture_config and real_capture_config.credential_ref)
+    if transport.transport_kind == "REAL_KIWOOM_CHART" and not auth_header:
         return build_capture_run_result_with_status(
             pipeline_input.dataset_id,
-            readiness_status=HistoricalMarketDataReadinessStatus.BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED,
-            blocked_reasons=["BLOCKED_REAL_NETWORK_NOT_IMPLEMENTED"],
+            readiness_status=HistoricalMarketDataReadinessStatus.BLOCKED_AUTH_OR_TOKEN,
+            blocked_reasons=["BLOCKED_AUTH_OR_TOKEN"],
             transport_kind=transport.transport_kind,
-            credential_ref_present=bool(real_capture_config and real_capture_config.credential_ref),
+            credential_ref_present=credential_ref_present,
         )
-    else:
+    if transport.transport_kind == "MOCK":
         auth_header = "Bearer <MOCK_ONLY>"
-        credential_ref_present = bool(real_capture_config.credential_ref)
     raw_responses: list[HistoricalChartRawResponse] = []
     valid_raw_responses: list[HistoricalChartRawResponse] = []
     task_results: list[HistoricalChartCaptureRunTaskResult] = []

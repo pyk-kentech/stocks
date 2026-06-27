@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from stock_risk_mcp.historical_market_data_manifest_engine import load_historical_ohlcv_rows_from_manifest
 from stock_risk_mcp.historical_market_data_models import HistoricalOhlcvRow
 from stock_risk_mcp.offline_strategy_models import (
     OfflineStrategyDatasetCompatibilityReport,
@@ -10,7 +11,11 @@ from stock_risk_mcp.offline_strategy_models import (
 
 
 def resolve_offline_strategy_rows(pipeline_input: OfflineStrategyPipelineInput) -> list[HistoricalOhlcvRow]:
-    return list(pipeline_input.ohlcv_rows)
+    if pipeline_input.ohlcv_rows:
+        return list(pipeline_input.ohlcv_rows)
+    if pipeline_input.manifest is not None:
+        return load_historical_ohlcv_rows_from_manifest(pipeline_input.manifest)
+    return []
 
 
 def build_offline_strategy_dataset_compatibility(pipeline_input: OfflineStrategyPipelineInput, rows: list[HistoricalOhlcvRow]) -> OfflineStrategyDatasetCompatibilityReport:
