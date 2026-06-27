@@ -1010,6 +1010,8 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_real_capture_preflight.add_argument("--stop-on-provider-limit", action=argparse.BooleanOptionalAction, default=True)
     historical_market_data_real_capture_preflight.add_argument("--resume-from-capture-state")
     historical_market_data_real_capture_preflight.add_argument("--reuse-existing-raw-lake", action="store_true")
+    historical_market_data_real_capture_preflight.add_argument("--backfill-cache-gaps", action=argparse.BooleanOptionalAction, default=False)
+    historical_market_data_real_capture_preflight.add_argument("--max-backfill-pages-per-symbol", type=int)
     historical_market_data_real_capture_preflight.add_argument("--credential-ref")
     historical_market_data_real_capture_preflight.add_argument("--allow-real-chart-capture", action="store_true")
     historical_market_data_real_capture_preflight.add_argument("--acknowledge-readonly-only", action="store_true")
@@ -1058,6 +1060,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     kiwoom_ka10081_capture_and_train.add_argument("--direction")
     kiwoom_ka10081_capture_and_train.add_argument("--asset-liquidity-profile", default="LARGE_CAP")
     kiwoom_ka10081_capture_and_train.add_argument("--allow-training-on-partial-capture", action=argparse.BooleanOptionalAction, default=True)
+    kiwoom_ka10081_capture_and_train.add_argument("--prefer-full-coverage-training", action=argparse.BooleanOptionalAction, default=True)
     offline_strategy_template_catalog = subparsers.add_parser("offline-strategy-template-catalog-report")
     offline_strategy_template_catalog.add_argument("--fixture-file", type=Path, required=True)
     offline_strategy_template_catalog.add_argument("--output-file", type=Path)
@@ -4365,6 +4368,9 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 resume_from_capture_state=args.resume_from_capture_state,
                 reuse_existing_raw_lake=bool(args.reuse_existing_raw_lake),
                 allow_training_on_partial_capture=bool(args.allow_training_on_partial_capture),
+                backfill_cache_gaps=bool(args.backfill_cache_gaps),
+                max_backfill_pages_per_symbol=args.max_backfill_pages_per_symbol,
+                prefer_full_coverage_training=bool(args.prefer_full_coverage_training),
             )
             if args.output_file:
                 result["output_file"] = str(args.output_file)

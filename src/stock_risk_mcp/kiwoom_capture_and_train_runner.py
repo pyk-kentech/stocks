@@ -260,6 +260,26 @@ def _build_cache_coverage_summary(
     }
 
 
+def _build_backfill_intervals(coverage_summary: dict[str, object]) -> list[dict[str, str]]:
+    intervals: list[dict[str, str]] = []
+    requested_min = coverage_summary.get("requested_date_min")
+    requested_max = coverage_summary.get("requested_date_max")
+    cached_min = coverage_summary.get("cached_date_min")
+    cached_max = coverage_summary.get("cached_date_max")
+    if requested_min and cached_min and coverage_summary.get("leading_gap_days"):
+        intervals.append({"interval_kind": "LEADING_GAP", "start_date": str(requested_min), "end_date": str(cached_min)})
+    if cached_max and requested_max and coverage_summary.get("trailing_gap_days"):
+        intervals.append({"interval_kind": "TRAILING_GAP", "start_date": str(cached_max), "end_date": str(requested_max)})
+    return intervals
+
+
+def _merge_ohlcv_rows(existing_rows: list[HistoricalOhlcvRow], new_rows: list[HistoricalOhlcvRow]) -> list[HistoricalOhlcvRow]:
+    merged: dict[tuple[str, datetime], HistoricalOhlcvRow] = {}
+    for row in existing_rows + new_rows:
+        merged[(row.provider_symbol, row.observed_at)] = row
+    return sorted(merged.values(), key=lambda item: (item.instrument_id, item.observed_at))
+
+
 def _load_cached_rows(
     pipeline_input: HistoricalMarketDataPipelineInput,
     spec: HistoricalChartRequestSpec,
@@ -405,6 +425,9 @@ def run_kiwoom_ka10081_capture_and_train(
     resume_from_capture_state: str | None = None,
     reuse_existing_raw_lake: bool = False,
     allow_training_on_partial_capture: bool = True,
+    backfill_cache_gaps: bool = False,
+    max_backfill_pages_per_symbol: int | None = None,
+    prefer_full_coverage_training: bool = True,
 ) -> dict[str, object]:
     resolved_direction = _resolve_direction(direction)
     resolved_walk_forward_mode = _resolve_walk_forward_mode(walk_forward_mode)
@@ -434,6 +457,12 @@ def run_kiwoom_ka10081_capture_and_train(
     cache_coverage_gaps: list[str] = []
     symbols_with_full_coverage: list[str] = []
     symbols_with_partial_coverage: list[str] = []
+    backfill_completed_symbols: list[str] = []
+    backfill_partial_symbols: list[str] = []
+    backfill_failed_symbols: list[str] = []
+    backfill_intervals_by_symbol: dict[str, list[dict[str, str]]] = {}
+    post_backfill_coverage_by_symbol: dict[str, str] = {}
+    backfill_attempted_any = False
     oauth_summary: dict[str, object] = {
         "token_status": None,
         "stage": "NOT_STARTED",
@@ -459,6 +488,7 @@ def run_kiwoom_ka10081_capture_and_train(
     token_ready = False
     provider_limit_hit = False
     partial_cache_used = False
+    backfill_progress_made = False
     last_provider_return_code: int | None = None
     last_provider_return_msg: str | None = None
     can_resume = False
@@ -511,6 +541,7 @@ def run_kiwoom_ka10081_capture_and_train(
     if max_symbols_per_run and max_symbols_per_run > 0:
         specs_to_process = requested_specs[:max_symbols_per_run]
         skipped_symbols.extend(spec.provider_symbol for spec in requested_specs[max_symbols_per_run:])
+    auto_backfill_cache_gaps = backfill_cache_gaps or bool(resume_from_capture_state and reuse_existing_raw_lake)
 
     for index, spec in enumerate(specs_to_process):
         if resume_from_capture_state or reuse_existing_raw_lake:
@@ -518,6 +549,8 @@ def run_kiwoom_ka10081_capture_and_train(
             raw_lake_path = _raw_lake_path(pipeline_input, spec)
             if cached_rows or raw_lake_path.exists():
                 cache_summary = _build_cache_coverage_summary(spec, cached_rows)
+                backfill_intervals = _build_backfill_intervals(cache_summary)
+                backfill_intervals_by_symbol[spec.provider_symbol] = backfill_intervals
                 if cache_summary["cache_coverage_status"] == "FULL":
                     raw_lake_paths.append(str(raw_lake_path))
                     if resume_from_capture_state and spec.provider_symbol in previous_completed:
@@ -538,12 +571,159 @@ def run_kiwoom_ka10081_capture_and_train(
                             "status": "REUSED_FROM_CACHE_COMPLETED",
                             "provider_return_code": None,
                             "provider_return_msg": "REUSED_FROM_CACHE",
+                            "backfill_required": False,
+                            "backfill_intervals": [],
+                            "backfill_reason": None,
+                            "backfill_attempted": False,
+                            "backfill_status": "NOT_REQUIRED",
+                            "post_backfill_coverage_status": "FULL",
                             **cache_summary,
                         }
                     )
+                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "FULL"
                     continue
                 cache_coverage_gaps.append(spec.provider_symbol)
                 symbols_with_partial_coverage.append(spec.provider_symbol)
+                backfill_required = bool(backfill_intervals or cache_summary["cache_coverage_status"] == "CACHE_COVERAGE_GAP")
+                if auto_backfill_cache_gaps:
+                    if spec.provider_symbol in previous_partial or spec.provider_symbol in previous_failed or (
+                        resume_from_capture_state and spec.provider_symbol in previous_completed
+                    ):
+                        retried.append(spec.provider_symbol)
+                    if not ensure_token():
+                        backfill_attempted_any = True
+                        backfill_failed_symbols.append(spec.provider_symbol)
+                        failed_symbols.append(spec.provider_symbol)
+                        failed_again.append(spec.provider_symbol)
+                        symbol_results.append(
+                            {
+                                "requested_symbol": spec.provider_symbol,
+                                "raw_lake_path": str(raw_lake_path),
+                                "provider_row_count": len(cached_rows),
+                                "normalized_row_count": len(cached_rows),
+                                "date_min": _iso_date_or_none(cached_rows[0].observed_at if cached_rows else None),
+                                "date_max": _iso_date_or_none(cached_rows[-1].observed_at if cached_rows else None),
+                                "status": "BACKFILL_FAILED",
+                                "provider_return_code": oauth_summary.get("provider_return_code"),
+                                "provider_return_msg": oauth_summary.get("provider_return_msg"),
+                                "backfill_required": backfill_required,
+                                "backfill_intervals": backfill_intervals,
+                                "backfill_reason": "CACHE_COVERAGE_GAP",
+                                "backfill_attempted": True,
+                                "backfill_status": "TOKEN_STAGE_FAILED",
+                                "post_backfill_coverage_status": cache_summary["cache_coverage_status"],
+                                **cache_summary,
+                            }
+                        )
+                        break
+                    backfill_attempted_any = True
+                    fetched_now.append(spec.provider_symbol)
+                    single_pipeline = _build_single_symbol_pipeline(pipeline_input, spec)
+                    if max_backfill_pages_per_symbol:
+                        single_pipeline = single_pipeline.model_copy(
+                            update={
+                                "real_capture_config": single_pipeline.real_capture_config.model_copy(
+                                    update={"max_continuation_pages": int(max_backfill_pages_per_symbol)}
+                                )
+                            }
+                        )
+                    capture_result = run_historical_market_data_real_capture(single_pipeline, transport=transport, auth_header=auth_header)
+                    first_task = capture_result.task_results[0] if capture_result.task_results else None
+                    new_rows: list[HistoricalOhlcvRow] = []
+                    if capture_result.manifest and capture_result.manifest.ohlcv_rows_path:
+                        new_rows = [
+                            HistoricalOhlcvRow.model_validate(item)
+                            for item in json.loads(Path(capture_result.manifest.ohlcv_rows_path).read_text(encoding="utf-8"))
+                        ]
+                    merged_rows = _merge_ohlcv_rows(cached_rows, new_rows)
+                    merged_coverage = _build_cache_coverage_summary(spec, merged_rows)
+                    raw_lake_paths.append(str(raw_lake_path))
+                    if merged_rows:
+                        aggregate_rows.extend(merged_rows)
+                    last_provider_return_code = getattr(first_task, "provider_return_code", None)
+                    last_provider_return_msg = getattr(first_task, "provider_return_msg", None)
+                    limit_now = _provider_limit_hit(last_provider_return_code, last_provider_return_msg)
+                    provider_limit_hit = provider_limit_hit or limit_now
+                    if len(merged_rows) > len(cached_rows):
+                        backfill_progress_made = True
+                    if merged_coverage["cache_coverage_status"] == "FULL":
+                        completed_symbols.append(spec.provider_symbol)
+                        symbols_with_full_coverage.append(spec.provider_symbol)
+                        backfill_completed_symbols.append(spec.provider_symbol)
+                        status = "BACKFILL_COMPLETED"
+                        post_backfill = "FULL"
+                    elif merged_rows:
+                        partial_symbols.append(spec.provider_symbol)
+                        symbols_with_partial_coverage.append(spec.provider_symbol)
+                        backfill_partial_symbols.append(spec.provider_symbol)
+                        status = "BACKFILL_PARTIAL"
+                        post_backfill = "PARTIAL"
+                    else:
+                        failed_symbols.append(spec.provider_symbol)
+                        failed_again.append(spec.provider_symbol)
+                        backfill_failed_symbols.append(spec.provider_symbol)
+                        status = "BACKFILL_FAILED"
+                        post_backfill = "CACHE_COVERAGE_GAP"
+                    post_backfill_coverage_by_symbol[spec.provider_symbol] = post_backfill
+                    symbol_results.append(
+                        {
+                            "requested_symbol": spec.provider_symbol,
+                            "raw_lake_path": str(raw_lake_path),
+                            "provider_row_count": int(getattr(first_task, "row_count", 0) or len(new_rows)),
+                            "normalized_row_count": len(merged_rows),
+                            "date_min": _iso_date_or_none(merged_rows[0].observed_at if merged_rows else None),
+                            "date_max": _iso_date_or_none(merged_rows[-1].observed_at if merged_rows else None),
+                            "status": status,
+                            "provider_return_code": last_provider_return_code,
+                            "provider_return_msg": last_provider_return_msg or "BACKFILL_ATTEMPTED",
+                            "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
+                            "last_next_key": getattr(first_task, "last_next_key", None),
+                            "backfill_required": backfill_required,
+                            "backfill_intervals": backfill_intervals,
+                            "backfill_reason": "CACHE_COVERAGE_GAP",
+                            "backfill_attempted": True,
+                            "backfill_status": status,
+                            "post_backfill_coverage_status": post_backfill,
+                            **merged_coverage,
+                        }
+                    )
+                    capture_state = {
+                        "run_id": f"{pipeline_input.dataset_id}-CAPTURE-STATE",
+                        "api_id": requested_specs[0].api_id.value if requested_specs else "UNKNOWN",
+                        "requested_symbols": [item.provider_symbol for item in requested_specs],
+                        "completed_symbols": completed_symbols,
+                        "partial_symbols": partial_symbols,
+                        "failed_symbols": failed_symbols,
+                        "skipped_symbols": skipped_symbols,
+                        "per_symbol_status": symbol_results,
+                        "cache_coverage_gaps": cache_coverage_gaps,
+                        "symbols_with_full_coverage": symbols_with_full_coverage,
+                        "symbols_with_partial_coverage": symbols_with_partial_coverage,
+                        "backfill_intervals_by_symbol": backfill_intervals_by_symbol,
+                        "backfill_completed_symbols": backfill_completed_symbols,
+                        "backfill_partial_symbols": backfill_partial_symbols,
+                        "backfill_failed_symbols": backfill_failed_symbols,
+                        "backfill_last_base_dt": spec.base_dt,
+                        "backfill_last_next_key": getattr(first_task, "last_next_key", None),
+                        "post_backfill_coverage_by_symbol": post_backfill_coverage_by_symbol,
+                        "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
+                        "last_next_key": getattr(first_task, "last_next_key", None),
+                        "raw_lake_paths": sorted(set(raw_lake_paths)),
+                        "normalized_paths": [],
+                        "provider_limit_hit": provider_limit_hit,
+                        "last_provider_return_code": last_provider_return_code,
+                        "last_provider_return_msg": last_provider_return_msg,
+                        "partial_cache_used": partial_cache_used,
+                        "can_resume": bool(provider_limit_hit or failed_symbols or partial_symbols or skipped_symbols or backfill_partial_symbols),
+                    }
+                    can_resume = bool(capture_state["can_resume"])
+                    _write_capture_state(state_path, capture_state)
+                    if limit_now and stop_on_provider_limit:
+                        skipped_symbols.extend(item.provider_symbol for item in specs_to_process[index + 1 :])
+                        break
+                    if symbol_sleep_seconds > 0 and index < len(specs_to_process) - 1:
+                        time.sleep(symbol_sleep_seconds)
+                    continue
                 if reuse_existing_raw_lake and cached_rows:
                     raw_lake_paths.append(str(raw_lake_path))
                     partial_cache_used = True
@@ -561,9 +741,16 @@ def run_kiwoom_ka10081_capture_and_train(
                             "status": "REUSED_FROM_CACHE_PARTIAL",
                             "provider_return_code": None,
                             "provider_return_msg": "REUSED_FROM_CACHE",
+                            "backfill_required": backfill_required,
+                            "backfill_intervals": backfill_intervals,
+                            "backfill_reason": "CACHE_COVERAGE_GAP",
+                            "backfill_attempted": False,
+                            "backfill_status": "NOT_ATTEMPTED",
+                            "post_backfill_coverage_status": "PARTIAL",
                             **cache_summary,
                         }
                     )
+                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "PARTIAL"
                     continue
                 if reuse_existing_raw_lake:
                     raw_lake_paths.append(str(raw_lake_path))
@@ -578,9 +765,16 @@ def run_kiwoom_ka10081_capture_and_train(
                             "status": "CACHE_COVERAGE_GAP",
                             "provider_return_code": None,
                             "provider_return_msg": "CACHE_PRESENT_BUT_UNUSABLE",
+                            "backfill_required": backfill_required,
+                            "backfill_intervals": backfill_intervals,
+                            "backfill_reason": "CACHE_COVERAGE_GAP",
+                            "backfill_attempted": False,
+                            "backfill_status": "NOT_ATTEMPTED",
+                            "post_backfill_coverage_status": "CACHE_COVERAGE_GAP",
                             **cache_summary,
                         }
                     )
+                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "CACHE_COVERAGE_GAP"
                     failed_symbols.append(spec.provider_symbol)
                     continue
         if spec.provider_symbol in previous_partial or spec.provider_symbol in previous_failed or (
@@ -605,6 +799,12 @@ def run_kiwoom_ka10081_capture_and_train(
                     "status": "FAILED",
                     "provider_return_code": oauth_summary.get("provider_return_code"),
                     "provider_return_msg": oauth_summary.get("provider_return_msg"),
+                    "backfill_required": False,
+                    "backfill_intervals": [],
+                    "backfill_reason": None,
+                    "backfill_attempted": False,
+                    "backfill_status": "NOT_REQUIRED",
+                    "post_backfill_coverage_status": "FAILED",
                     "cache_found": False,
                     "cache_reused": False,
                     "cache_coverage_status": "NOT_USED",
@@ -663,6 +863,12 @@ def run_kiwoom_ka10081_capture_and_train(
                 "provider_return_msg": last_provider_return_msg,
                 "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
                 "last_next_key": getattr(first_task, "last_next_key", None),
+                "backfill_required": False,
+                "backfill_intervals": [],
+                "backfill_reason": None,
+                "backfill_attempted": False,
+                "backfill_status": "NOT_REQUIRED",
+                "post_backfill_coverage_status": "FULL" if rows else "FAILED",
                 "cache_found": False,
                 "cache_reused": False,
                 "cache_coverage_status": "NOT_USED",
@@ -689,6 +895,13 @@ def run_kiwoom_ka10081_capture_and_train(
             "cache_coverage_gaps": cache_coverage_gaps,
             "symbols_with_full_coverage": symbols_with_full_coverage,
             "symbols_with_partial_coverage": symbols_with_partial_coverage,
+            "backfill_intervals_by_symbol": backfill_intervals_by_symbol,
+            "backfill_completed_symbols": backfill_completed_symbols,
+            "backfill_partial_symbols": backfill_partial_symbols,
+            "backfill_failed_symbols": backfill_failed_symbols,
+            "backfill_last_base_dt": spec.base_dt,
+            "backfill_last_next_key": getattr(first_task, "last_next_key", None),
+            "post_backfill_coverage_by_symbol": post_backfill_coverage_by_symbol,
             "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
             "last_next_key": getattr(first_task, "last_next_key", None),
             "raw_lake_paths": sorted(set(raw_lake_paths)),
@@ -723,6 +936,13 @@ def run_kiwoom_ka10081_capture_and_train(
             "cache_coverage_gaps": cache_coverage_gaps,
             "symbols_with_full_coverage": sorted(set(symbols_with_full_coverage)),
             "symbols_with_partial_coverage": sorted(set(symbols_with_partial_coverage)),
+            "backfill_intervals_by_symbol": backfill_intervals_by_symbol,
+            "backfill_completed_symbols": sorted(set(backfill_completed_symbols)),
+            "backfill_partial_symbols": sorted(set(backfill_partial_symbols)),
+            "backfill_failed_symbols": sorted(set(backfill_failed_symbols)),
+            "backfill_last_base_dt": next((item.base_dt for item in reversed(specs_to_process) if item.provider_symbol in backfill_intervals_by_symbol), None),
+            "backfill_last_next_key": next((item.get("last_next_key") for item in reversed(symbol_results) if item.get("backfill_attempted") and item.get("last_next_key")), None),
+            "post_backfill_coverage_by_symbol": post_backfill_coverage_by_symbol,
             "last_successful_page": max((item.get("last_successful_page", 0) for item in symbol_results), default=0),
             "last_next_key": next((item.get("last_next_key") for item in reversed(symbol_results) if item.get("last_next_key")), None),
             "raw_lake_paths": sorted(set(raw_lake_paths)),
@@ -739,18 +959,36 @@ def run_kiwoom_ka10081_capture_and_train(
     request_status = "CHART_ROWS_EXTRACTED" if aggregate_rows else "FAILED"
     row_count = len(aggregate_rows)
     chart_response_received = bool(symbol_results)
-    training_input_symbols = sorted({row.provider_symbol for row in aggregate_rows})
+    full_coverage_symbols = sorted(set(symbols_with_full_coverage))
+    partial_coverage_symbols = sorted(set(symbols_with_partial_coverage) - set(full_coverage_symbols))
+    gap_symbols = sorted({item.provider_symbol for item in requested_specs} - set(full_coverage_symbols) - set(partial_coverage_symbols))
+    if prefer_full_coverage_training:
+        training_input_symbols = full_coverage_symbols
+    elif allow_training_on_partial_capture:
+        training_input_symbols = sorted(set(full_coverage_symbols + partial_coverage_symbols))
+    else:
+        training_input_symbols = full_coverage_symbols
     training_input_coverage_by_symbol = {
         item["requested_symbol"]: item["status"]
         for item in symbol_results
         if item["requested_symbol"] in training_input_symbols
     }
     excluded_symbols = [item.provider_symbol for item in requested_specs if item.provider_symbol not in training_input_symbols]
-    exclusion_reasons = {
-        item["requested_symbol"]: ("PROVIDER_LIMIT_OR_NO_ROWS" if item["status"] != "COMPLETED" else "")
-        for item in symbol_results
-        if item["requested_symbol"] in excluded_symbols
-    }
+    exclusion_reasons = {}
+    for item in symbol_results:
+        symbol = item["requested_symbol"]
+        if symbol not in excluded_symbols:
+            continue
+        if symbol in gap_symbols:
+            exclusion_reasons[symbol] = "NO_USABLE_COVERAGE"
+        elif prefer_full_coverage_training:
+            exclusion_reasons[symbol] = "PREFER_FULL_COVERAGE_TRAINING"
+        else:
+            exclusion_reasons[symbol] = "PARTIAL_COVERAGE_EXCLUDED"
+    for symbol in excluded_symbols:
+        if symbol not in exclusion_reasons:
+            exclusion_reasons[symbol] = "SKIPPED_OR_NOT_CAPTURED"
+    training_on_partial_coverage = any(symbol in partial_coverage_symbols for symbol in training_input_symbols)
 
     training_started = False
     training_completed = False
@@ -768,18 +1006,36 @@ def run_kiwoom_ka10081_capture_and_train(
         reloaded_manifest = load_historical_ohlcv_dataset_manifest(manifest_path)
         manifest_reloaded = True
 
-    if aggregate_rows and (allow_training_on_partial_capture or not (provider_limit_hit or partial_cache_used)):
+    training_manifest_path = None
+    training_manifest_id = None
+    training_manifest = reloaded_manifest
+    if training_input_symbols and set(training_input_symbols) != {row.provider_symbol for row in aggregate_rows}:
+        filtered_rows = [row for row in aggregate_rows if row.provider_symbol in set(training_input_symbols)]
+        training_pipeline_input = pipeline_input.model_copy(
+            update={
+                "dataset_id": f"{pipeline_input.dataset_id}-TRAINING-INPUT",
+                "store_root": str(output_root / "training_input_store"),
+            }
+        )
+        training_manifest, _ = build_historical_ohlcv_dataset_manifest(training_pipeline_input, filtered_rows)
+        training_manifest_path = training_manifest.manifest_path
+        training_manifest_id = training_manifest.manifest_id
+    elif training_manifest is not None and training_input_symbols:
+        training_manifest_path = training_manifest.manifest_path
+        training_manifest_id = training_manifest.manifest_id
+
+    if training_input_symbols and training_manifest is not None:
         pipeline = OfflineStrategyPipelineInput(
             pipeline_id=f"{pipeline_input.dataset_id}-OFFLINE-STRATEGY",
             dataset_id=pipeline_input.dataset_id,
-            manifest=reloaded_manifest,
+            manifest=training_manifest,
             requested_template_ids=resolved_template_ids,
             asset_liquidity_profile=asset_liquidity_profile,
             primary_walk_forward_mode=resolved_walk_forward_mode,
             search_mode=str(search_mode or "BOUNDED_GRID").upper(),
         )
-        if training_handoff_mode == "in_process" and manifest is not None:
-            pipeline = pipeline.model_copy(update={"manifest": manifest})
+        if training_handoff_mode == "in_process" and training_manifest is not None:
+            pipeline = pipeline.model_copy(update={"manifest": training_manifest})
         training_started = True
         training_result = build_offline_strategy_pipeline(pipeline)
         training_completed = True
@@ -796,8 +1052,14 @@ def run_kiwoom_ka10081_capture_and_train(
     used_any_cache = bool(reused_from_cache or skipped_completed)
     if not aggregate_rows:
         top_status = "FAILED"
+    elif backfill_attempted_any and provider_limit_hit and not training_completed:
+        top_status = "PARTIAL_BACKFILL_PROVIDER_LIMIT"
     elif not training_completed:
         top_status = "PARTIAL_CAPTURE_NO_TRAINING"
+    elif backfill_attempted_any and provider_limit_hit:
+        top_status = "COMPLETED_WITH_PROVIDER_LIMIT"
+    elif backfill_attempted_any and backfill_progress_made:
+        top_status = "COMPLETED_WITH_BACKFILL"
     elif provider_limit_hit and partial_cache_used:
         top_status = "COMPLETED_WITH_PROVIDER_LIMIT_AND_PARTIAL_CACHE"
     elif provider_limit_hit:
@@ -842,29 +1104,40 @@ def run_kiwoom_ka10081_capture_and_train(
         "provider_limit_hit": provider_limit_hit,
         "partial_cache_used": partial_cache_used,
         "partial_capture": bool(partial_symbols),
-        "completed_symbols": completed_symbols,
-        "partial_symbols": partial_symbols,
-        "failed_symbols": failed_symbols,
+        "completed_symbols": sorted(set(completed_symbols)),
+        "partial_symbols": sorted(set(partial_symbols)),
+        "failed_symbols": sorted(set(failed_symbols)),
         "skipped_symbols": skipped_symbols,
         "cache_coverage_gaps": sorted(set(cache_coverage_gaps)),
-        "symbols_with_full_coverage": sorted(set(symbols_with_full_coverage)),
-        "symbols_with_partial_coverage": sorted(set(symbols_with_partial_coverage)),
+        "symbols_with_full_coverage": full_coverage_symbols,
+        "symbols_with_partial_coverage": partial_coverage_symbols,
+        "full_coverage_symbols": full_coverage_symbols,
+        "partial_coverage_symbols": partial_coverage_symbols,
+        "gap_symbols": gap_symbols,
         "symbol_results": symbol_results,
         "fetched_now": fetched_now,
         "reused_from_cache": reused_from_cache,
         "skipped_completed": skipped_completed,
         "retried": retried,
         "failed_again": failed_again,
+        "backfill_intervals_by_symbol": backfill_intervals_by_symbol,
+        "backfill_completed_symbols": sorted(set(backfill_completed_symbols)),
+        "backfill_partial_symbols": sorted(set(backfill_partial_symbols)),
+        "backfill_failed_symbols": sorted(set(backfill_failed_symbols)),
+        "post_backfill_coverage_by_symbol": post_backfill_coverage_by_symbol,
         "manifest_written": manifest is not None,
         "manifest_path": str(manifest_path) if manifest_path else None,
         "manifest_id": manifest.manifest_id if manifest else None,
         "manifest_reloaded": manifest_reloaded,
+        "training_manifest_path": training_manifest_path,
+        "training_manifest_id": training_manifest_id,
         "raw_lake_paths": sorted(set(raw_lake_paths)),
         "normalized_ohlcv_paths": [path for path in ([manifest.ohlcv_rows_path, manifest.manifest_path] if manifest else []) if path],
         "training_started": training_started,
         "training_completed": training_completed,
         "training_input_symbols": training_input_symbols,
         "training_input_coverage_by_symbol": training_input_coverage_by_symbol,
+        "training_on_partial_coverage": training_on_partial_coverage,
         "excluded_symbols": excluded_symbols,
         "exclusion_reasons": exclusion_reasons,
         "offline_strategy_output_root": str(output_root),
@@ -880,6 +1153,9 @@ def run_kiwoom_ka10081_capture_and_train(
         "max_symbols_per_run": max_symbols_per_run,
         "stop_on_provider_limit": stop_on_provider_limit,
         "allow_training_on_partial_capture": allow_training_on_partial_capture,
+        "backfill_cache_gaps": auto_backfill_cache_gaps,
+        "max_backfill_pages_per_symbol": max_backfill_pages_per_symbol,
+        "prefer_full_coverage_training": prefer_full_coverage_training,
     }
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return summary

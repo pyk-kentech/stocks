@@ -58,6 +58,8 @@ CMD=(
   --acknowledge-rate-limit-and-capacity
   --acknowledge-credential-redaction
   --reuse-existing-raw-lake
+  --backfill-cache-gaps
+  --prefer-full-coverage-training
   --stop-on-provider-limit
   --output-file "${OUTPUT_FILE}"
 )

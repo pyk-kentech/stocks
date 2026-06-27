@@ -654,7 +654,7 @@ def test_capture_and_train_wrapper_reports_partial_provider_limit(tmp_path, monk
         search_mode="SMOKE_SEARCH",
         strategy_families=["RSI_OVERSOLD_REBOUND"],
     )
-    assert result["status"] == "COMPLETED_WITH_PROVIDER_LIMIT"
+    assert result["status"] == "PARTIAL_CAPTURE_NO_TRAINING"
     assert result["provider_limit_hit"] is True
     assert result["partial_capture"] is True
     assert result["partial_symbols"] == ["005930"]
@@ -754,6 +754,7 @@ def test_capture_and_train_wrapper_partial_cache_is_not_completed_and_reports_co
         training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
         reuse_existing_raw_lake=True,
         allow_training_on_partial_capture=True,
+        prefer_full_coverage_training=False,
         search_mode="SMOKE_SEARCH",
         strategy_families=["RSI_OVERSOLD_REBOUND"],
     )
@@ -823,6 +824,187 @@ def test_capture_and_train_wrapper_partial_cache_blocks_training_when_not_allowe
     assert result["training_completed"] is False
     assert result["partial_cache_used"] is True
     assert result["symbol_results"][0]["status"] == "REUSED_FROM_CACHE_PARTIAL"
+
+
+def test_capture_and_train_wrapper_backfills_partial_cache_to_full_coverage(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={
+                        "request_id": "KA10081-005930-20200101-20260627",
+                        "start_at": datetime.fromisoformat("2020-01-01T00:00:00+09:00"),
+                        "end_at": datetime.fromisoformat("2026-06-27T23:59:59+09:00"),
+                        "base_dt": "20260627",
+                    }
+                )
+            ]
+        }
+    )
+    _cached_raw_lake_file(
+        tmp_path,
+        fixture,
+        "005930",
+        chart_rows=[
+            {"dt": "20210729", "open_pric": "79000", "high_pric": "79500", "low_pric": "78500", "cur_prc": "79200", "trde_qty": "900000"},
+            {"dt": "20240105", "open_pric": "78000", "high_pric": "78900", "low_pric": "77500", "cur_prc": "78600", "trde_qty": "850000"},
+        ],
+    )
+    token_ref_path = _token_ref_file(tmp_path)
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            assert preview.body_json["base_dt"] == "20260627"
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {
+                    "return_code": 0,
+                    "return_msg": "OK",
+                    "stk_cd": preview.body_json["stk_cd"],
+                    "stk_dt_pole_chart_qry": [
+                        {"dt": "20200101", "open_pric": "56000", "high_pric": "56500", "low_pric": "55000", "cur_prc": "55800", "trde_qty": "1200000"},
+                        {"dt": "20260627", "open_pric": "90000", "high_pric": "90500", "low_pric": "89500", "cur_prc": "90200", "trde_qty": "1500000"},
+                    ],
+                },
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        resume_from_capture_state=str(tmp_path / "resume_state.json"),
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=1,
+        prefer_full_coverage_training=True,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "COMPLETED_WITH_BACKFILL"
+    assert result["symbol_results"][0]["status"] == "BACKFILL_COMPLETED"
+    assert result["symbol_results"][0]["post_backfill_coverage_status"] == "FULL"
+    assert result["full_coverage_symbols"] == ["005930"]
+    assert result["training_input_symbols"] == ["005930"]
+    assert result["training_on_partial_coverage"] is False
+
+
+def test_capture_and_train_wrapper_backfill_provider_limit_blocks_full_coverage_training(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={
+                        "request_id": "KA10081-005930-20200101-20260627",
+                        "start_at": datetime.fromisoformat("2020-01-01T00:00:00+09:00"),
+                        "end_at": datetime.fromisoformat("2026-06-27T23:59:59+09:00"),
+                        "base_dt": "20260627",
+                    }
+                )
+            ]
+        }
+    )
+    _cached_raw_lake_file(
+        tmp_path,
+        fixture,
+        "005930",
+        chart_rows=[
+            {"dt": "20210729", "open_pric": "79000", "high_pric": "79500", "low_pric": "78500", "cur_prc": "79200", "trde_qty": "900000"},
+            {"dt": "20240105", "open_pric": "78000", "high_pric": "78900", "low_pric": "77500", "cur_prc": "78600", "trde_qty": "850000"},
+        ],
+    )
+    token_ref_path = _token_ref_file(tmp_path)
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {
+                    "return_code": 5,
+                    "return_msg": "허용된 요청 개수를 초과하였습니다[1700:허용된 요청 개수를 초과하였습니다. API ID=ka10081]",
+                    "stk_cd": preview.body_json["stk_cd"],
+                    "stk_dt_pole_chart_qry": [
+                        {"dt": "20260627", "open_pric": "90000", "high_pric": "90500", "low_pric": "89500", "cur_prc": "90200", "trde_qty": "1500000"},
+                    ],
+                },
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        resume_from_capture_state=str(tmp_path / "resume_state.json"),
+        backfill_cache_gaps=True,
+        prefer_full_coverage_training=True,
+        allow_training_on_partial_capture=False,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "PARTIAL_BACKFILL_PROVIDER_LIMIT"
+    assert result["provider_limit_hit"] is True
+    assert result["symbol_results"][0]["status"] == "BACKFILL_PARTIAL"
+    assert result["training_input_symbols"] == []
+    assert result["training_on_partial_coverage"] is False
 
 
 def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:
