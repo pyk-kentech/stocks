@@ -998,6 +998,7 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_real_capture_preflight.add_argument("--symbols", required=True)
     historical_market_data_real_capture_preflight.add_argument("--start-date", required=True)
     historical_market_data_real_capture_preflight.add_argument("--end-date", required=True)
+    historical_market_data_real_capture_preflight.add_argument("--upd-stkpc-tp", default="1")
     historical_market_data_real_capture_preflight.add_argument("--capture-profile", default="DAILY_RESEARCH_PROFILE")
     historical_market_data_real_capture_preflight.add_argument("--store-root", required=True)
     historical_market_data_real_capture_preflight.add_argument("--raw-lake-root", required=True)
@@ -9296,7 +9297,9 @@ def _build_historical_market_data_real_capture_input(args):
             "canonical_instrument_id": symbol,
             "interval": "1D" if str(args.api_id).upper() == "KA10081" else "1M",
             "base_dt": str(args.end_date).replace("-", ""),
-            "upd_stkpc_tp": "1",
+            "upd_stkpc_tp": str(getattr(args, "upd_stkpc_tp", "1")),
+            "start_at": f"{str(args.start_date)}T00:00:00+09:00",
+            "end_at": f"{str(args.end_date)}T23:59:59+09:00",
             "source_ref": "CLI_REAL_CAPTURE",
         }
         if str(args.api_id).upper() == "KA10080":

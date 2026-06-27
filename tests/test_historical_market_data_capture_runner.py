@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from stock_risk_mcp.cli import _build_historical_market_data_real_capture_input, build_command_parser
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
 from stock_risk_mcp import historical_market_data_capture_runner as capture_runner_module
 from stock_risk_mcp import historical_market_data_guard as capture_guard_module
@@ -188,6 +189,114 @@ def test_historical_market_data_capture_runner_returns_dependency_gap_for_missin
     )
     assert result.readiness_status.value == "DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA"
     assert result.raw_response_count == 0
+
+
+def test_historical_market_data_capture_runner_returns_provider_chart_error(tmp_path) -> None:
+    fixture = _fixture(tmp_path)
+    result = run_historical_market_data_real_capture(
+        fixture,
+        transport=MockHistoricalMarketDataTransport(
+            {
+                "ka10081-005930-test": {
+                    "status_code": 200,
+                    "headers": {"cont-yn": "N", "next-key": ""},
+                    "body_json": {
+                        "return_code": 100,
+                        "return_msg": "요청 전문 오류",
+                    },
+                }
+            }
+        ),
+    )
+    assert result.readiness_status.value == "PROVIDER_CHART_ERROR"
+    assert result.task_results[0].provider_return_code == 100
+    assert result.task_results[0].provider_return_msg == "요청 전문 오류"
+
+
+def test_historical_market_data_capture_runner_uses_ka10081_schema_and_continuation(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(update={"real_capture_config": _fixture(tmp_path).real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})})
+    seen_previews = []
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+        base_url = "https://mockapi.kiwoom.com"
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            seen_previews.append(preview)
+            if len(seen_previews) == 1:
+                assert preview.path == "/api/dostk/chart"
+                assert preview.headers["api-id"] == "ka10081"
+                assert preview.body_json == {"stk_cd": "005930", "upd_stkpc_tp": "1", "base_dt": "20260624"}
+                assert preview.headers["cont-yn"] == "N"
+                assert preview.headers["next-key"] == ""
+                return {
+                    "status_code": 200,
+                    "headers": {"cont-yn": "Y", "next-key": "PAGE2"},
+                    "body_json": {
+                        "return_code": 0,
+                        "return_msg": "OK",
+                        "stk_dt_pole_chart_qry": [
+                            {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
+                        ],
+                    },
+                }
+            assert preview.headers["cont-yn"] == "Y"
+            assert preview.headers["next-key"] == "PAGE2"
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {
+                    "return_code": 0,
+                    "return_msg": "OK",
+                    "stk_dt_pole_chart_qry": [
+                        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"}
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+    result = run_historical_market_data_real_capture(fixture, transport=FakeRealTransport(), auth_header="Bearer REDACTED")
+    assert result.readiness_status.value == "REAL_CAPTURE_EXECUTED"
+    assert result.raw_response_count == 2
+    assert result.normalized_row_count == 2
+    assert result.task_results[0].page_count == 2
+    assert result.task_results[0].row_count == 2
+    assert result.task_results[0].chart_response_received is True
+    assert len(seen_previews) == 2
+
+
+def test_build_historical_market_data_real_capture_input_carries_upd_stkpc_tp() -> None:
+    parser = build_command_parser()
+    args = parser.parse_args(
+        [
+            "kiwoom-ka10081-capture-and-train-run",
+            "--kiwoom-environment",
+            "MOCK",
+            "--credential-ref",
+            "/tmp/kiwoom",
+            "--token-store-root",
+            "local_data/kiwoom_tokens",
+            "--api-id",
+            "KA10081",
+            "--symbols",
+            "005930",
+            "--start-date",
+            "2020-01-01",
+            "--end-date",
+            "2026-06-27",
+            "--store-root",
+            "local_data/historical_market_data/store",
+            "--raw-lake-root",
+            "local_data/historical_market_data/raw_lake",
+            "--upd-stkpc-tp",
+            "1",
+        ]
+    )
+    pipeline = _build_historical_market_data_real_capture_input(args)
+    assert pipeline.request_specs[0].upd_stkpc_tp == "1"
+    assert pipeline.request_specs[0].base_dt == "20260627"
 
 
 def test_historical_market_data_capture_runner_blocks_without_auth_header(tmp_path, monkeypatch) -> None:

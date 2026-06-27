@@ -195,6 +195,21 @@ def run_kiwoom_ka10081_capture_and_train(
         strategy_families=strategy_families,
         direction=resolved_direction,
     )
+    first_task = capture_result.task_results[0] if capture_result.task_results else None
+    chart_response_received = bool(
+        getattr(first_task, "chart_response_received", False)
+        or capture_result.raw_response_count
+        or capture_result.normalized_row_count
+        or capture_result.readiness_status
+        in {
+            HistoricalMarketDataReadinessStatus.PROVIDER_EMPTY_RESPONSE,
+            HistoricalMarketDataReadinessStatus.PROVIDER_CHART_ERROR,
+            HistoricalMarketDataReadinessStatus.DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA,
+            HistoricalMarketDataReadinessStatus.REAL_CAPTURE_EXECUTED,
+        }
+    )
+    request_status = "CHART_ROWS_EXTRACTED" if capture_result.manifest is not None else capture_result.readiness_status.value
+    row_count = capture_result.normalized_row_count or int(getattr(first_task, "row_count", 0) or 0)
     if capture_result.manifest is None or not capture_result.manifest.manifest_path:
         return {
             "status": "FAILED",
@@ -204,8 +219,8 @@ def run_kiwoom_ka10081_capture_and_train(
             "endpoint_base_url": oauth_summary.get("endpoint_base_url"),
             "endpoint_path": oauth_summary.get("endpoint_path"),
             "http_status_code": oauth_summary.get("http_status_code"),
-            "provider_return_code": oauth_summary.get("provider_return_code"),
-            "provider_return_msg": oauth_summary.get("provider_return_msg"),
+            "provider_return_code": getattr(first_task, "provider_return_code", None) or oauth_summary.get("provider_return_code"),
+            "provider_return_msg": getattr(first_task, "provider_return_msg", None) or oauth_summary.get("provider_return_msg"),
             "transport_error_type": oauth_summary.get("transport_error_type"),
             "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
             "training_handoff_mode": training_handoff_mode,
@@ -217,11 +232,15 @@ def run_kiwoom_ka10081_capture_and_train(
             "direction": resolved_direction.value,
             "token_written": bool(oauth_summary.get("token_written")),
             "chart_request_started": bool(oauth_summary.get("chart_request_started", False)),
+            "chart_response_received": chart_response_received,
+            "row_count": row_count,
+            "raw_lake_paths": [],
+            "normalized_ohlcv_paths": [],
             "manifest_written": False,
             "manifest_reloaded": False,
             "training_started": False,
             "training_completed": False,
-            "request_status": capture_result.readiness_status.value,
+            "request_status": request_status,
         }
     manifest_path = Path(capture_result.manifest.manifest_path)
     if not manifest_path.exists():
@@ -260,10 +279,11 @@ def run_kiwoom_ka10081_capture_and_train(
         "endpoint_base_url": oauth_summary.get("endpoint_base_url"),
         "endpoint_path": oauth_summary.get("endpoint_path"),
         "http_status_code": oauth_summary.get("http_status_code"),
-        "provider_return_code": oauth_summary.get("provider_return_code"),
-        "provider_return_msg": oauth_summary.get("provider_return_msg"),
+        "provider_return_code": getattr(first_task, "provider_return_code", None) or oauth_summary.get("provider_return_code"),
+        "provider_return_msg": getattr(first_task, "provider_return_msg", None) or oauth_summary.get("provider_return_msg"),
         "transport_error_type": oauth_summary.get("transport_error_type"),
         "transport_error_message_redacted": oauth_summary.get("transport_error_message_redacted"),
+        "request_status": request_status,
         "training_handoff_mode": training_handoff_mode,
         "strategy_families": sorted({item.strip().upper() for item in (strategy_families or []) if item and item.strip()}),
         "search_mode": str(search_mode or "BOUNDED_GRID").upper(),
@@ -273,6 +293,8 @@ def run_kiwoom_ka10081_capture_and_train(
         "direction": resolved_direction.value,
         "token_written": bool(oauth_summary.get("token_written")),
         "chart_request_started": True,
+        "chart_response_received": chart_response_received,
+        "row_count": row_count,
         "manifest_written": True,
         "manifest_path": str(manifest_path),
         "manifest_id": manifest.manifest_id,

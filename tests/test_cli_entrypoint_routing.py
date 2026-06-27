@@ -49,6 +49,7 @@ def test_kiwoom_capture_and_train_help_uses_command_router() -> None:
     assert result.returncode == 0
     assert "--training-handoff-mode" in result.stdout
     assert "--training-output-root" in result.stdout
+    assert "--upd-stkpc-tp" in result.stdout
     assert "--strategy-families" in result.stdout
     assert "--search-mode" in result.stdout
     assert "--walk-forward-mode" in result.stdout

@@ -35,7 +35,16 @@ def build_capture_run_result_with_status(
     blocked_reasons: list[str],
     transport_kind: HistoricalMarketDataTransportKind,
     credential_ref_present: bool,
+    task_results: list[HistoricalChartCaptureRunTaskResult] | None = None,
 ) -> HistoricalChartCaptureRunResult:
+    normalized_task_results = task_results or [
+        HistoricalChartCaptureRunTaskResult(
+            task_id=f"{dataset_id}-BLOCKED",
+            request_id=f"{dataset_id}-BLOCKED",
+            execution_decision=HistoricalChartCaptureDecision.BLOCKED,
+            blocked_reasons=blocked_reasons,
+        )
+    ]
     audit = HistoricalChartCaptureRunAudit(
         audit_id=f"{dataset_id}-REAL-CAPTURE-AUDIT",
         dataset_id=dataset_id,
@@ -44,19 +53,13 @@ def build_capture_run_result_with_status(
         credential_policy=HistoricalMarketDataCredentialPolicy.KEY_REF_ONLY if credential_ref_present else HistoricalMarketDataCredentialPolicy.BLOCKED,
         redaction_status=HistoricalMarketDataRedactionStatus.PASSED,
         auth_header_present=credential_ref_present,
+        task_results=normalized_task_results,
         blocked_reasons=blocked_reasons,
     )
     return HistoricalChartCaptureRunResult(
         run_id=f"{dataset_id}-REAL-CAPTURE-RUN",
         dataset_id=dataset_id,
         readiness_status=readiness_status,
-        task_results=[
-            HistoricalChartCaptureRunTaskResult(
-                task_id=f"{dataset_id}-BLOCKED",
-                request_id=f"{dataset_id}-BLOCKED",
-                execution_decision=HistoricalChartCaptureDecision.BLOCKED,
-                blocked_reasons=blocked_reasons,
-            )
-        ],
+        task_results=normalized_task_results,
         audit_report=audit,
     )

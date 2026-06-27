@@ -31,10 +31,11 @@ def _preview(spec: HistoricalChartRequestSpec, request_path: str) -> HistoricalC
         provider=HistoricalMarketDataProvider.KIWOOM_REST,
         path=request_path,
         headers={
-            "api-id": spec.api_id.value,
+            "api-id": spec.api_id.value.lower(),
             "authorization": "Bearer <TOKEN_REF_ONLY>",
             "cont-yn": spec.cont_yn,
             "next-key": spec.next_key,
+            "x-kiwoom-environment": "UNKNOWN",
         },
         body_json=body,
     )

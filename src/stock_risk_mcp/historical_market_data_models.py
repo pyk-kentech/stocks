@@ -197,6 +197,7 @@ class HistoricalMarketDataReadinessStatus(StrEnum):
     PREFLIGHT_READY = "PREFLIGHT_READY"
     REAL_CAPTURE_READY = "REAL_CAPTURE_READY"
     REAL_CAPTURE_EXECUTED = "REAL_CAPTURE_EXECUTED"
+    PROVIDER_CHART_ERROR = "PROVIDER_CHART_ERROR"
     PROVIDER_EMPTY_RESPONSE = "PROVIDER_EMPTY_RESPONSE"
     BLOCKED_AUTH_OR_TOKEN = "BLOCKED_AUTH_OR_TOKEN"
     DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA = "DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA"
@@ -317,6 +318,10 @@ class HistoricalChartCaptureRunTaskResult(_BaseSafety):
     page_count: int = Field(default=0, ge=0)
     raw_response_count: int = Field(default=0, ge=0)
     normalized_row_count: int = Field(default=0, ge=0)
+    provider_return_code: int | None = None
+    provider_return_msg: str | None = None
+    chart_response_received: bool = False
+    row_count: int = Field(default=0, ge=0)
     blocked_reasons: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 

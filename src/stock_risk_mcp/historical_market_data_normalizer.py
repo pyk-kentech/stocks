@@ -95,8 +95,10 @@ def classify_chart_payload(api_id: HistoricalMarketDataApiId, raw_payload: dict[
     return_code = int(raw_payload.get("return_code", 0) or 0)
     return_msg = str(raw_payload.get("return_msg", "") or "")
     message = return_msg.lower()
-    if return_code != 0 and any(term in message for term in ("token", "auth", "인증", "권한", "access")):
-        return "BLOCKED_AUTH_OR_TOKEN"
+    if return_code != 0:
+        if any(term in message for term in ("token", "auth", "인증", "권한", "access")):
+            return "BLOCKED_AUTH_OR_TOKEN"
+        return "PROVIDER_CHART_ERROR"
     rows = extract_chart_rows(api_id, raw_payload)
     if rows is None:
         return "DEPENDENCY_GAP_KIWOOM_ENDPOINT_SCHEMA"
