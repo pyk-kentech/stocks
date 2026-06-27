@@ -80,10 +80,12 @@ else
   STATE_PATH=""
 fi
 
-if [[ "${STATUS}" == "COMPLETED_WITH_PROVIDER_LIMIT" || "${STATUS}" == "PARTIAL_CAPTURE_NO_TRAINING" ]]; then
+if [[ "${STATUS}" == "COMPLETED_WITH_PROVIDER_LIMIT" || "${STATUS}" == "COMPLETED_WITH_PROVIDER_LIMIT_AND_PARTIAL_CACHE" || "${STATUS}" == "COMPLETED_WITH_PARTIAL_CACHE" || "${STATUS}" == "PARTIAL_CAPTURE_NO_TRAINING" ]]; then
   echo "Provider limit or partial capture detected."
   if [[ -n "${STATE_PATH}" && "${STATE_PATH}" != "null" ]]; then
     echo "Next resume command:"
     printf 'KIWOOM_RESUME_STATE=%q %q\n' "${STATE_PATH}" "${BASH_SOURCE[0]}"
   fi
+  echo 'State lookup command:'
+  echo 'find local_data -name "kiwoom_capture_state.json" -print'
 fi

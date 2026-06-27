@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 import time
 
@@ -208,6 +209,57 @@ def _raw_lake_path(pipeline_input: HistoricalMarketDataPipelineInput, spec: Hist
     return Path(pipeline_input.raw_lake_root) / f"{spec.request_id.lower()}-response.json"
 
 
+def _iso_date_or_none(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.date().isoformat()
+
+
+def _build_cache_coverage_summary(
+    spec: HistoricalChartRequestSpec,
+    rows: list[HistoricalOhlcvRow],
+) -> dict[str, object]:
+    requested_start = spec.start_at.date() if spec.start_at is not None else None
+    requested_end = spec.end_at.date() if spec.end_at is not None else None
+    cached_start = rows[0].observed_at.date() if rows else None
+    cached_end = rows[-1].observed_at.date() if rows else None
+    leading_gap_days = max((cached_start - requested_start).days, 0) if requested_start and cached_start else None
+    trailing_gap_days = max((requested_end - cached_end).days, 0) if requested_end and cached_end else None
+    coverage_ratio = None
+    if requested_start and requested_end and cached_start and cached_end:
+        requested_days = max((requested_end - requested_start).days + 1, 1)
+        covered_start = max(requested_start, cached_start)
+        covered_end = min(requested_end, cached_end)
+        covered_days = max((covered_end - covered_start).days + 1, 0) if covered_end >= covered_start else 0
+        coverage_ratio = round(min(covered_days / requested_days, 1.0), 6)
+    if not rows:
+        coverage_status = "CACHE_COVERAGE_GAP"
+        reuse_reason = "CACHE_EXISTS_BUT_NO_NORMALIZED_ROWS_IN_REQUESTED_RANGE"
+        reuse_warning = "CACHE_ROWS_MISSING_FOR_REQUESTED_DATE_RANGE"
+    elif (leading_gap_days or 0) > 0 or (trailing_gap_days or 0) > 0:
+        coverage_status = "PARTIAL"
+        reuse_reason = "CACHE_REUSED_WITH_PARTIAL_DATE_COVERAGE"
+        reuse_warning = "CACHE_DATE_RANGE_DOES_NOT_FULLY_COVER_REQUEST"
+    else:
+        coverage_status = "FULL"
+        reuse_reason = "CACHE_REUSED_WITH_FULL_DATE_COVERAGE"
+        reuse_warning = None
+    return {
+        "cache_found": True,
+        "cache_reused": bool(rows),
+        "cache_coverage_status": coverage_status,
+        "requested_date_min": requested_start.isoformat() if requested_start else None,
+        "requested_date_max": requested_end.isoformat() if requested_end else None,
+        "cached_date_min": cached_start.isoformat() if cached_start else None,
+        "cached_date_max": cached_end.isoformat() if cached_end else None,
+        "leading_gap_days": leading_gap_days,
+        "trailing_gap_days": trailing_gap_days,
+        "coverage_ratio": coverage_ratio,
+        "cache_reuse_reason": reuse_reason,
+        "cache_reuse_warning": reuse_warning,
+    }
+
+
 def _load_cached_rows(
     pipeline_input: HistoricalMarketDataPipelineInput,
     spec: HistoricalChartRequestSpec,
@@ -379,6 +431,9 @@ def run_kiwoom_ka10081_capture_and_train(
     symbol_results: list[dict[str, object]] = []
     aggregate_rows: list[HistoricalOhlcvRow] = []
     raw_lake_paths: list[str] = []
+    cache_coverage_gaps: list[str] = []
+    symbols_with_full_coverage: list[str] = []
+    symbols_with_partial_coverage: list[str] = []
     oauth_summary: dict[str, object] = {
         "token_status": None,
         "stage": "NOT_STARTED",
@@ -403,6 +458,7 @@ def run_kiwoom_ka10081_capture_and_train(
     auth_header: str | None = None
     token_ready = False
     provider_limit_hit = False
+    partial_cache_used = False
     last_provider_return_code: int | None = None
     last_provider_return_msg: str | None = None
     can_resume = False
@@ -457,50 +513,84 @@ def run_kiwoom_ka10081_capture_and_train(
         skipped_symbols.extend(spec.provider_symbol for spec in requested_specs[max_symbols_per_run:])
 
     for index, spec in enumerate(specs_to_process):
-        if resume_from_capture_state and spec.provider_symbol in previous_completed:
-            skipped_completed.append(spec.provider_symbol)
-            rows, _meta = _load_cached_rows(pipeline_input, spec)
-            if rows:
-                aggregate_rows.extend(rows)
-                completed_symbols.append(spec.provider_symbol)
-                raw_lake_paths.append(str(_raw_lake_path(pipeline_input, spec)))
-                symbol_results.append(
-                    {
-                        "requested_symbol": spec.provider_symbol,
-                        "raw_lake_path": str(_raw_lake_path(pipeline_input, spec)),
-                        "provider_row_count": len(rows),
-                        "normalized_row_count": len(rows),
-                        "date_min": rows[0].observed_at.date().isoformat(),
-                        "date_max": rows[-1].observed_at.date().isoformat(),
-                        "status": "COMPLETED",
-                        "provider_return_code": None,
-                        "provider_return_msg": None,
-                    }
-                )
-            continue
-        if reuse_existing_raw_lake:
+        if resume_from_capture_state or reuse_existing_raw_lake:
             cached_rows, _meta = _load_cached_rows(pipeline_input, spec)
-            if cached_rows:
-                reused_from_cache.append(spec.provider_symbol)
-                aggregate_rows.extend(cached_rows)
-                completed_symbols.append(spec.provider_symbol)
-                raw_lake_paths.append(str(_raw_lake_path(pipeline_input, spec)))
-                symbol_results.append(
-                    {
-                        "requested_symbol": spec.provider_symbol,
-                        "raw_lake_path": str(_raw_lake_path(pipeline_input, spec)),
-                        "provider_row_count": len(cached_rows),
-                        "normalized_row_count": len(cached_rows),
-                        "date_min": cached_rows[0].observed_at.date().isoformat(),
-                        "date_max": cached_rows[-1].observed_at.date().isoformat(),
-                        "status": "COMPLETED",
-                        "provider_return_code": None,
-                        "provider_return_msg": "REUSED_FROM_CACHE",
-                    }
-                )
-                continue
-        if spec.provider_symbol in previous_partial or spec.provider_symbol in previous_failed:
+            raw_lake_path = _raw_lake_path(pipeline_input, spec)
+            if cached_rows or raw_lake_path.exists():
+                cache_summary = _build_cache_coverage_summary(spec, cached_rows)
+                if cache_summary["cache_coverage_status"] == "FULL":
+                    raw_lake_paths.append(str(raw_lake_path))
+                    if resume_from_capture_state and spec.provider_symbol in previous_completed:
+                        skipped_completed.append(spec.provider_symbol)
+                    else:
+                        reused_from_cache.append(spec.provider_symbol)
+                    symbols_with_full_coverage.append(spec.provider_symbol)
+                    aggregate_rows.extend(cached_rows)
+                    completed_symbols.append(spec.provider_symbol)
+                    symbol_results.append(
+                        {
+                            "requested_symbol": spec.provider_symbol,
+                            "raw_lake_path": str(raw_lake_path),
+                            "provider_row_count": len(cached_rows),
+                            "normalized_row_count": len(cached_rows),
+                            "date_min": _iso_date_or_none(cached_rows[0].observed_at if cached_rows else None),
+                            "date_max": _iso_date_or_none(cached_rows[-1].observed_at if cached_rows else None),
+                            "status": "REUSED_FROM_CACHE_COMPLETED",
+                            "provider_return_code": None,
+                            "provider_return_msg": "REUSED_FROM_CACHE",
+                            **cache_summary,
+                        }
+                    )
+                    continue
+                cache_coverage_gaps.append(spec.provider_symbol)
+                symbols_with_partial_coverage.append(spec.provider_symbol)
+                if reuse_existing_raw_lake and cached_rows:
+                    raw_lake_paths.append(str(raw_lake_path))
+                    partial_cache_used = True
+                    aggregate_rows.extend(cached_rows)
+                    partial_symbols.append(spec.provider_symbol)
+                    reused_from_cache.append(spec.provider_symbol)
+                    symbol_results.append(
+                        {
+                            "requested_symbol": spec.provider_symbol,
+                            "raw_lake_path": str(raw_lake_path),
+                            "provider_row_count": len(cached_rows),
+                            "normalized_row_count": len(cached_rows),
+                            "date_min": _iso_date_or_none(cached_rows[0].observed_at if cached_rows else None),
+                            "date_max": _iso_date_or_none(cached_rows[-1].observed_at if cached_rows else None),
+                            "status": "REUSED_FROM_CACHE_PARTIAL",
+                            "provider_return_code": None,
+                            "provider_return_msg": "REUSED_FROM_CACHE",
+                            **cache_summary,
+                        }
+                    )
+                    continue
+                if reuse_existing_raw_lake:
+                    raw_lake_paths.append(str(raw_lake_path))
+                    symbol_results.append(
+                        {
+                            "requested_symbol": spec.provider_symbol,
+                            "raw_lake_path": str(raw_lake_path),
+                            "provider_row_count": 0,
+                            "normalized_row_count": 0,
+                            "date_min": None,
+                            "date_max": None,
+                            "status": "CACHE_COVERAGE_GAP",
+                            "provider_return_code": None,
+                            "provider_return_msg": "CACHE_PRESENT_BUT_UNUSABLE",
+                            **cache_summary,
+                        }
+                    )
+                    failed_symbols.append(spec.provider_symbol)
+                    continue
+        if spec.provider_symbol in previous_partial or spec.provider_symbol in previous_failed or (
+            resume_from_capture_state and spec.provider_symbol in previous_completed and spec.provider_symbol not in completed_symbols
+        ):
             retried.append(spec.provider_symbol)
+        if resume_from_capture_state and spec.provider_symbol in previous_completed and spec.provider_symbol in completed_symbols:
+            continue
+        if reuse_existing_raw_lake and spec.provider_symbol in failed_symbols:
+            continue
         if not ensure_token():
             failed_symbols.append(spec.provider_symbol)
             failed_again.append(spec.provider_symbol)
@@ -515,6 +605,18 @@ def run_kiwoom_ka10081_capture_and_train(
                     "status": "FAILED",
                     "provider_return_code": oauth_summary.get("provider_return_code"),
                     "provider_return_msg": oauth_summary.get("provider_return_msg"),
+                    "cache_found": False,
+                    "cache_reused": False,
+                    "cache_coverage_status": "NOT_USED",
+                    "requested_date_min": _iso_date_or_none(spec.start_at),
+                    "requested_date_max": _iso_date_or_none(spec.end_at),
+                    "cached_date_min": None,
+                    "cached_date_max": None,
+                    "leading_gap_days": None,
+                    "trailing_gap_days": None,
+                    "coverage_ratio": None,
+                    "cache_reuse_reason": "TOKEN_STAGE_FAILED",
+                    "cache_reuse_warning": None,
                 }
             )
             break
@@ -536,9 +638,11 @@ def run_kiwoom_ka10081_capture_and_train(
         if limit_now and rows:
             partial_symbols.append(spec.provider_symbol)
             status = "PARTIAL_CAPTURE_COMPLETED"
+            symbols_with_partial_coverage.append(spec.provider_symbol)
         elif rows:
             completed_symbols.append(spec.provider_symbol)
             status = "COMPLETED"
+            symbols_with_full_coverage.append(spec.provider_symbol)
         else:
             failed_symbols.append(spec.provider_symbol)
             failed_again.append(spec.provider_symbol)
@@ -559,6 +663,18 @@ def run_kiwoom_ka10081_capture_and_train(
                 "provider_return_msg": last_provider_return_msg,
                 "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
                 "last_next_key": getattr(first_task, "last_next_key", None),
+                "cache_found": False,
+                "cache_reused": False,
+                "cache_coverage_status": "NOT_USED",
+                "requested_date_min": _iso_date_or_none(spec.start_at),
+                "requested_date_max": _iso_date_or_none(spec.end_at),
+                "cached_date_min": None,
+                "cached_date_max": None,
+                "leading_gap_days": None,
+                "trailing_gap_days": None,
+                "coverage_ratio": None,
+                "cache_reuse_reason": None,
+                "cache_reuse_warning": None,
             }
         )
         capture_state = {
@@ -570,6 +686,9 @@ def run_kiwoom_ka10081_capture_and_train(
             "failed_symbols": failed_symbols,
             "skipped_symbols": skipped_symbols,
             "per_symbol_status": symbol_results,
+            "cache_coverage_gaps": cache_coverage_gaps,
+            "symbols_with_full_coverage": symbols_with_full_coverage,
+            "symbols_with_partial_coverage": symbols_with_partial_coverage,
             "last_successful_page": int(getattr(first_task, "last_successful_page", 0) or 0),
             "last_next_key": getattr(first_task, "last_next_key", None),
             "raw_lake_paths": sorted(set(raw_lake_paths)),
@@ -577,6 +696,7 @@ def run_kiwoom_ka10081_capture_and_train(
             "provider_limit_hit": provider_limit_hit,
             "last_provider_return_code": last_provider_return_code,
             "last_provider_return_msg": last_provider_return_msg,
+            "partial_cache_used": partial_cache_used,
             "can_resume": bool(provider_limit_hit or failed_symbols or partial_symbols or skipped_symbols),
         }
         can_resume = bool(capture_state["can_resume"])
@@ -600,6 +720,9 @@ def run_kiwoom_ka10081_capture_and_train(
             "failed_symbols": failed_symbols,
             "skipped_symbols": skipped_symbols,
             "per_symbol_status": symbol_results,
+            "cache_coverage_gaps": cache_coverage_gaps,
+            "symbols_with_full_coverage": sorted(set(symbols_with_full_coverage)),
+            "symbols_with_partial_coverage": sorted(set(symbols_with_partial_coverage)),
             "last_successful_page": max((item.get("last_successful_page", 0) for item in symbol_results), default=0),
             "last_next_key": next((item.get("last_next_key") for item in reversed(symbol_results) if item.get("last_next_key")), None),
             "raw_lake_paths": sorted(set(raw_lake_paths)),
@@ -607,6 +730,7 @@ def run_kiwoom_ka10081_capture_and_train(
             "provider_limit_hit": provider_limit_hit,
             "last_provider_return_code": last_provider_return_code,
             "last_provider_return_msg": last_provider_return_msg,
+            "partial_cache_used": partial_cache_used,
             "can_resume": bool(provider_limit_hit or failed_symbols or partial_symbols or skipped_symbols),
         }
         can_resume = bool(capture_state["can_resume"])
@@ -616,6 +740,11 @@ def run_kiwoom_ka10081_capture_and_train(
     row_count = len(aggregate_rows)
     chart_response_received = bool(symbol_results)
     training_input_symbols = sorted({row.provider_symbol for row in aggregate_rows})
+    training_input_coverage_by_symbol = {
+        item["requested_symbol"]: item["status"]
+        for item in symbol_results
+        if item["requested_symbol"] in training_input_symbols
+    }
     excluded_symbols = [item.provider_symbol for item in requested_specs if item.provider_symbol not in training_input_symbols]
     exclusion_reasons = {
         item["requested_symbol"]: ("PROVIDER_LIMIT_OR_NO_ROWS" if item["status"] != "COMPLETED" else "")
@@ -639,7 +768,7 @@ def run_kiwoom_ka10081_capture_and_train(
         reloaded_manifest = load_historical_ohlcv_dataset_manifest(manifest_path)
         manifest_reloaded = True
 
-    if aggregate_rows and (allow_training_on_partial_capture or not provider_limit_hit):
+    if aggregate_rows and (allow_training_on_partial_capture or not (provider_limit_hit or partial_cache_used)):
         pipeline = OfflineStrategyPipelineInput(
             pipeline_id=f"{pipeline_input.dataset_id}-OFFLINE-STRATEGY",
             dataset_id=pipeline_input.dataset_id,
@@ -669,8 +798,12 @@ def run_kiwoom_ka10081_capture_and_train(
         top_status = "FAILED"
     elif not training_completed:
         top_status = "PARTIAL_CAPTURE_NO_TRAINING"
+    elif provider_limit_hit and partial_cache_used:
+        top_status = "COMPLETED_WITH_PROVIDER_LIMIT_AND_PARTIAL_CACHE"
     elif provider_limit_hit:
         top_status = "COMPLETED_WITH_PROVIDER_LIMIT"
+    elif partial_cache_used:
+        top_status = "COMPLETED_WITH_PARTIAL_CACHE"
     elif all_symbols_completed and used_any_cache:
         top_status = "COMPLETED_WITH_CACHE"
     else:
@@ -707,11 +840,15 @@ def run_kiwoom_ka10081_capture_and_train(
         "chart_response_received": chart_response_received,
         "row_count": row_count,
         "provider_limit_hit": provider_limit_hit,
+        "partial_cache_used": partial_cache_used,
         "partial_capture": bool(partial_symbols),
         "completed_symbols": completed_symbols,
         "partial_symbols": partial_symbols,
         "failed_symbols": failed_symbols,
         "skipped_symbols": skipped_symbols,
+        "cache_coverage_gaps": sorted(set(cache_coverage_gaps)),
+        "symbols_with_full_coverage": sorted(set(symbols_with_full_coverage)),
+        "symbols_with_partial_coverage": sorted(set(symbols_with_partial_coverage)),
         "symbol_results": symbol_results,
         "fetched_now": fetched_now,
         "reused_from_cache": reused_from_cache,
@@ -727,6 +864,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "training_started": training_started,
         "training_completed": training_completed,
         "training_input_symbols": training_input_symbols,
+        "training_input_coverage_by_symbol": training_input_coverage_by_symbol,
         "excluded_symbols": excluded_symbols,
         "exclusion_reasons": exclusion_reasons,
         "offline_strategy_output_root": str(output_root),
@@ -735,6 +873,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "candidate_count": len(training_result.candidates) if training_result is not None else 0,
         "promotion_decision_count": len(training_result.promotion_decisions) if training_result is not None else 0,
         "capture_state_path": str(state_path),
+        "capture_state_root": str(state_path.parent),
         "can_resume": can_resume,
         "request_sleep_seconds": request_sleep_seconds,
         "symbol_sleep_seconds": symbol_sleep_seconds,

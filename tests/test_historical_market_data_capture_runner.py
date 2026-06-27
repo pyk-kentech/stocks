@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from datetime import datetime
 
 from stock_risk_mcp.cli import _build_historical_market_data_real_capture_input, build_command_parser
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
@@ -146,10 +147,20 @@ def _token_ref_file(tmp_path: Path) -> Path:
     return token_ref_path
 
 
-def _cached_raw_lake_file(tmp_path: Path, fixture: HistoricalMarketDataPipelineInput, symbol: str) -> Path:
+def _cached_raw_lake_file(
+    tmp_path: Path,
+    fixture: HistoricalMarketDataPipelineInput,
+    symbol: str,
+    *,
+    chart_rows: list[dict[str, str]] | None = None,
+) -> Path:
     spec = next(item for item in fixture.request_specs if item.provider_symbol == symbol)
     raw_path = Path(fixture.raw_lake_root) / f"{spec.request_id.lower()}-response.json"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = chart_rows or [
+        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
+        {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"},
+    ]
     response = HistoricalChartRawResponse.model_validate(
         {
             "response_id": f"{spec.request_id}-RESPONSE",
@@ -164,16 +175,13 @@ def _cached_raw_lake_file(tmp_path: Path, fixture: HistoricalMarketDataPipelineI
             "source_ref": f"{spec.request_id}.json",
             "cont_yn": "N",
             "next_key": "",
-            "payload_summary": {"return_code": 0, "row_count": 2},
+            "payload_summary": {"return_code": 0, "row_count": len(rows)},
             "raw_payload": {
-                "_capture_meta": {"row_count": 2},
+                "_capture_meta": {"row_count": len(rows)},
                 "return_code": 0,
                 "return_msg": "OK",
                 "stk_cd": symbol,
-                "stk_dt_pole_chart_qry": [
-                    {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
-                    {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"},
-                ],
+                "stk_dt_pole_chart_qry": rows,
             },
         }
     )
@@ -694,6 +702,127 @@ def test_capture_and_train_wrapper_reuses_existing_raw_lake_without_provider_cal
     assert result["reused_from_cache"] == ["005930"]
     assert result["fetched_now"] == []
     assert called["value"] is False
+    assert result["symbols_with_full_coverage"] == ["005930"]
+    assert result["cache_coverage_gaps"] == []
+    assert result["training_input_coverage_by_symbol"]["005930"] == "REUSED_FROM_CACHE_COMPLETED"
+
+
+def test_capture_and_train_wrapper_partial_cache_is_not_completed_and_reports_coverage_gap(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                        update={
+                            "request_id": "KA10081-005930-20200101-20260627",
+                            "start_at": datetime.fromisoformat("2020-01-01T00:00:00+09:00"),
+                            "end_at": datetime.fromisoformat("2026-06-27T23:59:59+09:00"),
+                        }
+                    )
+                ]
+            }
+    )
+    _cached_raw_lake_file(
+        tmp_path,
+        fixture,
+        "005930",
+        chart_rows=[
+            {"dt": "20210729", "open_pric": "79000", "high_pric": "79500", "low_pric": "78500", "cur_prc": "79200", "trde_qty": "900000"},
+            {"dt": "20240105", "open_pric": "78000", "high_pric": "78900", "low_pric": "77500", "cur_prc": "78600", "trde_qty": "850000"},
+        ],
+    )
+    called = {"value": False}
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            del preview, auth_header
+            called["value"] = True
+            return {}
+
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=True,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "COMPLETED_WITH_PARTIAL_CACHE"
+    assert result["completed_symbols"] == []
+    assert result["partial_symbols"] == ["005930"]
+    assert result["partial_cache_used"] is True
+    assert result["cache_coverage_gaps"] == ["005930"]
+    assert result["symbols_with_partial_coverage"] == ["005930"]
+    assert result["symbol_results"][0]["status"] == "REUSED_FROM_CACHE_PARTIAL"
+    assert result["symbol_results"][0]["leading_gap_days"] > 0
+    assert result["symbol_results"][0]["trailing_gap_days"] > 0
+    assert result["training_input_coverage_by_symbol"]["005930"] == "REUSED_FROM_CACHE_PARTIAL"
+    assert called["value"] is False
+
+
+def test_capture_and_train_wrapper_partial_cache_blocks_training_when_not_allowed(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                        update={
+                            "request_id": "KA10081-005930-20200101-20260627",
+                            "start_at": datetime.fromisoformat("2020-01-01T00:00:00+09:00"),
+                            "end_at": datetime.fromisoformat("2026-06-27T23:59:59+09:00"),
+                        }
+                    )
+                ]
+            }
+    )
+    _cached_raw_lake_file(
+        tmp_path,
+        fixture,
+        "005930",
+        chart_rows=[
+            {"dt": "20210729", "open_pric": "79000", "high_pric": "79500", "low_pric": "78500", "cur_prc": "79200", "trde_qty": "900000"},
+            {"dt": "20240105", "open_pric": "78000", "high_pric": "78900", "low_pric": "77500", "cur_prc": "78600", "trde_qty": "850000"},
+        ],
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            del preview, auth_header
+            return {}
+
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "PARTIAL_CAPTURE_NO_TRAINING"
+    assert result["training_started"] is False
+    assert result["training_completed"] is False
+    assert result["partial_cache_used"] is True
+    assert result["symbol_results"][0]["status"] == "REUSED_FROM_CACHE_PARTIAL"
 
 
 def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:
