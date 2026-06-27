@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import time
 
@@ -215,6 +215,62 @@ def _iso_date_or_none(value: datetime | None) -> str | None:
     return value.date().isoformat()
 
 
+def _is_weekday(value: date) -> bool:
+    return value.weekday() < 5
+
+
+def _is_known_boundary_non_trading_day(value: date) -> bool:
+    return (value.month, value.day) == (1, 1)
+
+
+def _first_effective_trading_date(requested_start: date | None, cached_start: date | None) -> date | None:
+    if requested_start is None:
+        return cached_start
+    if (
+        _is_known_boundary_non_trading_day(requested_start)
+        and cached_start is not None
+        and 0 <= (cached_start - requested_start).days <= 4
+    ):
+        return cached_start or requested_start
+    if _is_weekday(requested_start):
+        return requested_start
+    if cached_start is not None and 0 <= (cached_start - requested_start).days <= 4:
+        return cached_start
+    probe = requested_start
+    for _ in range(7):
+        if _is_weekday(probe):
+            return probe
+        probe += timedelta(days=1)
+    return cached_start or requested_start
+
+
+def _last_effective_trading_date(requested_end: date | None, cached_end: date | None) -> date | None:
+    if requested_end is None:
+        return cached_end
+    if _is_weekday(requested_end):
+        return requested_end
+    if cached_end is not None and 0 <= (requested_end - cached_end).days <= 4:
+        return cached_end
+    probe = requested_end
+    for _ in range(7):
+        if _is_weekday(probe):
+            return probe
+        probe -= timedelta(days=1)
+    return cached_end or requested_end
+
+
+def _count_weekdays(start: date, end: date) -> int:
+    if end < start:
+        return 0
+    days = 0
+    probe = start
+    while probe <= end:
+        if _is_weekday(probe):
+            days += 1
+        probe += timedelta(days=1)
+    return days
+
+
 def _build_cache_coverage_summary(
     spec: HistoricalChartRequestSpec,
     rows: list[HistoricalOhlcvRow],
@@ -223,38 +279,80 @@ def _build_cache_coverage_summary(
     requested_end = spec.end_at.date() if spec.end_at is not None else None
     cached_start = rows[0].observed_at.date() if rows else None
     cached_end = rows[-1].observed_at.date() if rows else None
-    leading_gap_days = max((cached_start - requested_start).days, 0) if requested_start and cached_start else None
-    trailing_gap_days = max((requested_end - cached_end).days, 0) if requested_end and cached_end else None
-    coverage_ratio = None
+    effective_requested_start = _first_effective_trading_date(requested_start, cached_start)
+    effective_requested_end = _last_effective_trading_date(requested_end, cached_end)
+    calendar_leading_gap_days = max((cached_start - requested_start).days, 0) if requested_start and cached_start else None
+    calendar_trailing_gap_days = max((requested_end - cached_end).days, 0) if requested_end and cached_end else None
+    trading_leading_gap_days = (
+        _count_weekdays(effective_requested_start, cached_start - timedelta(days=1))
+        if effective_requested_start and cached_start and cached_start > effective_requested_start
+        else 0 if effective_requested_start and cached_start
+        else None
+    )
+    trading_trailing_gap_days = (
+        _count_weekdays(cached_end + timedelta(days=1), effective_requested_end)
+        if effective_requested_end and cached_end and cached_end < effective_requested_end
+        else 0 if effective_requested_end and cached_end
+        else None
+    )
+    calendar_coverage_ratio = None
+    trading_coverage_ratio = None
     if requested_start and requested_end and cached_start and cached_end:
         requested_days = max((requested_end - requested_start).days + 1, 1)
         covered_start = max(requested_start, cached_start)
         covered_end = min(requested_end, cached_end)
         covered_days = max((covered_end - covered_start).days + 1, 0) if covered_end >= covered_start else 0
-        coverage_ratio = round(min(covered_days / requested_days, 1.0), 6)
+        calendar_coverage_ratio = round(min(covered_days / requested_days, 1.0), 6)
+    if effective_requested_start and effective_requested_end and cached_start and cached_end:
+        requested_trading_days = max(_count_weekdays(effective_requested_start, effective_requested_end), 1)
+        covered_trading_start = max(effective_requested_start, cached_start)
+        covered_trading_end = min(effective_requested_end, cached_end)
+        covered_trading_days = (
+            _count_weekdays(covered_trading_start, covered_trading_end)
+            if covered_trading_end >= covered_trading_start
+            else 0
+        )
+        trading_coverage_ratio = round(min(covered_trading_days / requested_trading_days, 1.0), 6)
     if not rows:
         coverage_status = "CACHE_COVERAGE_GAP"
         reuse_reason = "CACHE_EXISTS_BUT_NO_NORMALIZED_ROWS_IN_REQUESTED_RANGE"
         reuse_warning = "CACHE_ROWS_MISSING_FOR_REQUESTED_DATE_RANGE"
-    elif (leading_gap_days or 0) > 0 or (trailing_gap_days or 0) > 0:
-        coverage_status = "PARTIAL"
-        reuse_reason = "CACHE_REUSED_WITH_PARTIAL_DATE_COVERAGE"
-        reuse_warning = "CACHE_DATE_RANGE_DOES_NOT_FULLY_COVER_REQUEST"
+        coverage_basis = "TRADING_DAYS"
+    elif (trading_leading_gap_days or 0) == 0 and (trading_trailing_gap_days or 0) == 0:
+        if (calendar_leading_gap_days or 0) > 0 or (calendar_trailing_gap_days or 0) > 0:
+            coverage_status = "CALENDAR_EDGE_GAP_ONLY"
+            reuse_reason = "CACHE_REUSED_WITH_FULL_TRADING_COVERAGE"
+            reuse_warning = "CALENDAR_EDGE_NON_TRADING_GAPS_ONLY"
+        else:
+            coverage_status = "FULL_TRADING_COVERAGE"
+            reuse_reason = "CACHE_REUSED_WITH_FULL_TRADING_COVERAGE"
+            reuse_warning = None
+        coverage_basis = "TRADING_DAYS"
     else:
-        coverage_status = "FULL"
-        reuse_reason = "CACHE_REUSED_WITH_FULL_DATE_COVERAGE"
-        reuse_warning = None
+        coverage_status = "TRADING_COVERAGE_GAP"
+        reuse_reason = "CACHE_REUSED_WITH_PARTIAL_TRADING_COVERAGE"
+        reuse_warning = "CACHE_TRADING_DATE_RANGE_DOES_NOT_FULLY_COVER_REQUEST"
+        coverage_basis = "TRADING_DAYS"
     return {
         "cache_found": True,
         "cache_reused": bool(rows),
         "cache_coverage_status": coverage_status,
         "requested_date_min": requested_start.isoformat() if requested_start else None,
         "requested_date_max": requested_end.isoformat() if requested_end else None,
+        "effective_requested_trading_date_min": effective_requested_start.isoformat() if effective_requested_start else None,
+        "effective_requested_trading_date_max": effective_requested_end.isoformat() if effective_requested_end else None,
         "cached_date_min": cached_start.isoformat() if cached_start else None,
         "cached_date_max": cached_end.isoformat() if cached_end else None,
-        "leading_gap_days": leading_gap_days,
-        "trailing_gap_days": trailing_gap_days,
-        "coverage_ratio": coverage_ratio,
+        "calendar_leading_gap_days": calendar_leading_gap_days,
+        "calendar_trailing_gap_days": calendar_trailing_gap_days,
+        "trading_leading_gap_days": trading_leading_gap_days,
+        "trading_trailing_gap_days": trading_trailing_gap_days,
+        "leading_gap_days": trading_leading_gap_days,
+        "trailing_gap_days": trading_trailing_gap_days,
+        "calendar_coverage_ratio": calendar_coverage_ratio,
+        "trading_coverage_ratio": trading_coverage_ratio,
+        "coverage_ratio": trading_coverage_ratio,
+        "coverage_basis": coverage_basis,
         "cache_reuse_reason": reuse_reason,
         "cache_reuse_warning": reuse_warning,
     }
@@ -262,13 +360,13 @@ def _build_cache_coverage_summary(
 
 def _build_backfill_intervals(coverage_summary: dict[str, object]) -> list[dict[str, str]]:
     intervals: list[dict[str, str]] = []
-    requested_min = coverage_summary.get("requested_date_min")
-    requested_max = coverage_summary.get("requested_date_max")
+    requested_min = coverage_summary.get("effective_requested_trading_date_min") or coverage_summary.get("requested_date_min")
+    requested_max = coverage_summary.get("effective_requested_trading_date_max") or coverage_summary.get("requested_date_max")
     cached_min = coverage_summary.get("cached_date_min")
     cached_max = coverage_summary.get("cached_date_max")
-    if requested_min and cached_min and coverage_summary.get("leading_gap_days"):
+    if requested_min and cached_min and coverage_summary.get("trading_leading_gap_days"):
         intervals.append({"interval_kind": "LEADING_GAP", "start_date": str(requested_min), "end_date": str(cached_min)})
-    if cached_max and requested_max and coverage_summary.get("trailing_gap_days"):
+    if cached_max and requested_max and coverage_summary.get("trading_trailing_gap_days"):
         intervals.append({"interval_kind": "TRAILING_GAP", "start_date": str(cached_max), "end_date": str(requested_max)})
     return intervals
 
@@ -551,7 +649,7 @@ def run_kiwoom_ka10081_capture_and_train(
                 cache_summary = _build_cache_coverage_summary(spec, cached_rows)
                 backfill_intervals = _build_backfill_intervals(cache_summary)
                 backfill_intervals_by_symbol[spec.provider_symbol] = backfill_intervals
-                if cache_summary["cache_coverage_status"] == "FULL":
+                if cache_summary["cache_coverage_status"] in {"FULL_TRADING_COVERAGE", "CALENDAR_EDGE_GAP_ONLY"}:
                     raw_lake_paths.append(str(raw_lake_path))
                     if resume_from_capture_state and spec.provider_symbol in previous_completed:
                         skipped_completed.append(spec.provider_symbol)
@@ -576,11 +674,11 @@ def run_kiwoom_ka10081_capture_and_train(
                             "backfill_reason": None,
                             "backfill_attempted": False,
                             "backfill_status": "NOT_REQUIRED",
-                            "post_backfill_coverage_status": "FULL",
+                            "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
                             **cache_summary,
                         }
                     )
-                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "FULL"
+                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "FULL_TRADING_COVERAGE"
                     continue
                 cache_coverage_gaps.append(spec.provider_symbol)
                 symbols_with_partial_coverage.append(spec.provider_symbol)
@@ -646,18 +744,18 @@ def run_kiwoom_ka10081_capture_and_train(
                     provider_limit_hit = provider_limit_hit or limit_now
                     if len(merged_rows) > len(cached_rows):
                         backfill_progress_made = True
-                    if merged_coverage["cache_coverage_status"] == "FULL":
+                    if merged_coverage["cache_coverage_status"] in {"FULL_TRADING_COVERAGE", "CALENDAR_EDGE_GAP_ONLY"}:
                         completed_symbols.append(spec.provider_symbol)
                         symbols_with_full_coverage.append(spec.provider_symbol)
                         backfill_completed_symbols.append(spec.provider_symbol)
                         status = "BACKFILL_COMPLETED"
-                        post_backfill = "FULL"
+                        post_backfill = merged_coverage["cache_coverage_status"]
                     elif merged_rows:
                         partial_symbols.append(spec.provider_symbol)
                         symbols_with_partial_coverage.append(spec.provider_symbol)
                         backfill_partial_symbols.append(spec.provider_symbol)
                         status = "BACKFILL_PARTIAL"
-                        post_backfill = "PARTIAL"
+                        post_backfill = "TRADING_COVERAGE_GAP"
                     else:
                         failed_symbols.append(spec.provider_symbol)
                         failed_again.append(spec.provider_symbol)
@@ -746,11 +844,11 @@ def run_kiwoom_ka10081_capture_and_train(
                             "backfill_reason": "CACHE_COVERAGE_GAP",
                             "backfill_attempted": False,
                             "backfill_status": "NOT_ATTEMPTED",
-                            "post_backfill_coverage_status": "PARTIAL",
+                            "post_backfill_coverage_status": "TRADING_COVERAGE_GAP",
                             **cache_summary,
                         }
                     )
-                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "PARTIAL"
+                    post_backfill_coverage_by_symbol[spec.provider_symbol] = "TRADING_COVERAGE_GAP"
                     continue
                 if reuse_existing_raw_lake:
                     raw_lake_paths.append(str(raw_lake_path))
@@ -868,7 +966,7 @@ def run_kiwoom_ka10081_capture_and_train(
                 "backfill_reason": None,
                 "backfill_attempted": False,
                 "backfill_status": "NOT_REQUIRED",
-                "post_backfill_coverage_status": "FULL" if rows else "FAILED",
+                "post_backfill_coverage_status": "FULL_TRADING_COVERAGE" if rows else "FAILED",
                 "cache_found": False,
                 "cache_reused": False,
                 "cache_coverage_status": "NOT_USED",
@@ -970,6 +1068,11 @@ def run_kiwoom_ka10081_capture_and_train(
         training_input_symbols = full_coverage_symbols
     training_input_coverage_by_symbol = {
         item["requested_symbol"]: item["status"]
+        for item in symbol_results
+        if item["requested_symbol"] in training_input_symbols
+    }
+    training_input_coverage_basis_by_symbol = {
+        item["requested_symbol"]: item.get("coverage_basis")
         for item in symbol_results
         if item["requested_symbol"] in training_input_symbols
     }
@@ -1137,6 +1240,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "training_completed": training_completed,
         "training_input_symbols": training_input_symbols,
         "training_input_coverage_by_symbol": training_input_coverage_by_symbol,
+        "training_input_coverage_basis_by_symbol": training_input_coverage_basis_by_symbol,
         "training_on_partial_coverage": training_on_partial_coverage,
         "excluded_symbols": excluded_symbols,
         "exclusion_reasons": exclusion_reasons,

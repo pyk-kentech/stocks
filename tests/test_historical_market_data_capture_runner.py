@@ -766,7 +766,7 @@ def test_capture_and_train_wrapper_partial_cache_is_not_completed_and_reports_co
     assert result["symbols_with_partial_coverage"] == ["005930"]
     assert result["symbol_results"][0]["status"] == "REUSED_FROM_CACHE_PARTIAL"
     assert result["symbol_results"][0]["leading_gap_days"] > 0
-    assert result["symbol_results"][0]["trailing_gap_days"] > 0
+    assert result["symbol_results"][0]["calendar_trailing_gap_days"] > 0
     assert result["training_input_coverage_by_symbol"]["005930"] == "REUSED_FROM_CACHE_PARTIAL"
     assert called["value"] is False
 
@@ -912,10 +912,11 @@ def test_capture_and_train_wrapper_backfills_partial_cache_to_full_coverage(tmp_
     )
     assert result["status"] == "COMPLETED_WITH_BACKFILL"
     assert result["symbol_results"][0]["status"] == "BACKFILL_COMPLETED"
-    assert result["symbol_results"][0]["post_backfill_coverage_status"] == "FULL"
+    assert result["symbol_results"][0]["post_backfill_coverage_status"] == "FULL_TRADING_COVERAGE"
     assert result["full_coverage_symbols"] == ["005930"]
     assert result["training_input_symbols"] == ["005930"]
     assert result["training_on_partial_coverage"] is False
+    assert result["training_input_coverage_basis_by_symbol"]["005930"] == "TRADING_DAYS"
 
 
 def test_capture_and_train_wrapper_backfill_provider_limit_blocks_full_coverage_training(tmp_path, monkeypatch) -> None:
@@ -1005,6 +1006,114 @@ def test_capture_and_train_wrapper_backfill_provider_limit_blocks_full_coverage_
     assert result["symbol_results"][0]["status"] == "BACKFILL_PARTIAL"
     assert result["training_input_symbols"] == []
     assert result["training_on_partial_coverage"] is False
+
+
+def test_calendar_edge_only_gap_is_full_trading_coverage(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={
+                        "request_id": "KA10081-005930-20200101-20260627",
+                        "start_at": datetime.fromisoformat("2020-01-01T00:00:00+09:00"),
+                        "end_at": datetime.fromisoformat("2026-06-27T23:59:59+09:00"),
+                    }
+                )
+            ]
+        }
+    )
+    _cached_raw_lake_file(
+        tmp_path,
+        fixture,
+        "005930",
+        chart_rows=[
+            {"dt": "20200102", "open_pric": "56000", "high_pric": "56500", "low_pric": "55000", "cur_prc": "55800", "trde_qty": "1200000"},
+            {"dt": "20260626", "open_pric": "90000", "high_pric": "90500", "low_pric": "89500", "cur_prc": "90200", "trde_qty": "1500000"},
+        ],
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            raise AssertionError("calendar-edge-only gap should not trigger backfill")
+
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        backfill_cache_gaps=True,
+        prefer_full_coverage_training=True,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["status"] == "COMPLETED_WITH_CACHE"
+    assert result["symbol_results"][0]["status"] == "REUSED_FROM_CACHE_COMPLETED"
+    assert result["symbol_results"][0]["cache_coverage_status"] == "CALENDAR_EDGE_GAP_ONLY"
+    assert result["training_input_symbols"] == ["005930"]
+    assert result["training_input_coverage_basis_by_symbol"]["005930"] == "TRADING_DAYS"
+
+
+def test_actual_weekday_gap_remains_trading_coverage_gap(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={
+                        "request_id": "KA10081-005930-20200102-20200108",
+                        "start_at": datetime.fromisoformat("2020-01-02T00:00:00+09:00"),
+                        "end_at": datetime.fromisoformat("2020-01-08T23:59:59+09:00"),
+                    }
+                )
+            ]
+        }
+    )
+    _cached_raw_lake_file(
+        tmp_path,
+        fixture,
+        "005930",
+        chart_rows=[
+            {"dt": "20200103", "open_pric": "56000", "high_pric": "56500", "low_pric": "55000", "cur_prc": "55800", "trde_qty": "1200000"},
+            {"dt": "20200108", "open_pric": "57000", "high_pric": "57500", "low_pric": "56800", "cur_prc": "57200", "trde_qty": "1300000"},
+        ],
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            del preview, auth_header
+            return {}
+
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=True,
+        prefer_full_coverage_training=False,
+        search_mode="SMOKE_SEARCH",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+    )
+    assert result["symbol_results"][0]["cache_coverage_status"] == "TRADING_COVERAGE_GAP"
+    assert result["symbol_results"][0]["trading_leading_gap_days"] == 1
 
 
 def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:
