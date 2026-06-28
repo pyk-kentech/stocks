@@ -30,10 +30,137 @@ from stock_risk_mcp.offline_strategy_models import (
     OfflineStrategyPipelineInput,
     OfflineStrategyWalkForwardMode,
 )
+from stock_risk_mcp.offline_strategy_run_artifacts import (
+    initialize_offline_strategy_run,
+    load_latest_run_pointer,
+    write_latest_run_pointer,
+)
 
 
 def _kiwoom_base_url(environment: KiwoomEnvironment) -> str:
     return "https://mockapi.kiwoom.com" if environment == KiwoomEnvironment.MOCK else "https://api.kiwoom.com"
+
+
+def _load_json_if_exists(path: str | Path | None) -> dict[str, object] | None:
+    if not path:
+        return None
+    target = Path(path)
+    if not target.exists():
+        return None
+    return json.loads(target.read_text(encoding="utf-8"))
+
+
+def _contains_secret_marker(value: object) -> bool:
+    markers = ("APPKEY", "SECRETKEY", "AUTHORIZATION", "BEARER ", "TOKEN", "SECRET")
+    if isinstance(value, dict):
+        return any(_contains_secret_marker(item) for item in value.values()) or any(_contains_secret_marker(key) for key in value.keys())
+    if isinstance(value, list):
+        return any(_contains_secret_marker(item) for item in value)
+    if isinstance(value, str):
+        upper = value.upper()
+        if "<REDACTED>" in upper:
+            return False
+        return any(marker in upper for marker in markers)
+    return False
+
+
+def _artifact_manifest_payload(
+    *,
+    run_context: dict[str, object],
+    ranking_report_path: str | None,
+    ranking_summary_path: str | None,
+    trade_audit_report_path: str | None,
+    watchlist_ranking_report_path: str | None,
+    watchlist_ranking_summary_path: str | None,
+    candidate_count: int,
+    ranking_rows_count: int,
+    promoted_count: int,
+    rejected_count: int,
+) -> dict[str, object]:
+    payload = {
+        "run_id": run_context["offline_strategy_run_id"],
+        "dataset_id": run_context["dataset_id"],
+        "watchlist_dataset_id": run_context.get("watchlist_dataset_id"),
+        "search_mode": run_context["search_mode"],
+        "strategy_families": run_context["strategy_families"],
+        "created_at": run_context["created_at"],
+        "candidate_count": int(candidate_count),
+        "ranking_rows_count": int(ranking_rows_count),
+        "promoted_count": int(promoted_count),
+        "rejected_count": int(rejected_count),
+        "git_commit": run_context.get("git_commit"),
+        "git_tag": run_context.get("git_tag"),
+        "paths": {
+            "ranking_report_path": ranking_report_path,
+            "ranking_summary_path": ranking_summary_path,
+            "trade_audit_report_path": trade_audit_report_path,
+            "watchlist_ranking_report_path": watchlist_ranking_report_path,
+            "watchlist_ranking_summary_path": watchlist_ranking_summary_path,
+        },
+    }
+    if _contains_secret_marker(payload):
+        raise ValueError("artifact manifest contains blocked secret marker")
+    return payload
+
+
+def _comparison_payload(
+    *,
+    run_context: dict[str, object],
+    current_manifest_payload: dict[str, object],
+    current_ranking_report_payload: dict[str, object] | None,
+    current_ranking_summary_payload: dict[str, object] | None,
+    current_leakage_audit_status: str | None,
+) -> dict[str, object]:
+    previous_pointer = load_latest_run_pointer(run_context["offline_strategy_dataset_root"])
+    if previous_pointer is None:
+        return {
+            "comparison_status": "NO_PREVIOUS_RUN",
+            "previous_run_id": None,
+            "current_run_id": run_context["offline_strategy_run_id"],
+        }
+    previous_manifest = _load_json_if_exists(previous_pointer.get("artifact_manifest_path"))
+    previous_summary = _load_json_if_exists(previous_pointer.get("ranking_summary_path"))
+    previous_report = _load_json_if_exists(previous_pointer.get("ranking_report_path"))
+    if previous_manifest is None:
+        return {
+            "comparison_status": "PREVIOUS_RUN_ARTIFACT_MISSING",
+            "previous_run_id": previous_pointer.get("run_id"),
+            "current_run_id": run_context["offline_strategy_run_id"],
+        }
+    current_rows = (current_ranking_report_payload or {}).get("rows", [])
+    previous_rows = (previous_report or {}).get("rows", [])
+    current_top = current_rows[0].get("candidate_id") if current_rows else None
+    previous_top = previous_rows[0].get("candidate_id") if previous_rows else None
+    current_best = (current_ranking_summary_payload or {}).get("best_candidate_by_symbol", {})
+    previous_best = (previous_summary or {}).get("best_candidate_by_symbol", {}) if previous_summary else {}
+    current_rejections = (current_ranking_summary_payload or {}).get("rejected_count_by_reason", {})
+    previous_rejections = (previous_summary or {}).get("rejected_count_by_reason", {}) if previous_summary else {}
+    current_drawdown_warning_count = sum(1 for row in current_rows if row.get("drawdown_warning"))
+    previous_drawdown_warning_count = sum(1 for row in previous_rows if row.get("drawdown_warning"))
+    changed_symbols = sorted(
+        symbol
+        for symbol in sorted(set(current_best) | set(previous_best))
+        if (current_best.get(symbol) or {}).get("candidate_id") != (previous_best.get(symbol) or {}).get("candidate_id")
+    )
+    rejection_reason_delta = {
+        reason: int(current_rejections.get(reason, 0)) - int(previous_rejections.get(reason, 0))
+        for reason in sorted(set(current_rejections) | set(previous_rejections))
+    }
+    return {
+        "comparison_status": "COMPARISON_READY",
+        "previous_run_id": previous_pointer.get("run_id"),
+        "current_run_id": run_context["offline_strategy_run_id"],
+        "candidate_count_delta": int(current_manifest_payload.get("candidate_count", 0)) - int(previous_manifest.get("candidate_count", 0)),
+        "promoted_count_delta": int(current_manifest_payload.get("promoted_count", 0)) - int(previous_manifest.get("promoted_count", 0)),
+        "top_candidate_changed": current_top != previous_top,
+        "best_candidate_by_symbol_delta": changed_symbols,
+        "rejection_reason_delta": rejection_reason_delta,
+        "leakage_status_delta": {
+            "previous": previous_pointer.get("leakage_audit_status"),
+            "current": current_leakage_audit_status,
+        },
+        "drawdown_warning_delta": current_drawdown_warning_count - previous_drawdown_warning_count,
+    }
 
 
 def _read_bearer_header_from_token_ref(token_ref_path: str) -> str:
@@ -1590,15 +1717,24 @@ def run_kiwoom_ka10081_capture_and_train(
             exclusion_reasons[symbol] = "SKIPPED_OR_NOT_CAPTURED"
     training_on_partial_coverage = any(symbol in partial_coverage_symbols for symbol in training_input_symbols)
 
+    search_mode_value = str(search_mode or "BOUNDED_GRID").upper()
+    run_context = initialize_offline_strategy_run(
+        training_output_root=training_output_root,
+        dataset_id=pipeline_input.dataset_id,
+        search_mode=search_mode_value,
+        strategy_families=family_resolution["requested_strategy_families"],
+    )
     training_started = False
     training_completed = False
     training_result = None
-    output_root = validate_safe_local_root(training_output_root) / pipeline_input.dataset_id.lower()
+    output_root = Path(str(run_context["offline_strategy_run_root"]))
     reports_dir = output_root / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     training_plan_path = reports_dir / "offline_strategy_training_plan.json"
     promotion_gate_path = reports_dir / "offline_strategy_promotion_gate.json"
     trade_audit_path = reports_dir / "offline_strategy_trade_audit.json"
+    artifact_manifest_path = output_root / "offline_strategy_artifact_manifest.json"
+    comparison_path = output_root / "offline_strategy_run_comparison.json"
     summary_path = output_root / "capture_and_train_summary.json"
     manifest_path = Path(manifest.manifest_path) if manifest and manifest.manifest_path else None
     manifest_reloaded = False
@@ -1633,7 +1769,7 @@ def run_kiwoom_ka10081_capture_and_train(
             requested_template_ids=resolved_template_ids,
             asset_liquidity_profile=asset_liquidity_profile,
             primary_walk_forward_mode=resolved_walk_forward_mode,
-            search_mode=str(search_mode or "BOUNDED_GRID").upper(),
+            search_mode=search_mode_value,
         )
         if training_handoff_mode == "in_process" and training_manifest is not None:
             pipeline = pipeline.model_copy(update={"manifest": training_manifest})
@@ -1682,6 +1818,9 @@ def run_kiwoom_ka10081_capture_and_train(
     ranking_summary_path = reports_dir / "offline_strategy_ranking_summary.json"
     ranking_report_payload = {
         "dataset_id": pipeline_input.dataset_id,
+        "offline_strategy_run_id": run_context["offline_strategy_run_id"],
+        "offline_strategy_run_version": run_context["offline_strategy_run_version"],
+        "offline_strategy_run_root": str(output_root),
         "dataset_symbols": sorted({item.provider_symbol for item in requested_specs}),
         "requested_strategy_families": family_resolution["requested_strategy_families"],
         "supported_strategy_families": family_resolution["supported_strategy_families"],
@@ -1699,6 +1838,56 @@ def run_kiwoom_ka10081_capture_and_train(
             json.dumps(_build_ranking_summary(pipeline_input.dataset_id, ranking_report_rows), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+    ranking_report_payload_loaded = _load_json_if_exists(ranking_report_path) if training_result is not None else None
+    ranking_summary_payload = _load_json_if_exists(ranking_summary_path) if training_result is not None else None
+    promoted_count = int((ranking_summary_payload or {}).get("promotion_passed_count", 0))
+    rejected_count = int((ranking_summary_payload or {}).get("promotion_rejected_count", 0))
+    artifact_manifest_payload = _artifact_manifest_payload(
+        run_context=run_context,
+        ranking_report_path=str(ranking_report_path) if training_result is not None else None,
+        ranking_summary_path=str(ranking_summary_path) if training_result is not None else None,
+        trade_audit_report_path=str(trade_audit_path) if training_completed else None,
+        watchlist_ranking_report_path=None,
+        watchlist_ranking_summary_path=None,
+        candidate_count=len(training_result.candidates) if training_result is not None else 0,
+        ranking_rows_count=len(ranking_report_rows),
+        promoted_count=promoted_count,
+        rejected_count=rejected_count,
+    )
+    artifact_manifest_path.write_text(json.dumps(artifact_manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    leakage_audit_status = (
+        "LEAKAGE_AUDIT_FAILED"
+        if training_result is not None and any(item.leakage_audit_status == "LEAKAGE_AUDIT_FAILED" for item in training_result.backtest_results)
+        else "LEAKAGE_AUDIT_PASSED"
+        if training_result is not None
+        else None
+    )
+    comparison_payload = _comparison_payload(
+        run_context=run_context,
+        current_manifest_payload=artifact_manifest_payload,
+        current_ranking_report_payload=ranking_report_payload_loaded,
+        current_ranking_summary_payload=ranking_summary_payload,
+        current_leakage_audit_status=leakage_audit_status,
+    )
+    comparison_path.write_text(json.dumps(comparison_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    latest_run_pointer_path = write_latest_run_pointer(
+        run_context["offline_strategy_dataset_root"],
+        {
+            "run_id": run_context["offline_strategy_run_id"],
+            "run_version": run_context["offline_strategy_run_version"],
+            "run_root": str(output_root),
+            "artifact_manifest_path": str(artifact_manifest_path),
+            "comparison_path": str(comparison_path),
+            "ranking_report_path": str(ranking_report_path) if training_result is not None else None,
+            "ranking_summary_path": str(ranking_summary_path) if training_result is not None else None,
+            "trade_audit_report_path": str(trade_audit_path) if training_completed else None,
+            "created_at": run_context["created_at"],
+            "dataset_id": pipeline_input.dataset_id,
+            "search_mode": search_mode_value,
+            "strategy_families": family_resolution["requested_strategy_families"],
+            "leakage_audit_status": leakage_audit_status,
+        },
+    )
     all_symbols_completed = len(completed_symbols) >= len(requested_specs) and not partial_symbols and not failed_symbols
     used_any_cache = bool(reused_from_cache or skipped_completed)
     if not aggregate_rows:
@@ -1746,7 +1935,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "generated_strategy_families": generated_strategy_families,
         "candidate_count_by_family": candidate_count_by_family,
         "candidate_parameter_summary_by_family": candidate_parameter_summary_by_family,
-        "search_mode": str(search_mode or "BOUNDED_GRID").upper(),
+        "search_mode": search_mode_value,
         "walk_forward_mode": resolved_walk_forward_mode.value,
         "promotion_profile": str(promotion_profile or "STABILITY_FIRST").upper(),
         "fill_policy": str(fill_policy or "NEXT_BAR_CONSERVATIVE").upper(),
@@ -1803,14 +1992,18 @@ def run_kiwoom_ka10081_capture_and_train(
         "normalized_ohlcv_paths": [path for path in ([manifest.ohlcv_rows_path, manifest.manifest_path] if manifest else []) if path],
         "training_started": training_started,
         "training_completed": training_completed,
+        "offline_strategy_run_id": run_context["offline_strategy_run_id"],
+        "offline_strategy_run_version": run_context["offline_strategy_run_version"],
+        "offline_strategy_run_root": str(output_root),
+        "offline_strategy_latest_run_pointer_path": latest_run_pointer_path,
+        "offline_strategy_artifact_manifest_path": str(artifact_manifest_path),
+        "offline_strategy_run_comparison_path": str(comparison_path),
+        "watchlist_dataset_id": None,
         "trade_audit_artifact_path": str(trade_audit_path) if training_completed else None,
-        "leakage_audit_status": (
-            "LEAKAGE_AUDIT_FAILED"
-            if training_result is not None and any(item.leakage_audit_status == "LEAKAGE_AUDIT_FAILED" for item in training_result.backtest_results)
-            else "LEAKAGE_AUDIT_PASSED"
-            if training_result is not None
-            else None
-        ),
+        "trade_audit_report_path": str(trade_audit_path) if training_completed else None,
+        "comparison_status": comparison_payload.get("comparison_status"),
+        "previous_offline_strategy_run_id": comparison_payload.get("previous_run_id"),
+        "leakage_audit_status": leakage_audit_status,
         "leakage_audit_errors": [
             error
             for item in (training_result.backtest_results if training_result is not None else [])

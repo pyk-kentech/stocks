@@ -8,6 +8,20 @@ from stock_risk_mcp.historical_market_data_models import HistoricalChartRequestS
 from stock_risk_mcp.historical_market_data_guard import validate_safe_local_root
 from stock_risk_mcp.kiwoom_capture_and_train_runner import run_kiwoom_ka10081_capture_and_train
 from stock_risk_mcp.kiwoom_oauth_models import KiwoomEnvironment
+from stock_risk_mcp.offline_strategy_run_artifacts import (
+    initialize_offline_strategy_run,
+    load_latest_run_pointer,
+    write_latest_run_pointer,
+)
+
+
+def _load_json_if_exists(path: str | Path | None) -> dict[str, object] | None:
+    if not path:
+        return None
+    target = Path(path)
+    if not target.exists():
+        return None
+    return json.loads(target.read_text(encoding="utf-8"))
 
 
 def _watchlist_progress_path(capture_state_root: str | None, pipeline_input: HistoricalMarketDataPipelineInput) -> Path:
@@ -208,7 +222,7 @@ def _next_resume_command(
 
 def _aggregate_ranking_reports(
     *,
-    training_output_root: str,
+    aggregate_run_root: str,
     watchlist_dataset_id: str,
     ranking_report_paths_by_batch: dict[str, str],
     requested_symbols: list[str],
@@ -274,7 +288,7 @@ def _aggregate_ranking_reports(
                 "ranking_missing_reason": f"{status}_NO_TRAINING_RANKING",
             }
         )
-    output_root = validate_safe_local_root(training_output_root) / watchlist_dataset_id.lower() / "reports"
+    output_root = Path(aggregate_run_root) / "reports"
     output_root.mkdir(parents=True, exist_ok=True)
     output_path = output_root / "offline_strategy_watchlist_ranking.json"
     output_path.write_text(
@@ -554,6 +568,14 @@ def run_kiwoom_watchlist_capture_and_train(
     capture_state_root: str | None,
 ) -> dict[str, object]:
     watchlist_dataset_id = f"{pipeline_input.dataset_id}-WATCHLIST"
+    search_mode_value = str(search_mode or "BOUNDED_GRID").upper()
+    run_context = initialize_offline_strategy_run(
+        training_output_root=training_output_root,
+        dataset_id=watchlist_dataset_id,
+        search_mode=search_mode_value,
+        strategy_families=strategy_families,
+        watchlist_dataset_id=watchlist_dataset_id,
+    )
     progress_path = _watchlist_progress_path(capture_state_root, pipeline_input)
     progress = _load_watchlist_progress(progress_path) or {}
     per_symbol_global_status: dict[str, str] = {
@@ -729,7 +751,7 @@ def run_kiwoom_watchlist_capture_and_train(
     completed, full, partial, skipped, failed, pending = _global_status_sets(per_symbol_global_status)
     coverage_consistency_status, coverage_consistency_errors = _validate_coverage_consistency(batch_results, per_symbol_global_status)
     aggregate_ranking_report_path, aggregate_ranking_summary_path = _aggregate_ranking_reports(
-        training_output_root=training_output_root,
+        aggregate_run_root=str(run_context["offline_strategy_run_root"]),
         watchlist_dataset_id=watchlist_dataset_id,
         ranking_report_paths_by_batch=ranking_report_paths_by_batch,
         requested_symbols=symbols,
@@ -757,6 +779,9 @@ def run_kiwoom_watchlist_capture_and_train(
     final = dict(final)
     final["batch_status"] = final.get("status")
     final["watchlist_status"] = watchlist_status
+    final["offline_strategy_run_id"] = run_context["offline_strategy_run_id"]
+    final["offline_strategy_run_version"] = run_context["offline_strategy_run_version"]
+    final["offline_strategy_run_root"] = str(run_context["offline_strategy_run_root"])
     final["resume_all"] = resume_all
     final["watchlist_progress_path"] = str(progress_path)
     final["pending_symbols_before_run"] = retry_queue_before_run if resume_all else list(progress.get("pending_symbols", symbols))
@@ -771,6 +796,8 @@ def run_kiwoom_watchlist_capture_and_train(
     final["current_batch_ranking_report_path"] = final.get("ranking_report_path")
     final["aggregate_ranking_report_path"] = aggregate_ranking_report_path
     final["aggregate_ranking_summary_path"] = aggregate_ranking_summary_path
+    final["watchlist_ranking_report_path"] = aggregate_ranking_report_path
+    final["watchlist_ranking_summary_path"] = aggregate_ranking_summary_path
     final["capture_state_paths_by_batch"] = capture_state_paths_by_batch
     final["ranking_report_paths_by_batch"] = ranking_report_paths_by_batch
     final["retry_queue_before_run"] = retry_queue_before_run
@@ -832,5 +859,99 @@ def run_kiwoom_watchlist_capture_and_train(
     final["batch_identity_status"] = batch_identity_status
     final["ledger_validation_status"] = ledger_validation_status
     final["ledger_validation_errors"] = coverage_consistency_errors + ledger_validation_errors
+    ranking_report_payload = _load_json_if_exists(aggregate_ranking_report_path)
+    ranking_summary_payload = _load_json_if_exists(aggregate_ranking_summary_path)
+    artifact_manifest_path = Path(str(run_context["offline_strategy_run_root"])) / "offline_strategy_artifact_manifest.json"
+    comparison_path = Path(str(run_context["offline_strategy_run_root"])) / "offline_strategy_run_comparison.json"
+    promoted_count = int((ranking_summary_payload or {}).get("promotion_passed_count", 0))
+    rejected_count = int((ranking_summary_payload or {}).get("promotion_rejected_count", 0))
+    artifact_manifest_payload = {
+        "run_id": run_context["offline_strategy_run_id"],
+        "dataset_id": watchlist_dataset_id,
+        "watchlist_dataset_id": watchlist_dataset_id,
+        "search_mode": search_mode_value,
+        "strategy_families": run_context["strategy_families"],
+        "created_at": run_context["created_at"],
+        "candidate_count": sum(int(result.get("candidate_count") or 0) for result in batch_results),
+        "ranking_rows_count": len((ranking_report_payload or {}).get("rows", [])),
+        "promoted_count": promoted_count,
+        "rejected_count": rejected_count,
+        "git_commit": run_context.get("git_commit"),
+        "git_tag": run_context.get("git_tag"),
+        "paths": {
+            "ranking_report_path": None,
+            "ranking_summary_path": None,
+            "trade_audit_report_path": None,
+            "watchlist_ranking_report_path": aggregate_ranking_report_path,
+            "watchlist_ranking_summary_path": aggregate_ranking_summary_path,
+        },
+    }
+    artifact_manifest_path.write_text(json.dumps(artifact_manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    previous_pointer = load_latest_run_pointer(run_context["offline_strategy_dataset_root"])
+    if previous_pointer is None:
+        comparison_payload = {
+            "comparison_status": "NO_PREVIOUS_RUN",
+            "previous_run_id": None,
+            "current_run_id": run_context["offline_strategy_run_id"],
+        }
+    else:
+        previous_manifest = _load_json_if_exists(previous_pointer.get("artifact_manifest_path"))
+        previous_summary = _load_json_if_exists(previous_pointer.get("watchlist_ranking_summary_path") or previous_pointer.get("ranking_summary_path"))
+        previous_report = _load_json_if_exists(previous_pointer.get("watchlist_ranking_report_path") or previous_pointer.get("ranking_report_path"))
+        current_best = (ranking_summary_payload or {}).get("best_candidate_by_symbol", {})
+        previous_best = (previous_summary or {}).get("best_candidate_by_symbol", {}) if previous_summary else {}
+        current_top = ((ranking_report_payload or {}).get("rows") or [{}])[0].get("candidate_id") if (ranking_report_payload or {}).get("rows") else None
+        previous_top = ((previous_report or {}).get("rows") or [{}])[0].get("candidate_id") if (previous_report or {}).get("rows") else None
+        comparison_payload = {
+            "comparison_status": "COMPARISON_READY" if previous_manifest is not None else "PREVIOUS_RUN_ARTIFACT_MISSING",
+            "previous_run_id": previous_pointer.get("run_id"),
+            "current_run_id": run_context["offline_strategy_run_id"],
+            "candidate_count_delta": int(artifact_manifest_payload["candidate_count"]) - int((previous_manifest or {}).get("candidate_count", 0)),
+            "promoted_count_delta": int(promoted_count) - int((previous_manifest or {}).get("promoted_count", 0)),
+            "top_candidate_changed": current_top != previous_top,
+            "best_candidate_by_symbol_delta": sorted(
+                symbol
+                for symbol in sorted(set(current_best) | set(previous_best))
+                if (current_best.get(symbol) or {}).get("candidate_id") != (previous_best.get(symbol) or {}).get("candidate_id")
+            ),
+            "rejection_reason_delta": {
+                reason: int((ranking_summary_payload or {}).get("rejected_count_by_reason", {}).get(reason, 0))
+                - int((previous_summary or {}).get("rejected_count_by_reason", {}).get(reason, 0))
+                for reason in sorted(
+                    set((ranking_summary_payload or {}).get("rejected_count_by_reason", {}))
+                    | set((previous_summary or {}).get("rejected_count_by_reason", {}) if previous_summary else {})
+                )
+            },
+            "leakage_status_delta": {
+                "previous": previous_pointer.get("leakage_audit_status"),
+                "current": "LEAKAGE_AUDIT_PASSED" if all((result.get("leakage_audit_status") or "LEAKAGE_AUDIT_PASSED") == "LEAKAGE_AUDIT_PASSED" for result in batch_results) else "LEAKAGE_AUDIT_FAILED",
+            },
+            "drawdown_warning_delta": sum(1 for row in (ranking_report_payload or {}).get("rows", []) if row.get("drawdown_warning"))
+            - sum(1 for row in (previous_report or {}).get("rows", []) if row.get("drawdown_warning")),
+        }
+    comparison_path.write_text(json.dumps(comparison_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    latest_run_pointer_path = write_latest_run_pointer(
+        run_context["offline_strategy_dataset_root"],
+        {
+            "run_id": run_context["offline_strategy_run_id"],
+            "run_version": run_context["offline_strategy_run_version"],
+            "run_root": str(run_context["offline_strategy_run_root"]),
+            "artifact_manifest_path": str(artifact_manifest_path),
+            "comparison_path": str(comparison_path),
+            "watchlist_ranking_report_path": aggregate_ranking_report_path,
+            "watchlist_ranking_summary_path": aggregate_ranking_summary_path,
+            "created_at": run_context["created_at"],
+            "dataset_id": watchlist_dataset_id,
+            "search_mode": search_mode_value,
+            "strategy_families": run_context["strategy_families"],
+            "leakage_audit_status": "LEAKAGE_AUDIT_PASSED" if all((result.get("leakage_audit_status") or "LEAKAGE_AUDIT_PASSED") == "LEAKAGE_AUDIT_PASSED" for result in batch_results) else "LEAKAGE_AUDIT_FAILED",
+        },
+    )
+    final["offline_strategy_latest_run_pointer_path"] = latest_run_pointer_path
+    final["offline_strategy_artifact_manifest_path"] = str(artifact_manifest_path)
+    final["offline_strategy_run_comparison_path"] = str(comparison_path)
+    final["comparison_status"] = comparison_payload.get("comparison_status")
+    final["previous_offline_strategy_run_id"] = comparison_payload.get("previous_run_id")
+    final["offline_strategy_output_root"] = str(run_context["offline_strategy_run_root"])
     _write_watchlist_progress(progress_path, watchlist_progress)
     return final

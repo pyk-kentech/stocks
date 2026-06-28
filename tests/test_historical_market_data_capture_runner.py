@@ -822,6 +822,126 @@ def test_capture_and_train_wrapper_expanded_search_generates_more_candidates_and
     assert "\"token\"" not in dumped
 
 
+def test_capture_and_train_wrapper_isolates_run_artifacts_and_writes_comparison(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                )
+            ],
+        }
+    )
+    token_store_root = tmp_path / "oauth_tokens"
+    token_store_root.mkdir()
+    token_ref_path = token_store_root / "mock_token.json"
+    token_ref_path.write_text(
+        json.dumps(
+            {
+                "token": "REDACTED",
+                "token_type": "Bearer",
+                "expires_dt": "2099-01-01T00:00:00+00:00",
+                "issued_at": "2026-06-27T00:00:00+00:00",
+                "environment": "MOCK",
+                "credential_fingerprint_redacted": "sha256:fixture",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            symbol = preview.body_json["stk_cd"]
+            rows = []
+            for index in range(24):
+                close_price = 70000 + index * 100 + (50 if symbol == "000660" else 0)
+                rows.append(
+                    {
+                        "dt": f"2026{5 + ((index + 9) // 30):02d}{((index + 9) % 30) + 1:02d}",
+                        "open_pric": str(close_price - 100),
+                        "high_pric": str(close_price + 140),
+                        "low_pric": str(close_price - 120),
+                        "cur_prc": str(close_price),
+                        "trde_qty": str(800000 + index * 10000),
+                    }
+                )
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {"return_code": 0, "return_msg": "OK", "stk_day_pole_chart_qry": rows, "stk_cd": symbol},
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    first = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        strategy_families=["MACD_RSI", "RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+    )
+    second = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy"),
+        strategy_families=["MACD_RSI", "RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+    )
+
+    assert first["offline_strategy_run_id"] != second["offline_strategy_run_id"]
+    assert first["offline_strategy_output_root"] != second["offline_strategy_output_root"]
+    assert Path(first["ranking_summary_path"]).exists()
+    assert Path(second["ranking_summary_path"]).exists()
+    assert Path(first["ranking_summary_path"]).read_text(encoding="utf-8")
+    assert Path(second["ranking_summary_path"]).read_text(encoding="utf-8")
+    assert Path(first["offline_strategy_artifact_manifest_path"]).exists()
+    assert Path(second["offline_strategy_artifact_manifest_path"]).exists()
+    assert Path(second["offline_strategy_run_comparison_path"]).exists()
+    latest = json.loads(Path(second["offline_strategy_latest_run_pointer_path"]).read_text(encoding="utf-8"))
+    assert latest["run_id"] == second["offline_strategy_run_id"]
+    assert latest["ranking_summary_path"] == second["ranking_summary_path"]
+    first_comparison = json.loads(Path(first["offline_strategy_run_comparison_path"]).read_text(encoding="utf-8"))
+    second_comparison = json.loads(Path(second["offline_strategy_run_comparison_path"]).read_text(encoding="utf-8"))
+    assert first_comparison["comparison_status"] == "NO_PREVIOUS_RUN"
+    assert second_comparison["comparison_status"] == "COMPARISON_READY"
+    manifest = json.loads(Path(second["offline_strategy_artifact_manifest_path"]).read_text(encoding="utf-8"))
+    assert manifest["paths"]["ranking_report_path"] == second["ranking_report_path"]
+    assert manifest["paths"]["trade_audit_report_path"] == second["trade_audit_report_path"]
+    dumped = json.dumps({"first": first, "second": second, "manifest": manifest, "comparison": second_comparison}, ensure_ascii=False).lower()
+    assert "secretkey" not in dumped
+    assert "authorization" not in dumped
+    assert "\"token\"" not in dumped
+
+
 def test_capture_and_train_wrapper_reports_partial_provider_limit(tmp_path, monkeypatch) -> None:
     fixture = _fixture(tmp_path)
     token_store_root = tmp_path / "oauth_tokens"
@@ -1495,6 +1615,10 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert "best_diagnostic_candidate_by_symbol" in ranking_summary
     assert "rejected_count_by_reason" in ranking_summary
     assert "promotion_status_count" in ranking_summary
+    assert result["watchlist_ranking_summary_path"] == result["aggregate_ranking_summary_path"]
+    assert Path(result["watchlist_ranking_summary_path"]).exists()
+    assert Path(result["offline_strategy_artifact_manifest_path"]).exists()
+    assert result["offline_strategy_output_root"] != str(tmp_path / "offline")
 
 
 def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, monkeypatch) -> None:
