@@ -10,6 +10,7 @@ from stock_risk_mcp.kiwoom_real_readonly_transport import (
     FakeKiwoomTokenProvider,
     KiwoomRealReadOnlyPolicyError,
     RealKiwoomReadOnlyHttpTransport,
+    _validate_network_config,
 )
 
 
@@ -81,3 +82,19 @@ def test_transport_enforces_per_run_request_limit():
     with pytest.raises(KiwoomRealReadOnlyPolicyError, match="request limit"):
         transport.post("ka10004", {})
     assert len(client.calls) == 1
+
+def test_real_readonly_environment_requires_real_base_url() -> None:
+    config = enabled_config(
+        environment=KiwoomRealNetworkEnvironment.REAL_READONLY,
+        base_url="https://api.kiwoom.com",
+    )
+    _validate_network_config(config)
+
+
+def test_real_readonly_environment_rejects_mock_base_url() -> None:
+    config = enabled_config(
+        environment=KiwoomRealNetworkEnvironment.REAL_READONLY,
+        base_url="https://mockapi.kiwoom.com",
+    )
+    with pytest.raises(KiwoomRealReadOnlyPolicyError, match="https://api.kiwoom.com"):
+        _validate_network_config(config)

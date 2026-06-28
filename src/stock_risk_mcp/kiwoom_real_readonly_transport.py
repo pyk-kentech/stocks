@@ -16,6 +16,7 @@ from stock_risk_mcp.kiwoom_real_readonly_models import (
 
 
 KIWOOM_MOCK_BASE_URL = "https://mockapi.kiwoom.com"
+KIWOOM_REAL_BASE_URL = "https://api.kiwoom.com"
 V214_READONLY_API_IDS = {"ka10001", "ka10004", "ka10020", "ka10008", "ka10080", "ka10081"}
 
 
@@ -105,10 +106,15 @@ class StdlibKiwoomHttpClient:
 def _validate_network_config(config: KiwoomRealNetworkConfig) -> None:
     if not config.enabled:
         raise KiwoomRealReadOnlyPolicyError("real Kiwoom network is disabled")
-    if config.environment != KiwoomRealNetworkEnvironment.MOCK:
+    if config.environment == KiwoomRealNetworkEnvironment.PROD_READONLY_DISABLED:
         raise KiwoomRealReadOnlyPolicyError("PROD_READONLY_DISABLED is always blocked")
-    if config.base_url != KIWOOM_MOCK_BASE_URL:
-        raise KiwoomRealReadOnlyPolicyError("base URL must exactly match https://mockapi.kiwoom.com")
+    if config.environment not in {KiwoomRealNetworkEnvironment.MOCK, KiwoomRealNetworkEnvironment.REAL_READONLY}:
+        raise KiwoomRealReadOnlyPolicyError("unsupported read-only network environment")
+    expected_base_url = KIWOOM_MOCK_BASE_URL
+    if config.environment == KiwoomRealNetworkEnvironment.REAL_READONLY:
+        expected_base_url = KIWOOM_REAL_BASE_URL
+    if config.base_url != expected_base_url:
+        raise KiwoomRealReadOnlyPolicyError(f"base URL must exactly match {expected_base_url}")
 
 
 def _manifest_endpoint(api_id: str):

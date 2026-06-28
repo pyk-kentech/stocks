@@ -18,6 +18,7 @@ class KiwoomCredentialSource(StrEnum):
 
 class KiwoomRealNetworkEnvironment(StrEnum):
     MOCK = "MOCK"
+    REAL_READONLY = "REAL_READONLY"
     PROD_READONLY_DISABLED = "PROD_READONLY_DISABLED"
 
 
