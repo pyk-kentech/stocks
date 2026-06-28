@@ -2419,6 +2419,9 @@ def build_command_parser() -> argparse.ArgumentParser:
         command.add_argument("--max-requests-per-run", type=int, default=5)
         if name in {"kiwoom-real-readonly-stock-info", "kiwoom-real-readonly-quote", "kiwoom-real-readonly-flow", "kiwoom-real-readonly-minute-chart", "kiwoom-real-readonly-daily-chart"}:
             command.add_argument("--ticker", required=True)
+        if name == "kiwoom-real-readonly-daily-chart":
+            command.add_argument("--base-dt", required=True)
+            command.add_argument("--upd-stkpc-tp", default="1")
         if name == "kiwoom-real-readonly-rankings":
             command.add_argument("--market", default="0")
             command.add_argument("--sort-type", default="1")
@@ -8450,7 +8453,7 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
             "kiwoom-real-readonly-rankings": ("ka10020", {"mrkt_tp": getattr(args, "market", None), "sort_tp": getattr(args, "sort_type", None)}),
             "kiwoom-real-readonly-flow": ("ka10008", {"stk_cd": getattr(args, "ticker", None)}),
             "kiwoom-real-readonly-minute-chart": ("ka10080", {"stk_cd": getattr(args, "ticker", None)}),
-            "kiwoom-real-readonly-daily-chart": ("ka10081", {"stk_cd": getattr(args, "ticker", None)}),
+            "kiwoom-real-readonly-daily-chart": ("ka10081", {"stk_cd": getattr(args, "ticker", None), "base_dt": getattr(args, "base_dt", None), "upd_stkpc_tp": getattr(args, "upd_stkpc_tp", "1")}),
         }
         api_id, body = operations[args.command]
         return service.request(api_id, body)

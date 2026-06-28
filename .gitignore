@@ -34,3 +34,5 @@ api_key/
 *.secret
 *_appkey.txt
 *_secretkey.txt
+local_secrets/
+local_data/kiwoom_token_store/
