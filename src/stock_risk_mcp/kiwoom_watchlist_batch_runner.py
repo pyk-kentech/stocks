@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 
 from stock_risk_mcp.historical_market_data_models import HistoricalChartRequestSpec, HistoricalMarketDataPipelineInput
@@ -320,6 +321,12 @@ def _aggregate_ranking_reports(
     missing_indicator_count_by_family: dict[str, int] = {}
     best_diagnostic_candidate_by_symbol: dict[str, dict[str, object]] = {}
     best_diagnostic_candidate_by_family: dict[str, dict[str, object]] = {}
+    promoted_count_by_symbol: dict[str, int] = {}
+    promoted_count_by_family: dict[str, int] = {}
+    same_bar_fill_count = 0
+    lookahead_violation_count = 0
+    drawdown_sanity_warning_count = 0
+    leakage_failed = False
     for row in available_rows:
         symbol = str(row.get("symbol") or "")
         family = str(row.get("strategy_family") or "")
@@ -331,9 +338,20 @@ def _aggregate_ranking_reports(
             missing_indicator_count_by_family[family] = missing_indicator_count_by_family.get(family, 0) + len(row.get("missing_indicator_columns") or [])
         if promotion_status:
             promotion_status_count[promotion_status] = promotion_status_count.get(promotion_status, 0) + 1
+            if promotion_status == "PROMOTED_OFFLINE_CANDIDATE":
+                if symbol:
+                    promoted_count_by_symbol[symbol] = promoted_count_by_symbol.get(symbol, 0) + 1
+                if family:
+                    promoted_count_by_family[family] = promoted_count_by_family.get(family, 0) + 1
         if int(row.get("entry_signal_count") or 0) == 0:
             zero_entry_signal_count += 1
             zero_entry_signal_count_by_family[family] = zero_entry_signal_count_by_family.get(family, 0) + 1
+        same_bar_fill_count += int(row.get("same_bar_fill_count") or 0)
+        lookahead_violation_count += int(row.get("lookahead_violation_count") or 0)
+        if row.get("drawdown_warning"):
+            drawdown_sanity_warning_count += 1
+        if str(row.get("leakage_audit_status") or "") == "LEAKAGE_AUDIT_FAILED":
+            leakage_failed = True
         for reason in row.get("rejection_reasons", []):
             rejected_count_by_reason[str(reason)] = rejected_count_by_reason.get(str(reason), 0) + 1
             if str(reason) == "NO_TRADES":
@@ -384,6 +402,16 @@ def _aggregate_ranking_reports(
                 "missing_indicator_count_by_family": dict(sorted(missing_indicator_count_by_family.items())),
                 "candidate_count_by_symbol": dict(sorted(candidate_count_by_symbol.items())),
                 "candidate_count_by_family": dict(sorted(candidate_count_by_family.items())),
+                "promoted_count_by_symbol": dict(sorted(promoted_count_by_symbol.items())),
+                "promoted_count_by_family": dict(sorted(promoted_count_by_family.items())),
+                "leakage_audit_status": "LEAKAGE_AUDIT_FAILED" if leakage_failed else "LEAKAGE_AUDIT_PASSED",
+                "same_bar_fill_count": same_bar_fill_count,
+                "lookahead_violation_count": lookahead_violation_count,
+                "drawdown_sanity_warning_count": drawdown_sanity_warning_count,
+                "ranking_available_symbol_count": len({str(row.get("symbol") or "") for row in available_rows if str(row.get("symbol") or "")}),
+                "ranking_missing_symbol_count": len({str(row.get("symbol") or "") for row in rows if not row.get("ranking_available", True) and str(row.get("symbol") or "")}),
+                "ranking_available_symbols": sorted({str(row.get("symbol") or "") for row in available_rows if str(row.get("symbol") or "")}),
+                "ranking_missing_symbols": sorted({str(row.get("symbol") or "") for row in rows if not row.get("ranking_available", True) and str(row.get("symbol") or "")}),
             },
             indent=2,
             ensure_ascii=False,
@@ -391,6 +419,49 @@ def _aggregate_ranking_reports(
         encoding="utf-8",
     )
     return str(output_path), str(summary_path)
+
+
+def _batch_progress_counts(*, total_batches: int, executed_batches: int) -> tuple[int, int]:
+    completed_batches = min(executed_batches, total_batches)
+    pending_batches = max(total_batches - completed_batches, 0)
+    return completed_batches, pending_batches
+
+
+def _rate_budget_estimate(
+    *,
+    batch_results: list[dict[str, object]],
+    pending_symbols: list[str],
+    min_request_interval_seconds: float | None,
+    max_tr_per_hour: int | None,
+) -> dict[str, object]:
+    tr_request_count_this_run = sum(int(result.get("tr_request_count") or 0) for result in batch_results)
+    tr_request_count_last_hour = max((int(result.get("tr_request_count_last_hour") or 0) for result in batch_results), default=0)
+    processed_symbols = sum(len(result.get("dataset_symbols") or []) for result in batch_results)
+    avg_requests_per_symbol = (tr_request_count_this_run / processed_symbols) if processed_symbols > 0 else 0.0
+    estimated_tr_requests_remaining = int(math.ceil(avg_requests_per_symbol * len(pending_symbols))) if pending_symbols else 0
+    resolved_min_interval = (
+        float(min_request_interval_seconds)
+        if min_request_interval_seconds and min_request_interval_seconds > 0
+        else max((float(result.get("min_request_interval_seconds") or 0.0) for result in batch_results), default=0.0)
+    )
+    resolved_max_tr_per_hour = (
+        int(max_tr_per_hour)
+        if max_tr_per_hour and max_tr_per_hour > 0
+        else max((int(result.get("max_tr_per_hour") or 0) for result in batch_results), default=0)
+    )
+    seconds_per_request_candidates = [resolved_min_interval]
+    if resolved_max_tr_per_hour > 0:
+        seconds_per_request_candidates.append(3600.0 / float(resolved_max_tr_per_hour))
+    seconds_per_request = max(seconds_per_request_candidates) if any(value > 0 for value in seconds_per_request_candidates) else 0.0
+    estimated_seconds_remaining = float(estimated_tr_requests_remaining) * seconds_per_request
+    return {
+        "estimated_tr_requests_remaining": estimated_tr_requests_remaining,
+        "estimated_seconds_remaining_at_current_rate": round(estimated_seconds_remaining, 3),
+        "estimated_minutes_remaining_at_current_rate": round(estimated_seconds_remaining / 60.0, 3),
+        "tr_request_count_this_run": tr_request_count_this_run,
+        "tr_request_count_last_hour": tr_request_count_last_hour,
+        "max_tr_per_hour": resolved_max_tr_per_hour,
+    }
 
 
 def _global_status_sets(per_symbol_global_status: dict[str, str]) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
@@ -750,6 +821,7 @@ def run_kiwoom_watchlist_capture_and_train(
     final = batch_results[-1]
     completed, full, partial, skipped, failed, pending = _global_status_sets(per_symbol_global_status)
     coverage_consistency_status, coverage_consistency_errors = _validate_coverage_consistency(batch_results, per_symbol_global_status)
+    completed_batches, pending_batches = _batch_progress_counts(total_batches=len(batches), executed_batches=len(batch_results))
     aggregate_ranking_report_path, aggregate_ranking_summary_path = _aggregate_ranking_reports(
         aggregate_run_root=str(run_context["offline_strategy_run_root"]),
         watchlist_dataset_id=watchlist_dataset_id,
@@ -779,6 +851,7 @@ def run_kiwoom_watchlist_capture_and_train(
     final = dict(final)
     final["batch_status"] = final.get("status")
     final["watchlist_status"] = watchlist_status
+    final["watchlist_dataset_id"] = watchlist_dataset_id
     final["offline_strategy_run_id"] = run_context["offline_strategy_run_id"]
     final["offline_strategy_run_version"] = run_context["offline_strategy_run_version"]
     final["offline_strategy_run_root"] = str(run_context["offline_strategy_run_root"])
@@ -793,6 +866,11 @@ def run_kiwoom_watchlist_capture_and_train(
     final["watchlist_completed_symbols"] = completed
     final["watchlist_pending_symbols"] = pending
     final["watchlist_failed_symbols"] = failed
+    final["total_batches"] = len(batches)
+    final["completed_batches"] = completed_batches
+    final["pending_batches"] = pending_batches
+    final["watchlist_completion_ratio"] = round((len(symbols) - len(pending)) / len(symbols), 6) if symbols else 0.0
+    final["full_coverage_ratio"] = round(len(full) / len(symbols), 6) if symbols else 0.0
     final["current_batch_ranking_report_path"] = final.get("ranking_report_path")
     final["aggregate_ranking_report_path"] = aggregate_ranking_report_path
     final["aggregate_ranking_summary_path"] = aggregate_ranking_summary_path
@@ -861,10 +939,18 @@ def run_kiwoom_watchlist_capture_and_train(
     final["ledger_validation_errors"] = coverage_consistency_errors + ledger_validation_errors
     ranking_report_payload = _load_json_if_exists(aggregate_ranking_report_path)
     ranking_summary_payload = _load_json_if_exists(aggregate_ranking_summary_path)
+    rate_budget_estimate = _rate_budget_estimate(
+        batch_results=batch_results,
+        pending_symbols=pending,
+        min_request_interval_seconds=min_request_interval_seconds,
+        max_tr_per_hour=max_tr_per_hour,
+    )
     artifact_manifest_path = Path(str(run_context["offline_strategy_run_root"])) / "offline_strategy_artifact_manifest.json"
     comparison_path = Path(str(run_context["offline_strategy_run_root"])) / "offline_strategy_run_comparison.json"
     promoted_count = int((ranking_summary_payload or {}).get("promotion_passed_count", 0))
     rejected_count = int((ranking_summary_payload or {}).get("promotion_rejected_count", 0))
+    training_symbol_count = len({symbol for result in batch_results for symbol in (result.get("training_input_symbols") or [])})
+    aggregate_ranking_row_count = len((ranking_report_payload or {}).get("rows", []))
     artifact_manifest_payload = {
         "run_id": run_context["offline_strategy_run_id"],
         "dataset_id": watchlist_dataset_id,
@@ -953,5 +1039,15 @@ def run_kiwoom_watchlist_capture_and_train(
     final["comparison_status"] = comparison_payload.get("comparison_status")
     final["previous_offline_strategy_run_id"] = comparison_payload.get("previous_run_id")
     final["offline_strategy_output_root"] = str(run_context["offline_strategy_run_root"])
+    final["training_symbol_count"] = training_symbol_count
+    final["promoted_candidate_count"] = promoted_count
+    final["rejected_candidate_count"] = rejected_count
+    final["aggregate_ranking_row_count"] = aggregate_ranking_row_count
+    final["leakage_audit_status"] = (ranking_summary_payload or {}).get("leakage_audit_status")
+    final["same_bar_fill_count"] = int((ranking_summary_payload or {}).get("same_bar_fill_count", 0))
+    final["lookahead_violation_count"] = int((ranking_summary_payload or {}).get("lookahead_violation_count", 0))
+    final["drawdown_sanity_warning_count"] = int((ranking_summary_payload or {}).get("drawdown_sanity_warning_count", 0))
+    final["rate_limit_profile"] = rate_limit_profile or final.get("tr_rate_limit_profile")
+    final.update(rate_budget_estimate)
     _write_watchlist_progress(progress_path, watchlist_progress)
     return final

@@ -1,0 +1,21 @@
+symbol,name,sector,priority
+005930,Samsung Electronics,Semiconductor,1
+000660,SK Hynix,Semiconductor,1
+035420,NAVER,Internet Platform,2
+035720,Kakao,Internet Platform,2
+051910,LG Chem,Chemicals Battery,2
+005380,Hyundai Motor,Automobile,2
+000270,Kia,Automobile,2
+012330,Hyundai Mobis,Automobile Parts,3
+068270,Celltrion,Biopharma,2
+207940,Samsung Biologics,Biopharma,1
+006400,Samsung SDI,Battery,2
+003670,POSCO Future M,Battery Materials,3
+096770,SK Innovation,Energy,3
+034730,SK,Holdings,3
+017670,SK Telecom,Telecom,4
+032830,Samsung Life Insurance,Insurance,4
+105560,KB Financial Group,Banking,3
+055550,Shinhan Financial Group,Banking,3
+086790,Hana Financial Group,Banking,4
+028260,Samsung C&T,Industrial Holdings,4
