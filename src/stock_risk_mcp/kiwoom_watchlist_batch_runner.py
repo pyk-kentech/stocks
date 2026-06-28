@@ -438,6 +438,25 @@ def _batch_progress_counts(*, total_batches: int, executed_batches: int) -> tupl
     return completed_batches, pending_batches
 
 
+def _watchlist_batch_progress_counts(
+    *,
+    batches: list[list[str]],
+    per_symbol_global_status: dict[str, str],
+) -> tuple[int, int]:
+    completed_batches = 0
+    pending_batches = 0
+    for batch in batches:
+        batch_was_attempted = any(
+            per_symbol_global_status.get(symbol) not in {None, "PENDING"}
+            for symbol in batch
+        )
+        if batch_was_attempted:
+            completed_batches += 1
+        else:
+            pending_batches += 1
+    return completed_batches, pending_batches
+
+
 def _rate_budget_estimate(
     *,
     batch_results: list[dict[str, object]],
@@ -1664,7 +1683,10 @@ def run_kiwoom_watchlist_capture_and_train(
     final = batch_results[-1]
     completed, full, partial, skipped, failed, pending = _global_status_sets(per_symbol_global_status)
     coverage_consistency_status, coverage_consistency_errors = _validate_coverage_consistency(batch_results, per_symbol_global_status)
-    completed_batches, pending_batches = _batch_progress_counts(total_batches=len(batches), executed_batches=len(batch_results))
+    completed_batches, pending_batches = _watchlist_batch_progress_counts(
+        batches=batches,
+        per_symbol_global_status=per_symbol_global_status,
+    )
     aggregate_ranking_report_path, aggregate_ranking_summary_path = _aggregate_ranking_reports(
         aggregate_run_root=str(run_context["offline_strategy_run_root"]),
         watchlist_dataset_id=watchlist_dataset_id,

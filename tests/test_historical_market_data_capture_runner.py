@@ -2416,6 +2416,7 @@ def test_watchlist_20_symbol_resume_all_preserves_batch_labels(tmp_path, monkeyp
     assert second["batch_identity_status"] == "BATCH_IDENTITY_OK"
     assert second["watchlist_status"] == "WATCHLIST_COMPLETED"
     assert second["total_batches"] == len(expected_batches)
+    assert second["completed_batches"] == second["total_batches"]
     assert second["pending_batches"] == 0
 
 
