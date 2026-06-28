@@ -76,6 +76,22 @@ def _validate_scalar_map(value: dict[str, Any], field_name: str) -> dict[str, Sc
     return normalized
 
 
+def _validate_audit_scalar_map(value: dict[str, Any], field_name: str) -> dict[str, ScalarValue]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be a dict")
+    blocked = ("credential", "token", "secret", "authorization", "account", "broker")
+    normalized: dict[str, ScalarValue] = {}
+    for key, raw in value.items():
+        name = _string_required(key, f"{field_name}.key")
+        if any(marker in name.lower() for marker in blocked):
+            raise ValueError(f"{field_name} contains blocked field name: {name}")
+        if isinstance(raw, bool) or raw is None or isinstance(raw, (int, float, str)):
+            normalized[name] = raw
+            continue
+        raise ValueError(f"{field_name} values must be scalar only")
+    return normalized
+
+
 def _validate_safety_flags(model, context: str):
     for flag_name in (
         "read_only",
@@ -410,13 +426,41 @@ class OfflineStrategyBacktestResult(_BaseSafety):
     trade_count: int = Field(default=0, ge=0)
     cumulative_return: float = 0.0
     max_drawdown: float = 0.0
+    max_drawdown_raw: float = 0.0
+    max_drawdown_unit: str = Field(default="FRACTION_OF_EQUITY", min_length=1)
+    max_drawdown_capped_to_1_if_fraction: bool = False
     trades: list[OfflineStrategySimulatedTrade] = Field(default_factory=list)
+    trade_audit_summary: dict[str, ScalarValue] = Field(default_factory=dict)
+    trade_audit_records: list[dict[str, ScalarValue]] = Field(default_factory=list)
+    leakage_audit_status: str = Field(default="LEAKAGE_AUDIT_PASSED", min_length=1)
+    leakage_audit_errors: list[str] = Field(default_factory=list)
+    same_bar_fill_count: int = Field(default=0, ge=0)
+    lookahead_violation_count: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("result_id", "candidate_id", mode="before")
+    @field_validator("result_id", "candidate_id", "max_drawdown_unit", "leakage_audit_status", mode="before")
     @classmethod
     def normalize_upper(cls, value, info):
         return _upper_required(value, info.field_name)
+
+    @field_validator("trade_audit_summary", mode="before")
+    @classmethod
+    def normalize_trade_audit_summary(cls, value):
+        return _validate_audit_scalar_map(value or {}, "trade_audit_summary")
+
+    @field_validator("trade_audit_records", mode="before")
+    @classmethod
+    def normalize_trade_audit_records(cls, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("trade_audit_records must be a list")
+        return [_validate_audit_scalar_map(item or {}, "trade_audit_records") for item in value]
+
+    @field_validator("leakage_audit_errors", mode="before")
+    @classmethod
+    def normalize_leakage_audit_errors(cls, value):
+        return _normalize_list(value, "leakage_audit_errors")
 
     @field_validator("warnings", mode="before")
     @classmethod
@@ -439,12 +483,13 @@ class OfflineStrategyMetricSummary(_BaseSafety):
     profit_factor: float = 0.0
     win_rate: float = 0.0
     max_drawdown: float = 0.0
+    max_drawdown_unit: str = Field(default="FRACTION_OF_EQUITY", min_length=1)
     stop_hit_rate: float = 0.0
     exposure: float = 0.0
     turnover: float = 0.0
     warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("report_id", "candidate_id", mode="before")
+    @field_validator("report_id", "candidate_id", "max_drawdown_unit", mode="before")
     @classmethod
     def normalize_upper(cls, value, info):
         return _upper_required(value, info.field_name)

@@ -782,10 +782,13 @@ def test_capture_and_train_wrapper_expanded_search_generates_more_candidates_and
     }
     ranking_payload = json.loads(Path(expanded_result["ranking_report_path"]).read_text(encoding="utf-8"))
     assert ranking_payload["candidate_count_by_family"] == expanded_result["candidate_count_by_family"]
+    assert Path(expanded_result["trade_audit_artifact_path"]).exists()
     assert all("rank_score" in row and "rank_score_components" in row for row in ranking_payload["rows"])
     assert all("parameter_set_id" in row and "parameter_summary" in row for row in ranking_payload["rows"])
     assert all(row["rank_score"] is not None for row in ranking_payload["rows"])
     assert all("input_row_count" in row and "symbol_row_count" in row for row in ranking_payload["rows"])
+    assert all("fill_policy" in row and row["fill_policy"] == "CONSERVATIVE_NEXT_BAR_FILL" for row in ranking_payload["rows"])
+    assert all("same_bar_fill_detected" in row and "lookahead_detected" in row for row in ranking_payload["rows"])
     assert all("indicator_columns_available" in row and "required_indicator_columns" in row for row in ranking_payload["rows"])
     assert all("signal_count_before_filters" in row and "condition_pass_counts" in row and "condition_block_counts" in row for row in ranking_payload["rows"])
     assert any(row["signal_count_before_filters"] > 0 for row in ranking_payload["rows"])
@@ -799,6 +802,20 @@ def test_capture_and_train_wrapper_expanded_search_generates_more_candidates_and
     assert "missing_indicator_count_by_family" in ranking_summary
     assert "best_diagnostic_candidate_by_symbol" in ranking_summary
     assert "best_diagnostic_candidate_by_family" in ranking_summary
+    assert "promotion_passed_count" in ranking_summary
+    assert "promotion_rejected_count" in ranking_summary
+    assert "promotion_status_count" in ranking_summary
+    assert "PROMOTION_GATE_PASSED" not in ranking_summary["rejected_count_by_reason"]
+    assert expanded_result["leakage_audit_status"] == "LEAKAGE_AUDIT_PASSED"
+    assert expanded_result["same_bar_fill_count"] == 0
+    assert expanded_result["lookahead_violation_count"] == 0
+    audited_rows = [row for row in ranking_payload["rows"] if row["actual_trade_count"] > 0 and row["exit_signal_count"] == 0]
+    assert audited_rows
+    assert any((row["forced_exit_count"] + row["holding_period_exit_count"] + row["end_of_data_exit_count"]) > 0 for row in audited_rows)
+    high_drawdown_rows = [row for row in ranking_payload["rows"] if "MAX_DRAWDOWN_CAP_EXCEEDED" in row["rejection_reasons"]]
+    lower_drawdown_rows = [row for row in ranking_payload["rows"] if "MAX_DRAWDOWN_CAP_EXCEEDED" not in row["rejection_reasons"]]
+    if high_drawdown_rows and lower_drawdown_rows:
+        assert max(row["rank_score"] for row in lower_drawdown_rows) >= max(row["rank_score"] for row in high_drawdown_rows)
     dumped = json.dumps({"ranking": ranking_payload, "summary": ranking_summary}, ensure_ascii=False).lower()
     assert "secretkey" not in dumped
     assert "authorization" not in dumped
@@ -1477,6 +1494,7 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert "best_candidate_by_symbol" in ranking_summary
     assert "best_diagnostic_candidate_by_symbol" in ranking_summary
     assert "rejected_count_by_reason" in ranking_summary
+    assert "promotion_status_count" in ranking_summary
 
 
 def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, monkeypatch) -> None:

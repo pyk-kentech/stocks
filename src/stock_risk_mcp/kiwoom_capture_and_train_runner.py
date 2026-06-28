@@ -389,24 +389,40 @@ def _score_ranking_row(
     schema_gap: bool,
     final_entry_condition_count: int,
     rejection_reason_count: int,
+    rejection_reasons: list[str],
     profit_factor: float | None,
+    win_rate: float | None,
     max_drawdown: float | None,
     total_return: float | None,
+    expectancy: float | None,
     average_trade_return: float | None,
 ) -> float:
+    capped_trade_count = min(float(actual_trade_count), 40.0)
+    diagnostic_signal_component = min(float(signal_count_before_filters), 60.0) * 0.35 + min(float(entry_signal_count), 30.0) * 0.5
+    rejection_penalty = float(rejection_reason_count) * 6.0
+    if "MAX_DRAWDOWN_CAP_EXCEEDED" in rejection_reasons:
+        rejection_penalty += 120.0
+    if "PROFIT_FACTOR_TOO_LOW" in rejection_reasons:
+        rejection_penalty += 40.0
+    if "EXPECTANCY_TOO_LOW" in rejection_reasons:
+        rejection_penalty += 40.0
+    if "LEAKAGE_AUDIT_FAILED" in rejection_reasons:
+        rejection_penalty += 250.0
+    overtrading_penalty = max(0.0, float(actual_trade_count) - 80.0) * max(0.0, 0.01 - float(average_trade_return or 0.0)) * 50.0
     return (
-        float(actual_trade_count) * 100.0
-        + float(signal_count_before_filters) * 2.0
-        + float(entry_signal_count) * 3.0
-        + float(exit_signal_count) * 2.0
-        + float(final_entry_condition_count) * 1.5
-        - float(missing_indicator_count) * 4.0
-        - (15.0 if schema_gap else 0.0)
-        - float(rejection_reason_count) * 10.0
-        + float(profit_factor or 0.0) * 5.0
-        + float(total_return or 0.0) * 100.0
-        + float(average_trade_return or 0.0) * 50.0
-        - float(max_drawdown or 0.0) * 100.0
+        capped_trade_count * 1.5
+        + diagnostic_signal_component
+        + float(final_entry_condition_count) * 0.5
+        + float(profit_factor or 0.0) * 60.0
+        + float(win_rate or 0.0) * 25.0
+        + float(total_return or 0.0) * 220.0
+        + float(expectancy or 0.0) * 180.0
+        + float(average_trade_return or 0.0) * 250.0
+        - float(max_drawdown or 0.0) * 300.0
+        - float(missing_indicator_count) * 6.0
+        - (30.0 if schema_gap else 0.0)
+        - rejection_penalty
+        - overtrading_penalty
     )
 
 
@@ -420,24 +436,39 @@ def _rank_score_components(
     schema_gap: bool,
     final_entry_condition_count: int,
     rejection_reason_count: int,
+    rejection_reasons: list[str],
     profit_factor: float | None,
+    win_rate: float | None,
     max_drawdown: float | None,
     total_return: float | None,
+    expectancy: float | None,
     average_trade_return: float | None,
 ) -> dict[str, float]:
+    capped_trade_count = min(float(actual_trade_count), 40.0)
+    diagnostic_signal_component = min(float(signal_count_before_filters), 60.0) * 0.35 + min(float(entry_signal_count), 30.0) * 0.5
+    rejection_penalty = float(rejection_reason_count) * 6.0
+    if "MAX_DRAWDOWN_CAP_EXCEEDED" in rejection_reasons:
+        rejection_penalty += 120.0
+    if "PROFIT_FACTOR_TOO_LOW" in rejection_reasons:
+        rejection_penalty += 40.0
+    if "EXPECTANCY_TOO_LOW" in rejection_reasons:
+        rejection_penalty += 40.0
+    if "LEAKAGE_AUDIT_FAILED" in rejection_reasons:
+        rejection_penalty += 250.0
+    overtrading_penalty = max(0.0, float(actual_trade_count) - 80.0) * max(0.0, 0.01 - float(average_trade_return or 0.0)) * 50.0
     return {
-        "trade_count_component": float(actual_trade_count) * 100.0,
-        "signal_count_component": float(signal_count_before_filters) * 2.0,
-        "entry_signal_component": float(entry_signal_count) * 3.0,
-        "exit_signal_component": float(exit_signal_count) * 2.0,
-        "final_entry_condition_component": float(final_entry_condition_count) * 1.5,
-        "missing_indicator_penalty_component": float(missing_indicator_count) * -4.0,
-        "schema_gap_penalty_component": -15.0 if schema_gap else 0.0,
-        "rejection_penalty_component": float(rejection_reason_count) * -10.0,
-        "profit_factor_component": float(profit_factor or 0.0) * 5.0,
-        "total_return_component": float(total_return or 0.0) * 100.0,
-        "average_trade_return_component": float(average_trade_return or 0.0) * 50.0,
-        "drawdown_penalty_component": float(max_drawdown or 0.0) * -100.0,
+        "trade_count_component": capped_trade_count * 1.5,
+        "diagnostic_signal_component": diagnostic_signal_component,
+        "return_component": float(total_return or 0.0) * 220.0,
+        "profit_factor_component": float(profit_factor or 0.0) * 60.0,
+        "win_rate_component": float(win_rate or 0.0) * 25.0,
+        "expectancy_component": float(expectancy or 0.0) * 180.0,
+        "average_trade_return_component": float(average_trade_return or 0.0) * 250.0,
+        "drawdown_penalty": float(max_drawdown or 0.0) * -300.0,
+        "missing_indicator_penalty": float(missing_indicator_count) * -6.0,
+        "schema_gap_penalty": -30.0 if schema_gap else 0.0,
+        "rejection_penalty": -rejection_penalty,
+        "overtrading_penalty": -overtrading_penalty,
     }
 
 
@@ -502,6 +533,7 @@ def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> di
     best_candidate_by_family: dict[str, dict[str, object]] = {}
     best_candidate_by_symbol_and_family: dict[str, dict[str, object]] = {}
     rejected_count_by_reason: Counter[str] = Counter()
+    promotion_status_count: Counter[str] = Counter()
     candidate_count_by_symbol: Counter[str] = Counter()
     candidate_count_by_family: Counter[str] = Counter()
     no_trades_count = 0
@@ -513,8 +545,10 @@ def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> di
     for row in available_rows:
         symbol = str(row.get("symbol") or "")
         family = str(row.get("strategy_family") or "")
+        promotion_status = str(row.get("promotion_status") or "")
         candidate_count_by_symbol[symbol] += 1
         candidate_count_by_family[family] += 1
+        promotion_status_count[promotion_status] += 1
         if int(row.get("entry_signal_count") or 0) == 0:
             zero_entry_signal_count += 1
             zero_entry_signal_count_by_family[family] += 1
@@ -552,6 +586,10 @@ def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> di
         "best_diagnostic_candidate_by_symbol": best_diagnostic_candidate_by_symbol,
         "best_diagnostic_candidate_by_family": best_diagnostic_candidate_by_family,
         "rejected_count_by_reason": dict(sorted(rejected_count_by_reason.items())),
+        "rejection_reason_count": dict(sorted(rejected_count_by_reason.items())),
+        "promotion_status_count": dict(sorted(promotion_status_count.items())),
+        "promotion_passed_count": int(promotion_status_count.get("PROMOTED_OFFLINE_CANDIDATE", 0)),
+        "promotion_rejected_count": sum(count for status, count in promotion_status_count.items() if status != "PROMOTED_OFFLINE_CANDIDATE"),
         "no_trades_count": no_trades_count,
         "zero_entry_signal_count": zero_entry_signal_count,
         "zero_entry_signal_count_by_family": dict(sorted(zero_entry_signal_count_by_family.items())),
@@ -572,6 +610,7 @@ def _build_symbol_family_ranking_rows(
     coverage_by_symbol = {item["requested_symbol"]: item for item in symbol_results}
     candidates_by_id = {candidate.candidate_id: candidate for candidate in training_result.candidates}
     metrics_by_id = {metric.candidate_id: metric for metric in training_result.metric_summaries}
+    backtests_by_id = {backtest.candidate_id: backtest for backtest in training_result.backtest_results}
     signals_by_key: dict[tuple[str, str], list] = defaultdict(list)
     for signal in training_result.signals:
         signals_by_key[(signal.candidate_id, signal.instrument_id)].append(signal)
@@ -583,6 +622,7 @@ def _build_symbol_family_ranking_rows(
     for decision in training_result.promotion_decisions:
         candidate = candidates_by_id.get(decision.candidate_id)
         metric = metrics_by_id.get(decision.candidate_id)
+        backtest = backtests_by_id.get(decision.candidate_id)
         diagnostics = dict(decision.diagnostics or {})
         for symbol in training_symbols or [None]:
             coverage = coverage_by_symbol.get(symbol) if symbol else None
@@ -630,6 +670,7 @@ def _build_symbol_family_ranking_rows(
                 )
             }
             entry_signals = [signal for signal in candidate_signals if signal.action.value == "ENTER_LONG"]
+            trade_audit_summary = dict((backtest.trade_audit_summary if backtest is not None else {}) or {})
             row = {
                 "symbol": symbol,
                 "strategy_family": decision.family.value,
@@ -664,6 +705,30 @@ def _build_symbol_family_ranking_rows(
                 "first_entry_signal_date": entry_signals[0].observed_at.isoformat() if entry_signals else None,
                 "last_entry_signal_date": entry_signals[-1].observed_at.isoformat() if entry_signals else None,
                 "actual_trade_count": len(candidate_trades),
+                "entry_order_count": int(trade_audit_summary.get("entry_order_count") or len(candidate_trades)),
+                "exit_order_count": int(trade_audit_summary.get("exit_order_count") or len(candidate_trades)),
+                "forced_exit_count": int(trade_audit_summary.get("forced_exit_count") or 0),
+                "end_of_data_exit_count": int(trade_audit_summary.get("end_of_data_exit_count") or 0),
+                "holding_period_exit_count": int(trade_audit_summary.get("holding_period_exit_count") or 0),
+                "stop_loss_exit_count": int(trade_audit_summary.get("stop_loss_exit_count") or 0),
+                "take_profit_exit_count": int(trade_audit_summary.get("take_profit_exit_count") or 0),
+                "signal_exit_count": int(trade_audit_summary.get("signal_exit_count") or 0),
+                "unmatched_entry_count": int(trade_audit_summary.get("unmatched_entry_count") or 0),
+                "unmatched_exit_count": int(trade_audit_summary.get("unmatched_exit_count") or 0),
+                "first_entry_date": trade_audit_summary.get("first_entry_date"),
+                "first_exit_date": trade_audit_summary.get("first_exit_date"),
+                "last_entry_date": trade_audit_summary.get("last_entry_date"),
+                "last_exit_date": trade_audit_summary.get("last_exit_date"),
+                "average_holding_bars": float(trade_audit_summary.get("average_holding_bars") or 0.0),
+                "median_holding_bars": float(trade_audit_summary.get("median_holding_bars") or 0.0),
+                "fill_policy": trade_audit_summary.get("fill_policy") or "CONSERVATIVE_NEXT_BAR_FILL",
+                "next_bar_fill_used": bool(trade_audit_summary.get("next_bar_fill_used", True)),
+                "same_bar_fill_detected": bool(trade_audit_summary.get("same_bar_fill_detected", False)),
+                "lookahead_detected": bool(trade_audit_summary.get("lookahead_detected", False)),
+                "leakage_audit_status": (backtest.leakage_audit_status if backtest is not None else diagnostics.get("leakage_audit_status")),
+                "leakage_audit_errors": list(backtest.leakage_audit_errors) if backtest is not None else [],
+                "same_bar_fill_count": int((backtest.same_bar_fill_count if backtest is not None else diagnostics.get("same_bar_fill_count")) or 0),
+                "lookahead_violation_count": int((backtest.lookahead_violation_count if backtest is not None else diagnostics.get("lookahead_violation_count")) or 0),
                 "profit_factor": (
                     _trade_profit_factor(candidate_trades)
                     if candidate_trades
@@ -681,6 +746,16 @@ def _build_symbol_family_ranking_rows(
                     if candidate_trades
                     else 0.0
                 ),
+                "expectancy": (
+                    sum(trade.net_return for trade in candidate_trades) / len(candidate_trades)
+                    if candidate_trades
+                    else 0.0
+                ),
+                "max_drawdown_value": float((backtest.max_drawdown if backtest is not None else 0.0) or 0.0),
+                "max_drawdown_raw": float((backtest.max_drawdown_raw if backtest is not None else diagnostics.get("max_drawdown_raw")) or 0.0),
+                "max_drawdown_unit": (backtest.max_drawdown_unit if backtest is not None else diagnostics.get("max_drawdown_unit") or "FRACTION_OF_EQUITY"),
+                "max_drawdown_capped_to_1_if_fraction": bool((backtest.max_drawdown_capped_to_1_if_fraction if backtest is not None else diagnostics.get("max_drawdown_capped_to_1_if_fraction")) or False),
+                "drawdown_warning": "DRAWDOWN_UNIT_OR_CALCULATION_WARNING" in ((backtest.warnings if backtest is not None else []) or []),
                 "coverage_status": coverage.get("status") if coverage else None,
                 "coverage_basis": coverage.get("coverage_basis") if coverage else None,
                 "ranking_available": True,
@@ -697,9 +772,12 @@ def _build_symbol_family_ranking_rows(
                 schema_gap=bool(row["signal_input_schema_gap"]),
                 final_entry_condition_count=row["final_entry_condition_count"],
                 rejection_reason_count=len(row["rejection_reasons"]),
+                rejection_reasons=row["rejection_reasons"],
                 profit_factor=row["profit_factor"],
+                win_rate=row["win_rate"],
                 max_drawdown=row["max_drawdown"],
                 total_return=row["total_return"],
+                expectancy=row["expectancy"],
                 average_trade_return=row["average_trade_return"],
             )
             row["rank_score"] = _score_ranking_row(
@@ -711,9 +789,12 @@ def _build_symbol_family_ranking_rows(
                 schema_gap=bool(row["signal_input_schema_gap"]),
                 final_entry_condition_count=row["final_entry_condition_count"],
                 rejection_reason_count=len(row["rejection_reasons"]),
+                rejection_reasons=row["rejection_reasons"],
                 profit_factor=row["profit_factor"],
+                win_rate=row["win_rate"],
                 max_drawdown=row["max_drawdown"],
                 total_return=row["total_return"],
+                expectancy=row["expectancy"],
                 average_trade_return=row["average_trade_return"],
             )
             row["score"] = row["rank_score"]
@@ -1517,6 +1598,7 @@ def run_kiwoom_ka10081_capture_and_train(
     reports_dir.mkdir(parents=True, exist_ok=True)
     training_plan_path = reports_dir / "offline_strategy_training_plan.json"
     promotion_gate_path = reports_dir / "offline_strategy_promotion_gate.json"
+    trade_audit_path = reports_dir / "offline_strategy_trade_audit.json"
     summary_path = output_root / "capture_and_train_summary.json"
     manifest_path = Path(manifest.manifest_path) if manifest and manifest.manifest_path else None
     manifest_reloaded = False
@@ -1560,6 +1642,29 @@ def run_kiwoom_ka10081_capture_and_train(
         training_completed = True
         training_plan_path.write_text(training_result.training_plan.model_dump_json(indent=2), encoding="utf-8")
         promotion_gate_path.write_text(json.dumps([item.model_dump(mode="json") for item in training_result.promotion_decisions], indent=2), encoding="utf-8")
+        trade_audit_path.write_text(
+            json.dumps(
+                {
+                    "dataset_id": pipeline_input.dataset_id,
+                    "fill_policy": "CONSERVATIVE_NEXT_BAR_FILL",
+                    "rows": [
+                        {
+                            "candidate_id": backtest_result.candidate_id,
+                            "leakage_audit_status": backtest_result.leakage_audit_status,
+                            "leakage_audit_errors": list(backtest_result.leakage_audit_errors),
+                            "same_bar_fill_count": backtest_result.same_bar_fill_count,
+                            "lookahead_violation_count": backtest_result.lookahead_violation_count,
+                            "trade_audit_summary": dict(backtest_result.trade_audit_summary),
+                            "trade_audit_records": list(backtest_result.trade_audit_records),
+                        }
+                        for backtest_result in training_result.backtest_results
+                    ],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
     candidate_count_by_family = (
         dict(sorted(Counter(candidate.family.value for candidate in training_result.candidates).items()))
@@ -1585,6 +1690,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "generated_strategy_families": generated_strategy_families,
         "candidate_count_by_family": candidate_count_by_family,
         "candidate_parameter_summary_by_family": candidate_parameter_summary_by_family,
+        "trade_audit_artifact_path": str(trade_audit_path) if training_result is not None else None,
         "rows": ranking_report_rows,
     }
     if training_result is not None:
@@ -1697,6 +1803,21 @@ def run_kiwoom_ka10081_capture_and_train(
         "normalized_ohlcv_paths": [path for path in ([manifest.ohlcv_rows_path, manifest.manifest_path] if manifest else []) if path],
         "training_started": training_started,
         "training_completed": training_completed,
+        "trade_audit_artifact_path": str(trade_audit_path) if training_completed else None,
+        "leakage_audit_status": (
+            "LEAKAGE_AUDIT_FAILED"
+            if training_result is not None and any(item.leakage_audit_status == "LEAKAGE_AUDIT_FAILED" for item in training_result.backtest_results)
+            else "LEAKAGE_AUDIT_PASSED"
+            if training_result is not None
+            else None
+        ),
+        "leakage_audit_errors": [
+            error
+            for item in (training_result.backtest_results if training_result is not None else [])
+            for error in item.leakage_audit_errors
+        ],
+        "same_bar_fill_count": sum(item.same_bar_fill_count for item in (training_result.backtest_results if training_result is not None else [])),
+        "lookahead_violation_count": sum(item.lookahead_violation_count for item in (training_result.backtest_results if training_result is not None else [])),
         "training_input_symbols": training_input_symbols,
         "training_input_coverage_by_symbol": training_input_coverage_by_symbol,
         "training_input_coverage_basis_by_symbol": training_input_coverage_basis_by_symbol,

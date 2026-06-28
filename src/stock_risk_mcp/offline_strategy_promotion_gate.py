@@ -56,6 +56,12 @@ def build_offline_strategy_promotion_decision(
     if int((diagnostics or {}).get("signal_input_schema_gap_count") or 0) > 0:
         set_status(OfflineStrategyStatus.RESEARCH_ONLY)
         reasons.append("SIGNAL_INPUT_SCHEMA_GAP")
+    if str((diagnostics or {}).get("leakage_audit_status") or "") == "LEAKAGE_AUDIT_FAILED":
+        set_status(OfflineStrategyStatus.BLOCKED)
+        reasons.append("LEAKAGE_AUDIT_FAILED")
+    if bool((diagnostics or {}).get("drawdown_warning")):
+        set_status(OfflineStrategyStatus.RESEARCH_ONLY)
+        reasons.append("DRAWDOWN_UNIT_OR_CALCULATION_WARNING")
     if metric_summary.cumulative_return <= 0 and status == OfflineStrategyStatus.PROMOTED_OFFLINE_CANDIDATE:
         set_status(OfflineStrategyStatus.WATCHLIST_ONLY)
         reasons.append("NON_POSITIVE_CUMULATIVE_RETURN")
@@ -67,6 +73,6 @@ def build_offline_strategy_promotion_decision(
         candidate_id=candidate.candidate_id,
         family=candidate.family,
         status=status,
-        reasons=reasons or ["PROMOTION_GATE_PASSED"],
+        reasons=reasons,
         diagnostics=diagnostics or {},
     )

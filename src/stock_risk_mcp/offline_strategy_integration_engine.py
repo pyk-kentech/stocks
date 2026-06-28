@@ -65,6 +65,13 @@ def _candidate_diagnostics(
         "final_entry_condition_count": int(signal_diagnostics.get("final_entry_condition_count") or 0),
         "signal_input_schema_gap_count": int(signal_diagnostics.get("signal_input_schema_gap_count") or 0),
         "missing_indicator_columns": ",".join(str(item) for item in signal_diagnostics.get("missing_indicator_columns", [])),
+        "leakage_audit_status": backtest_result.leakage_audit_status,
+        "same_bar_fill_count": backtest_result.same_bar_fill_count,
+        "lookahead_violation_count": backtest_result.lookahead_violation_count,
+        "drawdown_warning": "DRAWDOWN_UNIT_OR_CALCULATION_WARNING" in backtest_result.warnings,
+        "max_drawdown_raw": backtest_result.max_drawdown_raw,
+        "max_drawdown_unit": backtest_result.max_drawdown_unit,
+        "max_drawdown_capped_to_1_if_fraction": backtest_result.max_drawdown_capped_to_1_if_fraction,
     }
 
 

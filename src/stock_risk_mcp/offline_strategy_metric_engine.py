@@ -26,6 +26,7 @@ def build_offline_strategy_metric_summary(dataset_id: str, backtest_result: Offl
         profit_factor=profit_factor,
         win_rate=win_rate,
         max_drawdown=backtest_result.max_drawdown,
+        max_drawdown_unit=backtest_result.max_drawdown_unit,
         stop_hit_rate=stop_hit_rate,
         exposure=float(trade_count),
         turnover=float(trade_count),

@@ -297,6 +297,7 @@ def _aggregate_ranking_reports(
     best_candidate_by_family: dict[str, dict[str, object]] = {}
     best_candidate_by_symbol_and_family: dict[str, dict[str, object]] = {}
     rejected_count_by_reason: dict[str, int] = {}
+    promotion_status_count: dict[str, int] = {}
     candidate_count_by_symbol: dict[str, int] = {}
     candidate_count_by_family: dict[str, int] = {}
     no_trades_count = 0
@@ -308,11 +309,14 @@ def _aggregate_ranking_reports(
     for row in available_rows:
         symbol = str(row.get("symbol") or "")
         family = str(row.get("strategy_family") or "")
+        promotion_status = str(row.get("promotion_status") or "")
         if symbol:
             candidate_count_by_symbol[symbol] = candidate_count_by_symbol.get(symbol, 0) + 1
         if family:
             candidate_count_by_family[family] = candidate_count_by_family.get(family, 0) + 1
             missing_indicator_count_by_family[family] = missing_indicator_count_by_family.get(family, 0) + len(row.get("missing_indicator_columns") or [])
+        if promotion_status:
+            promotion_status_count[promotion_status] = promotion_status_count.get(promotion_status, 0) + 1
         if int(row.get("entry_signal_count") or 0) == 0:
             zero_entry_signal_count += 1
             zero_entry_signal_count_by_family[family] = zero_entry_signal_count_by_family.get(family, 0) + 1
@@ -356,6 +360,10 @@ def _aggregate_ranking_reports(
                 "best_diagnostic_candidate_by_symbol": best_diagnostic_candidate_by_symbol,
                 "best_diagnostic_candidate_by_family": best_diagnostic_candidate_by_family,
                 "rejected_count_by_reason": dict(sorted(rejected_count_by_reason.items())),
+                "rejection_reason_count": dict(sorted(rejected_count_by_reason.items())),
+                "promotion_status_count": dict(sorted(promotion_status_count.items())),
+                "promotion_passed_count": int(promotion_status_count.get("PROMOTED_OFFLINE_CANDIDATE", 0)),
+                "promotion_rejected_count": sum(count for status, count in promotion_status_count.items() if status != "PROMOTED_OFFLINE_CANDIDATE"),
                 "no_trades_count": no_trades_count,
                 "zero_entry_signal_count": zero_entry_signal_count,
                 "zero_entry_signal_count_by_family": dict(sorted(zero_entry_signal_count_by_family.items())),
