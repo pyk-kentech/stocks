@@ -1152,18 +1152,32 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
 
     def fake_run(_pipeline, **kwargs):
         del kwargs
+        state_path = tmp_path / f"{_pipeline.dataset_id.lower()}-state.json"
+        state_path.write_text(
+            json.dumps({"requested_symbols": [spec.provider_symbol for spec in _pipeline.request_specs]}),
+            encoding="utf-8",
+        )
         return {
             "status": "COMPLETED_WITH_PROVIDER_LIMIT",
             "provider_limit_hit": True,
             "can_resume": True,
-            "capture_state_path": str(tmp_path / "state.json"),
+            "capture_state_path": str(state_path),
             "capture_state_root": str(tmp_path),
             "dataset_id": _pipeline.dataset_id,
             "dataset_symbols": [spec.provider_symbol for spec in _pipeline.request_specs],
             "completed_symbols": [_pipeline.request_specs[0].provider_symbol],
+            "full_coverage_symbols": [_pipeline.request_specs[0].provider_symbol],
             "partial_symbols": [],
             "failed_symbols": [],
             "skipped_symbols": [],
+            "symbol_results": [
+                {
+                    "requested_symbol": _pipeline.request_specs[0].provider_symbol,
+                    "cache_coverage_status": "FULL_TRADING_COVERAGE",
+                    "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                    "trading_coverage_ratio": 1.0,
+                }
+            ],
             "reused_from_cache": [],
             "fetched_now": [_pipeline.request_specs[0].provider_symbol],
             "backfilled_symbols": [],
@@ -1220,6 +1234,12 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert ledger["pending_symbols"] == ["000660", "035420"]
     assert ledger["skipped_symbols"] == []
     assert "resume-all" not in ledger["next_resume_command"]
+    assert result["batch_identity_status"] == "BATCH_IDENTITY_OK"
+    assert result["ledger_validation_status"] == "LEDGER_VALIDATION_OK"
+    assert result["coverage_consistency_status"] == "COVERAGE_CONSISTENCY_OK"
+    ranking_payload = json.loads(Path(result["aggregate_ranking_report_path"]).read_text(encoding="utf-8"))
+    assert {row["symbol"] for row in ranking_payload["rows"]} == {"005930", "000660", "035420"}
+    assert any(row["symbol"] == "000660" and row["ranking_available"] is False for row in ranking_payload["rows"])
 
 
 def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, monkeypatch) -> None:
@@ -1240,43 +1260,92 @@ def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, mon
         }
     )
     seen_batches: list[list[str]] = []
+    batch1_calls = 0
 
     def fake_run(_pipeline, **kwargs):
+        nonlocal batch1_calls
         del kwargs
         batch_symbols = [spec.provider_symbol for spec in _pipeline.request_specs]
         seen_batches.append(batch_symbols)
+        state_path = tmp_path / f"{_pipeline.dataset_id.lower()}-state.json"
+        state_path.write_text(json.dumps({"requested_symbols": batch_symbols}), encoding="utf-8")
         if batch_symbols == ["005930", "000660"]:
+            batch1_calls += 1
+            if batch1_calls == 1:
+                return {
+                    "status": "COMPLETED_WITH_PROVIDER_LIMIT",
+                    "provider_limit_hit": True,
+                    "can_resume": True,
+                    "capture_state_path": str(state_path),
+                    "capture_state_root": str(tmp_path),
+                    "dataset_id": _pipeline.dataset_id,
+                    "dataset_symbols": batch_symbols,
+                    "completed_symbols": ["005930"],
+                    "full_coverage_symbols": ["005930"],
+                    "partial_symbols": [],
+                    "failed_symbols": [],
+                    "skipped_symbols": ["000660"],
+                    "symbol_results": [
+                        {
+                            "requested_symbol": "005930",
+                            "cache_coverage_status": "FULL_TRADING_COVERAGE",
+                            "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                            "trading_coverage_ratio": 1.0,
+                        }
+                    ],
+                    "reused_from_cache": [],
+                    "fetched_now": ["005930"],
+                    "backfilled_symbols": [],
+                    "ranking_report_path": str(tmp_path / "batch1-ranking.json"),
+                    "manifest_path": "manifest.json",
+                    "per_symbol_row_count": {"005930": 10},
+                    "per_symbol_date_min": {"005930": "2020-01-02"},
+                    "per_symbol_date_max": {"005930": "2026-06-26"},
+                    "per_symbol_coverage_status": {"005930": "FULL_TRADING_COVERAGE"},
+                    "per_symbol_coverage_basis": {"005930": "TRADING_DAYS"},
+                    "excluded_symbols": ["000660"],
+                    "exclusion_reasons": {"000660": "SKIPPED_OR_NOT_CAPTURED"},
+                }
             return {
-                "status": "COMPLETED_WITH_PROVIDER_LIMIT",
-                "provider_limit_hit": True,
-                "can_resume": True,
-                "capture_state_path": str(tmp_path / "batch1-state.json"),
+                "status": "COMPLETED",
+                "provider_limit_hit": False,
+                "can_resume": False,
+                "capture_state_path": str(state_path),
                 "capture_state_root": str(tmp_path),
                 "dataset_id": _pipeline.dataset_id,
                 "dataset_symbols": batch_symbols,
-                "completed_symbols": ["005930"],
-                "full_coverage_symbols": ["005930"],
+                "completed_symbols": batch_symbols,
+                "full_coverage_symbols": batch_symbols,
                 "partial_symbols": [],
                 "failed_symbols": [],
-                "skipped_symbols": ["000660"],
+                "skipped_symbols": [],
+                "symbol_results": [
+                    {
+                        "requested_symbol": symbol,
+                        "cache_coverage_status": "FULL_TRADING_COVERAGE",
+                        "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                        "trading_coverage_ratio": 1.0,
+                    }
+                    for symbol in batch_symbols
+                ],
                 "reused_from_cache": [],
-                "fetched_now": ["005930"],
+                "fetched_now": batch_symbols,
                 "backfilled_symbols": [],
                 "ranking_report_path": str(tmp_path / "batch1-ranking.json"),
                 "manifest_path": "manifest.json",
-                "per_symbol_row_count": {"005930": 10},
-                "per_symbol_date_min": {"005930": "2020-01-02"},
-                "per_symbol_date_max": {"005930": "2026-06-26"},
-                "per_symbol_coverage_status": {"005930": "FULL_TRADING_COVERAGE"},
-                "per_symbol_coverage_basis": {"005930": "TRADING_DAYS"},
-                "excluded_symbols": ["000660"],
-                "exclusion_reasons": {"000660": "SKIPPED_OR_NOT_CAPTURED"},
+                "per_symbol_row_count": {symbol: 10 for symbol in batch_symbols},
+                "per_symbol_date_min": {symbol: "2020-01-02" for symbol in batch_symbols},
+                "per_symbol_date_max": {symbol: "2026-06-26" for symbol in batch_symbols},
+                "per_symbol_coverage_status": {symbol: "FULL_TRADING_COVERAGE" for symbol in batch_symbols},
+                "per_symbol_coverage_basis": {symbol: "TRADING_DAYS" for symbol in batch_symbols},
+                "excluded_symbols": [],
+                "exclusion_reasons": {},
             }
         return {
             "status": "COMPLETED",
             "provider_limit_hit": False,
             "can_resume": False,
-            "capture_state_path": str(tmp_path / "batchx-state.json"),
+            "capture_state_path": str(state_path),
             "capture_state_root": str(tmp_path),
             "dataset_id": _pipeline.dataset_id,
             "dataset_symbols": batch_symbols,
@@ -1285,6 +1354,15 @@ def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, mon
             "partial_symbols": [],
             "failed_symbols": [],
             "skipped_symbols": [],
+            "symbol_results": [
+                {
+                    "requested_symbol": symbol,
+                    "cache_coverage_status": "FULL_TRADING_COVERAGE",
+                    "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                    "trading_coverage_ratio": 1.0,
+                }
+                for symbol in batch_symbols
+            ],
             "reused_from_cache": [],
             "fetched_now": batch_symbols,
             "backfilled_symbols": [],
@@ -1300,7 +1378,7 @@ def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, mon
         }
 
     (tmp_path / "batch1-ranking.json").write_text(json.dumps({"rows": []}), encoding="utf-8")
-    (tmp_path / "000660-035420-ranking.json").write_text(json.dumps({"rows": []}), encoding="utf-8")
+    (tmp_path / "035420-035720-ranking.json").write_text(json.dumps({"rows": []}), encoding="utf-8")
     monkeypatch.setattr(batch_runner_module, "run_kiwoom_ka10081_capture_and_train", fake_run)
 
     first = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
@@ -1368,11 +1446,185 @@ def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, mon
         capture_state_root=str(tmp_path / "capture_state"),
     )
     assert seen_batches[0] == ["005930", "000660"]
-    assert seen_batches[1] == ["000660", "035420"]
-    assert seen_batches[2] == ["035720"]
-    assert second["watchlist_status"] in {"WATCHLIST_PARTIAL_PENDING", "WATCHLIST_COMPLETED"}
+    assert seen_batches[1] == ["005930", "000660"]
+    assert seen_batches[2] == ["035420", "035720"]
+    assert second["watchlist_status"] == "WATCHLIST_COMPLETED"
     assert second["resume_all"] is True
     assert second["next_resume_command"] is None
+    ledger = json.loads(Path(second["watchlist_progress_path"]).read_text(encoding="utf-8"))
+    batch1_state = json.loads(Path(ledger["capture_state_paths_by_batch"]["001"]).read_text(encoding="utf-8"))
+    batch2_state = json.loads(Path(ledger["capture_state_paths_by_batch"]["002"]).read_text(encoding="utf-8"))
+    assert batch1_state["requested_symbols"] == ["005930", "000660"]
+    assert batch2_state["requested_symbols"] == ["035420", "035720"]
+    assert ledger["batch_identity_status"] == "BATCH_IDENTITY_OK"
+    assert second["next_retry_batch_label"] is None
+
+
+def test_watchlist_ledger_validation_flags_batch_identity_error(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                ),
+            ]
+        }
+    )
+
+    def fake_run(_pipeline, **kwargs):
+        del kwargs
+        state_path = tmp_path / "bad-state.json"
+        state_path.write_text(json.dumps({"requested_symbols": ["035420", "035720"]}), encoding="utf-8")
+        return {
+            "status": "COMPLETED",
+            "provider_limit_hit": False,
+            "can_resume": False,
+            "capture_state_path": str(state_path),
+            "capture_state_root": str(tmp_path),
+            "dataset_id": _pipeline.dataset_id,
+            "dataset_symbols": [spec.provider_symbol for spec in _pipeline.request_specs],
+            "completed_symbols": [spec.provider_symbol for spec in _pipeline.request_specs],
+            "full_coverage_symbols": [spec.provider_symbol for spec in _pipeline.request_specs],
+            "partial_symbols": [],
+            "failed_symbols": [],
+            "skipped_symbols": [],
+            "symbol_results": [
+                {
+                    "requested_symbol": spec.provider_symbol,
+                    "cache_coverage_status": "FULL_TRADING_COVERAGE",
+                    "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                    "trading_coverage_ratio": 1.0,
+                }
+                for spec in _pipeline.request_specs
+            ],
+            "reused_from_cache": [],
+            "fetched_now": [spec.provider_symbol for spec in _pipeline.request_specs],
+            "backfilled_symbols": [],
+            "manifest_path": "manifest.json",
+            "per_symbol_row_count": {spec.provider_symbol: 10 for spec in _pipeline.request_specs},
+            "per_symbol_date_min": {spec.provider_symbol: "2020-01-02" for spec in _pipeline.request_specs},
+            "per_symbol_date_max": {spec.provider_symbol: "2026-06-26" for spec in _pipeline.request_specs},
+            "per_symbol_coverage_status": {spec.provider_symbol: "FULL_TRADING_COVERAGE" for spec in _pipeline.request_specs},
+            "per_symbol_coverage_basis": {spec.provider_symbol: "TRADING_DAYS" for spec in _pipeline.request_specs},
+            "excluded_symbols": [],
+            "exclusion_reasons": {},
+        }
+
+    monkeypatch.setattr(batch_runner_module, "run_kiwoom_ka10081_capture_and_train", fake_run)
+    result = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
+        fixture,
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "offline"),
+        training_handoff_mode="persisted_manifest",
+        requested_template_ids=[],
+        asset_liquidity_profile="LARGE_CAP",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+        walk_forward_mode="ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="CONSERVATIVE_NEXT_BAR_FILL",
+        direction="LONG_ONLY",
+        request_sleep_seconds=0.25,
+        symbol_sleep_seconds=0.5,
+        max_symbols_per_run=0,
+        stop_on_provider_limit=True,
+        resume_from_capture_state=None,
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=None,
+        prefer_full_coverage_training=True,
+        symbols=["005930", "000660"],
+        symbols_file="examples/kiwoom_watchlist_sample.txt",
+        batch_size=2,
+        batch_index=1,
+        max_batches=None,
+        resume_all=False,
+        capture_state_root=str(tmp_path / "capture_state"),
+    )
+    assert result["batch_identity_status"] == "BATCH_IDENTITY_ERROR"
+    assert result["ledger_validation_status"] == "LEDGER_VALIDATION_ERROR"
+    assert "CAPTURE_STATE_SYMBOLS_MISMATCH" in " ".join(result["ledger_validation_errors"])
+
+
+def test_watchlist_coverage_consistency_error_blocks_success(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path)
+
+    def fake_run(_pipeline, **kwargs):
+        del kwargs
+        state_path = tmp_path / "coverage-state.json"
+        state_path.write_text(json.dumps({"requested_symbols": ["005930"]}), encoding="utf-8")
+        return {
+            "status": "COMPLETED",
+            "provider_limit_hit": False,
+            "can_resume": False,
+            "capture_state_path": str(state_path),
+            "capture_state_root": str(tmp_path),
+            "dataset_id": _pipeline.dataset_id,
+            "dataset_symbols": ["005930"],
+            "completed_symbols": [],
+            "full_coverage_symbols": [],
+            "partial_symbols": ["005930"],
+            "failed_symbols": [],
+            "skipped_symbols": [],
+            "symbol_results": [
+                {
+                    "requested_symbol": "005930",
+                    "cache_coverage_status": "TRADING_COVERAGE_GAP",
+                    "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                    "trading_coverage_ratio": 0.38,
+                }
+            ],
+            "reused_from_cache": [],
+            "fetched_now": ["005930"],
+            "backfilled_symbols": [],
+            "manifest_path": "manifest.json",
+            "per_symbol_row_count": {"005930": 10},
+            "per_symbol_date_min": {"005930": "2024-01-08"},
+            "per_symbol_date_max": {"005930": "2026-06-26"},
+            "per_symbol_coverage_status": {"005930": "TRADING_COVERAGE_GAP"},
+            "per_symbol_coverage_basis": {"005930": "TRADING_DAYS"},
+            "excluded_symbols": ["005930"],
+            "exclusion_reasons": {"005930": "PREFER_FULL_COVERAGE_TRAINING"},
+        }
+
+    monkeypatch.setattr(batch_runner_module, "run_kiwoom_ka10081_capture_and_train", fake_run)
+    result = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
+        fixture,
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "offline"),
+        training_handoff_mode="persisted_manifest",
+        requested_template_ids=[],
+        asset_liquidity_profile="LARGE_CAP",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+        walk_forward_mode="ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="CONSERVATIVE_NEXT_BAR_FILL",
+        direction="LONG_ONLY",
+        request_sleep_seconds=0.25,
+        symbol_sleep_seconds=0.5,
+        max_symbols_per_run=0,
+        stop_on_provider_limit=True,
+        resume_from_capture_state=None,
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=None,
+        prefer_full_coverage_training=True,
+        symbols=["005930"],
+        symbols_file="examples/kiwoom_watchlist_sample.txt",
+        batch_size=1,
+        batch_index=1,
+        max_batches=None,
+        resume_all=False,
+        capture_state_root=str(tmp_path / "capture_state"),
+    )
+    assert result["coverage_consistency_status"] == "COVERAGE_CONSISTENCY_ERROR"
+    assert result["watchlist_status"] == "WATCHLIST_FAILED"
 
 
 def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:

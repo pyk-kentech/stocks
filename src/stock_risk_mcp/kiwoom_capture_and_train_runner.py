@@ -1030,7 +1030,13 @@ def run_kiwoom_ka10081_capture_and_train(
                 "backfill_reason": None,
                 "backfill_attempted": False,
                 "backfill_status": "NOT_REQUIRED",
-                "post_backfill_coverage_status": "FULL_TRADING_COVERAGE" if rows else "FAILED",
+                "post_backfill_coverage_status": (
+                    direct_coverage.get("cache_coverage_status")
+                    if rows and direct_coverage.get("cache_coverage_status") not in {None, "NOT_USED"}
+                    else "FULL_TRADING_COVERAGE"
+                    if rows
+                    else "FAILED"
+                ),
                 **(
                     direct_coverage
                     if rows
