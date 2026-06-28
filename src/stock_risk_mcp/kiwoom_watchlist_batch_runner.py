@@ -214,8 +214,9 @@ def _aggregate_ranking_reports(
     requested_symbols: list[str],
     batches: list[list[str]],
     per_symbol_global_status: dict[str, str],
-) -> str | None:
+) -> tuple[str | None, str | None]:
     rows: list[dict[str, object]] = []
+    candidate_parameter_summary_by_family: dict[str, set[str]] = {}
     symbol_to_batch_index = {
         symbol: index
         for index, batch_symbols in enumerate(batches, start=1)
@@ -225,6 +226,8 @@ def _aggregate_ranking_reports(
         if not ranking_path or not Path(ranking_path).exists():
             continue
         payload = json.loads(Path(ranking_path).read_text(encoding="utf-8"))
+        for family, summaries in payload.get("candidate_parameter_summary_by_family", {}).items():
+            candidate_parameter_summary_by_family.setdefault(str(family), set()).update(str(item) for item in summaries)
         for row in payload.get("rows", []):
             merged = dict(row)
             merged["batch_index"] = int(batch_label)
@@ -248,16 +251,23 @@ def _aggregate_ranking_reports(
                 "strategy_family": None,
                 "internal_family": None,
                 "candidate_id": None,
+                "parameter_set_id": None,
+                "parameter_summary": None,
                 "promotion_status": "NO_RANKING_AVAILABLE",
                 "rejection_reasons": [],
                 "actual_trade_count": None,
+                "signal_count_before_filters": None,
                 "entry_signal_count": None,
                 "exit_signal_count": None,
                 "profit_factor": None,
                 "win_rate": None,
                 "max_drawdown": None,
+                "total_return": None,
+                "average_trade_return": None,
                 "coverage_status": status,
                 "coverage_basis": None,
+                "rank_score": None,
+                "rank_score_components": {},
                 "score": None,
                 "global_rank": None,
                 "ranking_available": False,
@@ -267,8 +277,74 @@ def _aggregate_ranking_reports(
     output_root = validate_safe_local_root(training_output_root) / watchlist_dataset_id.lower() / "reports"
     output_root.mkdir(parents=True, exist_ok=True)
     output_path = output_root / "offline_strategy_watchlist_ranking.json"
-    output_path.write_text(json.dumps({"watchlist_dataset_id": watchlist_dataset_id, "rows": rows}, indent=2, ensure_ascii=False), encoding="utf-8")
-    return str(output_path)
+    output_path.write_text(
+        json.dumps(
+            {
+                "watchlist_dataset_id": watchlist_dataset_id,
+                "candidate_parameter_summary_by_family": {
+                    family: sorted(values) for family, values in sorted(candidate_parameter_summary_by_family.items())
+                },
+                "rows": rows,
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    summary_path = output_root / "offline_strategy_watchlist_ranking_summary.json"
+    available_rows = [row for row in rows if row.get("ranking_available", True)]
+    best_candidate_by_symbol: dict[str, dict[str, object]] = {}
+    best_candidate_by_family: dict[str, dict[str, object]] = {}
+    best_candidate_by_symbol_and_family: dict[str, dict[str, object]] = {}
+    rejected_count_by_reason: dict[str, int] = {}
+    candidate_count_by_symbol: dict[str, int] = {}
+    candidate_count_by_family: dict[str, int] = {}
+    no_trades_count = 0
+    for row in available_rows:
+        symbol = str(row.get("symbol") or "")
+        family = str(row.get("strategy_family") or "")
+        if symbol:
+            candidate_count_by_symbol[symbol] = candidate_count_by_symbol.get(symbol, 0) + 1
+        if family:
+            candidate_count_by_family[family] = candidate_count_by_family.get(family, 0) + 1
+        for reason in row.get("rejection_reasons", []):
+            rejected_count_by_reason[str(reason)] = rejected_count_by_reason.get(str(reason), 0) + 1
+            if str(reason) == "NO_TRADES":
+                no_trades_count += 1
+        compact = {
+            "symbol": symbol,
+            "strategy_family": family,
+            "candidate_id": row.get("candidate_id"),
+            "parameter_set_id": row.get("parameter_set_id"),
+            "parameter_summary": row.get("parameter_summary"),
+            "promotion_status": row.get("promotion_status"),
+            "rank_score": row.get("rank_score"),
+        }
+        if symbol and (symbol not in best_candidate_by_symbol or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol[symbol].get("rank_score") or -10**9)):
+            best_candidate_by_symbol[symbol] = compact
+        if family and (family not in best_candidate_by_family or float(row.get("rank_score") or -10**9) > float(best_candidate_by_family[family].get("rank_score") or -10**9)):
+            best_candidate_by_family[family] = compact
+        key = f"{symbol}|{family}"
+        if symbol and family and (key not in best_candidate_by_symbol_and_family or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol_and_family[key].get("rank_score") or -10**9)):
+            best_candidate_by_symbol_and_family[key] = compact
+    summary_path.write_text(
+        json.dumps(
+            {
+                "watchlist_dataset_id": watchlist_dataset_id,
+                "best_candidate_by_symbol": best_candidate_by_symbol,
+                "best_candidate_by_family": best_candidate_by_family,
+                "best_candidate_by_symbol_and_family": best_candidate_by_symbol_and_family,
+                "rejected_count_by_reason": dict(sorted(rejected_count_by_reason.items())),
+                "no_trades_count": no_trades_count,
+                "candidate_count_by_symbol": dict(sorted(candidate_count_by_symbol.items())),
+                "candidate_count_by_family": dict(sorted(candidate_count_by_family.items())),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return str(output_path), str(summary_path)
 
 
 def _global_status_sets(per_symbol_global_status: dict[str, str]) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
@@ -608,7 +684,7 @@ def run_kiwoom_watchlist_capture_and_train(
     final = batch_results[-1]
     completed, full, partial, skipped, failed, pending = _global_status_sets(per_symbol_global_status)
     coverage_consistency_status, coverage_consistency_errors = _validate_coverage_consistency(batch_results, per_symbol_global_status)
-    aggregate_ranking_report_path = _aggregate_ranking_reports(
+    aggregate_ranking_report_path, aggregate_ranking_summary_path = _aggregate_ranking_reports(
         training_output_root=training_output_root,
         watchlist_dataset_id=watchlist_dataset_id,
         ranking_report_paths_by_batch=ranking_report_paths_by_batch,
@@ -650,6 +726,7 @@ def run_kiwoom_watchlist_capture_and_train(
     final["watchlist_failed_symbols"] = failed
     final["current_batch_ranking_report_path"] = final.get("ranking_report_path")
     final["aggregate_ranking_report_path"] = aggregate_ranking_report_path
+    final["aggregate_ranking_summary_path"] = aggregate_ranking_summary_path
     final["capture_state_paths_by_batch"] = capture_state_paths_by_batch
     final["ranking_report_paths_by_batch"] = ranking_report_paths_by_batch
     final["retry_queue_before_run"] = retry_queue_before_run
@@ -693,6 +770,7 @@ def run_kiwoom_watchlist_capture_and_train(
         "capture_state_paths_by_batch": capture_state_paths_by_batch,
         "ranking_report_paths_by_batch": ranking_report_paths_by_batch,
         "aggregate_ranking_report_path": aggregate_ranking_report_path,
+        "aggregate_ranking_summary_path": aggregate_ranking_summary_path,
         "can_resume_all": bool(next_retry),
     }
     accounting_status, batch_identity_status, ledger_validation_status, ledger_validation_errors = _validate_watchlist_ledger(

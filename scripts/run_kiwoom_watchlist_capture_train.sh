@@ -22,6 +22,7 @@ mkdir -p "${LOG_DIR}" "${TOKEN_ROOT}" "${STORE_ROOT}" "${RAW_LAKE_ROOT}" "${TRAI
 : "${KIWOOM_MAX_BATCHES:=}"
 : "${KIWOOM_RESUME_STATE:=}"
 : "${KIWOOM_RESUME_ALL:=0}"
+: "${KIWOOM_SEARCH_MODE:=SMOKE_SEARCH}"
 : "${KIWOOM_REQUEST_SLEEP_SECONDS:=0.25}"
 : "${KIWOOM_SYMBOL_SLEEP_SECONDS:=0.50}"
 
@@ -44,7 +45,8 @@ CMD=(
   --raw-lake-root "${RAW_LAKE_ROOT}"
   --training-output-root "${TRAINING_ROOT}"
   --strategy-families "MACD_RSI,RSI_OVERSOLD_REBOUND,VOLUME_LONG_CANDLE_PULLBACK,RANGE_BREAKOUT,ADX_TREND_SCALPING"
-  --search-mode "SMOKE_SEARCH"
+  # SMOKE_SEARCH stays small and fast. EXPANDED_SEARCH raises candidate breadth for ranking-oriented offline review.
+  --search-mode "${KIWOOM_SEARCH_MODE}"
   --walk-forward-mode "ANCHORED_CHRONOLOGICAL_WALK_FORWARD"
   --promotion-profile "STABILITY_FIRST"
   --fill-policy "CONSERVATIVE_NEXT_BAR_FILL"

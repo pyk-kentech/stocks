@@ -382,17 +382,108 @@ def _score_ranking_row(
     *,
     actual_trade_count: int,
     signal_count_before_filters: int,
+    entry_signal_count: int,
+    exit_signal_count: int,
     rejection_reason_count: int,
     profit_factor: float | None,
     max_drawdown: float | None,
+    total_return: float | None,
+    average_trade_return: float | None,
 ) -> float:
     return (
         float(actual_trade_count) * 100.0
-        + float(signal_count_before_filters) * 1.0
+        + float(signal_count_before_filters) * 2.0
+        + float(entry_signal_count) * 3.0
+        + float(exit_signal_count) * 2.0
         - float(rejection_reason_count) * 10.0
         + float(profit_factor or 0.0) * 5.0
+        + float(total_return or 0.0) * 100.0
+        + float(average_trade_return or 0.0) * 50.0
         - float(max_drawdown or 0.0) * 100.0
     )
+
+
+def _rank_score_components(
+    *,
+    actual_trade_count: int,
+    signal_count_before_filters: int,
+    entry_signal_count: int,
+    exit_signal_count: int,
+    rejection_reason_count: int,
+    profit_factor: float | None,
+    max_drawdown: float | None,
+    total_return: float | None,
+    average_trade_return: float | None,
+) -> dict[str, float]:
+    return {
+        "trade_count_component": float(actual_trade_count) * 100.0,
+        "signal_count_component": float(signal_count_before_filters) * 2.0,
+        "entry_signal_component": float(entry_signal_count) * 3.0,
+        "exit_signal_component": float(exit_signal_count) * 2.0,
+        "rejection_penalty_component": float(rejection_reason_count) * -10.0,
+        "profit_factor_component": float(profit_factor or 0.0) * 5.0,
+        "total_return_component": float(total_return or 0.0) * 100.0,
+        "average_trade_return_component": float(average_trade_return or 0.0) * 50.0,
+        "drawdown_penalty_component": float(max_drawdown or 0.0) * -100.0,
+    }
+
+
+def _candidate_parameter_summary_by_family(training_result) -> dict[str, list[str]]:
+    if training_result is None:
+        return {}
+    grouped: dict[str, list[str]] = defaultdict(list)
+    for candidate in training_result.candidates:
+        grouped[candidate.family.value].append(candidate.parameter_summary)
+    return {family: sorted(values) for family, values in sorted(grouped.items())}
+
+
+def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> dict[str, object]:
+    available_rows = [row for row in rows if row.get("ranking_available", True)]
+    best_candidate_by_symbol: dict[str, dict[str, object]] = {}
+    best_candidate_by_family: dict[str, dict[str, object]] = {}
+    best_candidate_by_symbol_and_family: dict[str, dict[str, object]] = {}
+    rejected_count_by_reason: Counter[str] = Counter()
+    candidate_count_by_symbol: Counter[str] = Counter()
+    candidate_count_by_family: Counter[str] = Counter()
+    no_trades_count = 0
+    for row in available_rows:
+        symbol = str(row.get("symbol") or "")
+        family = str(row.get("strategy_family") or "")
+        candidate_count_by_symbol[symbol] += 1
+        candidate_count_by_family[family] += 1
+        if "NO_TRADES" in row.get("rejection_reasons", []):
+            no_trades_count += 1
+        for reason in row.get("rejection_reasons", []):
+            rejected_count_by_reason[str(reason)] += 1
+        compact = {
+            "symbol": symbol,
+            "strategy_family": family,
+            "candidate_id": row.get("candidate_id"),
+            "parameter_set_id": row.get("parameter_set_id"),
+            "parameter_summary": row.get("parameter_summary"),
+            "promotion_status": row.get("promotion_status"),
+            "rank_score": row.get("rank_score"),
+        }
+        if symbol and (symbol not in best_candidate_by_symbol or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol[symbol].get("rank_score") or -10**9)):
+            best_candidate_by_symbol[symbol] = compact
+        if family and (family not in best_candidate_by_family or float(row.get("rank_score") or -10**9) > float(best_candidate_by_family[family].get("rank_score") or -10**9)):
+            best_candidate_by_family[family] = compact
+        symbol_family_key = f"{symbol}|{family}"
+        if symbol and family and (
+            symbol_family_key not in best_candidate_by_symbol_and_family
+            or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol_and_family[symbol_family_key].get("rank_score") or -10**9)
+        ):
+            best_candidate_by_symbol_and_family[symbol_family_key] = compact
+    return {
+        "dataset_id": dataset_id,
+        "best_candidate_by_symbol": best_candidate_by_symbol,
+        "best_candidate_by_family": best_candidate_by_family,
+        "best_candidate_by_symbol_and_family": best_candidate_by_symbol_and_family,
+        "rejected_count_by_reason": dict(sorted(rejected_count_by_reason.items())),
+        "no_trades_count": no_trades_count,
+        "candidate_count_by_symbol": dict(sorted(candidate_count_by_symbol.items())),
+        "candidate_count_by_family": dict(sorted(candidate_count_by_family.items())),
+    }
 
 
 def _build_symbol_family_ranking_rows(
@@ -418,6 +509,8 @@ def _build_symbol_family_ranking_rows(
                 "strategy_family": decision.family.value,
                 "internal_family": candidate.family.value if candidate is not None else decision.family.value,
                 "candidate_id": decision.candidate_id,
+                "parameter_set_id": candidate.parameter_set_id if candidate is not None else None,
+                "parameter_summary": candidate.parameter_summary if candidate is not None else None,
                 "promotion_status": decision.status.value,
                 "rejection_reasons": list(decision.reasons),
                 "actual_trade_count": int(diagnostics.get("actual_trade_count") or (metric.trade_count if metric else 0) or 0),
@@ -427,16 +520,36 @@ def _build_symbol_family_ranking_rows(
                 "profit_factor": float(metric.profit_factor) if metric is not None else None,
                 "win_rate": float(metric.win_rate) if metric is not None else None,
                 "max_drawdown": float(metric.max_drawdown) if metric is not None else None,
+                "total_return": float(metric.cumulative_return) if metric is not None else None,
+                "average_trade_return": float(metric.average_trade_return) if metric is not None else None,
                 "coverage_status": coverage.get("status") if coverage else None,
                 "coverage_basis": coverage.get("coverage_basis") if coverage else None,
+                "ranking_available": True,
+                "ranking_missing_reason": None,
             }
-            row["score"] = _score_ranking_row(
+            row["rank_score_components"] = _rank_score_components(
                 actual_trade_count=row["actual_trade_count"],
                 signal_count_before_filters=row["signal_count_before_filters"],
+                entry_signal_count=row["entry_signal_count"],
+                exit_signal_count=row["exit_signal_count"],
                 rejection_reason_count=len(row["rejection_reasons"]),
                 profit_factor=row["profit_factor"],
                 max_drawdown=row["max_drawdown"],
+                total_return=row["total_return"],
+                average_trade_return=row["average_trade_return"],
             )
+            row["rank_score"] = _score_ranking_row(
+                actual_trade_count=row["actual_trade_count"],
+                signal_count_before_filters=row["signal_count_before_filters"],
+                entry_signal_count=row["entry_signal_count"],
+                exit_signal_count=row["exit_signal_count"],
+                rejection_reason_count=len(row["rejection_reasons"]),
+                profit_factor=row["profit_factor"],
+                max_drawdown=row["max_drawdown"],
+                total_return=row["total_return"],
+                average_trade_return=row["average_trade_return"],
+            )
+            row["score"] = row["rank_score"]
             rows.append(row)
     return sorted(rows, key=lambda item: (-float(item["score"]), item["candidate_id"], str(item.get("symbol") or "")))
 
@@ -1235,6 +1348,7 @@ def run_kiwoom_ka10081_capture_and_train(
         if training_result is not None
         else {}
     )
+    candidate_parameter_summary_by_family = _candidate_parameter_summary_by_family(training_result)
     generated_strategy_families = sorted(candidate_count_by_family)
     ranking_report_rows = _build_symbol_family_ranking_rows(
         training_symbols=training_input_symbols,
@@ -1242,6 +1356,7 @@ def run_kiwoom_ka10081_capture_and_train(
         symbol_results=symbol_results,
     )
     ranking_report_path = reports_dir / "offline_strategy_symbol_family_ranking.json"
+    ranking_summary_path = reports_dir / "offline_strategy_ranking_summary.json"
     ranking_report_payload = {
         "dataset_id": pipeline_input.dataset_id,
         "dataset_symbols": sorted({item.provider_symbol for item in requested_specs}),
@@ -1251,10 +1366,15 @@ def run_kiwoom_ka10081_capture_and_train(
         "skipped_strategy_families": family_resolution["skipped_strategy_families"],
         "generated_strategy_families": generated_strategy_families,
         "candidate_count_by_family": candidate_count_by_family,
+        "candidate_parameter_summary_by_family": candidate_parameter_summary_by_family,
         "rows": ranking_report_rows,
     }
     if training_result is not None:
         ranking_report_path.write_text(json.dumps(ranking_report_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        ranking_summary_path.write_text(
+            json.dumps(_build_ranking_summary(pipeline_input.dataset_id, ranking_report_rows), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     all_symbols_completed = len(completed_symbols) >= len(requested_specs) and not partial_symbols and not failed_symbols
     used_any_cache = bool(reused_from_cache or skipped_completed)
     if not aggregate_rows:
@@ -1301,6 +1421,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "skipped_strategy_families": family_resolution["skipped_strategy_families"],
         "generated_strategy_families": generated_strategy_families,
         "candidate_count_by_family": candidate_count_by_family,
+        "candidate_parameter_summary_by_family": candidate_parameter_summary_by_family,
         "search_mode": str(search_mode or "BOUNDED_GRID").upper(),
         "walk_forward_mode": resolved_walk_forward_mode.value,
         "promotion_profile": str(promotion_profile or "STABILITY_FIRST").upper(),
@@ -1367,6 +1488,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "promotion_gate_output_path": str(promotion_gate_path) if training_completed else None,
         "training_plan_output_path": str(training_plan_path) if training_completed else None,
         "ranking_report_path": str(ranking_report_path) if training_result is not None else None,
+        "ranking_summary_path": str(ranking_summary_path) if training_result is not None else None,
         "candidate_count": len(training_result.candidates) if training_result is not None else 0,
         "promotion_decision_count": len(training_result.promotion_decisions) if training_result is not None else 0,
         "capture_state_path": str(state_path),

@@ -73,6 +73,17 @@ def _candidate_diagnostics(
     }
 
 
+def _candidate_limit_for_search_mode(search_mode: str) -> int | None:
+    mode = str(search_mode or "SMOKE_SEARCH").strip().upper()
+    if mode == "SMOKE_SEARCH":
+        return 1
+    if mode == "EXPANDED_SEARCH":
+        return 8
+    if mode == "BROAD_SEARCH":
+        return 16
+    return None
+
+
 def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput) -> OfflineStrategyPipelineResult:
     gate_status, findings, gaps = validate_offline_strategy_input_gate(pipeline_input)
     rows = resolve_offline_strategy_rows(pipeline_input)
@@ -84,10 +95,14 @@ def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput
         if not pipeline_input.requested_template_ids or template.template_id in set(pipeline_input.requested_template_ids)
     ]
     candidates = []
+    candidate_limit = _candidate_limit_for_search_mode(pipeline_input.search_mode)
     for template in selected_templates:
-        expanded = expand_offline_strategy_candidates(pipeline_input.dataset_id, template, pipeline_input.asset_liquidity_profile)
-        if pipeline_input.search_mode == "SMOKE_SEARCH":
-            expanded = expanded[:1]
+        expanded = expand_offline_strategy_candidates(
+            pipeline_input.dataset_id,
+            template,
+            pipeline_input.asset_liquidity_profile,
+            max_candidates=candidate_limit,
+        )
         candidates.extend(expanded)
     training_plan = build_offline_strategy_training_plan(pipeline_input, len(candidates))
     walk_forward_result = build_offline_strategy_walk_forward_result(pipeline_input, rows)

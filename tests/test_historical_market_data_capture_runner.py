@@ -578,6 +578,121 @@ def test_capture_and_train_wrapper_stops_before_chart_request_on_token_failure(t
     assert chart_called["value"] is False
 
 
+def test_capture_and_train_wrapper_expanded_search_generates_more_candidates_and_ranking_summary(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                )
+            ],
+        }
+    )
+    token_store_root = tmp_path / "oauth_tokens"
+    token_store_root.mkdir()
+    token_ref_path = token_store_root / "mock_token.json"
+    token_ref_path.write_text(
+        """
+        {
+          "token": "REDACTED",
+          "token_type": "Bearer",
+          "expires_dt": "2099-01-01T00:00:00+00:00",
+          "issued_at": "2026-06-27T00:00:00+00:00",
+          "environment": "MOCK",
+          "credential_fingerprint_redacted": "sha256:fixture"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    class FakeRealTransport:
+        transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def execute(self, preview, *, auth_header=None):
+            assert auth_header == "Bearer REDACTED"
+            symbol = preview.body_json["stk_cd"]
+            return {
+                "status_code": 200,
+                "headers": {"cont-yn": "N", "next-key": ""},
+                "body_json": {
+                    "return_code": 0,
+                    "return_msg": "OK",
+                    "stk_day_pole_chart_qry": [
+                        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
+                        {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
+                    ],
+                    "stk_cd": symbol,
+                },
+            }
+
+    def fake_issue(_request):
+        return KiwoomOAuthTokenIssueResponse(
+            status=KiwoomOAuthStatus.TOKEN_CACHE_HIT,
+            token_type="Bearer",
+            token_ref=KiwoomOAuthTokenRef(
+                token_ref_path=str(token_ref_path),
+                token_type="Bearer",
+                expires_dt="2099-01-01T00:00:00+00:00",
+                issued_at="2026-06-27T00:00:00+00:00",
+                environment=KiwoomEnvironment.MOCK,
+                credential_fingerprint_redacted="sha256:fixture",
+            ),
+            expires_dt="2099-01-01T00:00:00+00:00",
+            issued_at="2026-06-27T00:00:00+00:00",
+            return_msg_redacted="TOKEN_CACHE_HIT",
+        )
+
+    monkeypatch.setattr(wrapper_module, "issue_kiwoom_oauth_token", fake_issue)
+    monkeypatch.setattr(wrapper_module, "RealKiwoomChartTransport", FakeRealTransport)
+    monkeypatch.setattr(capture_runner_module, "is_pytest_runtime", lambda: False)
+    monkeypatch.setattr(capture_guard_module, "is_pytest_runtime", lambda: False)
+
+    smoke_result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy_smoke"),
+        strategy_families=["MACD_RSI", "RSI_OVERSOLD_REBOUND", "VOLUME_LONG_CANDLE_PULLBACK"],
+        search_mode="SMOKE_SEARCH",
+        direction="LONG_ONLY",
+    )
+    expanded_result = wrapper_module.run_kiwoom_ka10081_capture_and_train(
+        fixture.model_copy(update={"real_capture_config": fixture.real_capture_config.model_copy(update={"transport_kind": "REAL_KIWOOM_CHART"})}),
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(token_store_root),
+        training_output_root=str(tmp_path / "local_data" / "offline_strategy_expanded"),
+        strategy_families=["MACD_RSI", "RSI_OVERSOLD_REBOUND", "VOLUME_LONG_CANDLE_PULLBACK"],
+        search_mode="EXPANDED_SEARCH",
+        direction="LONG_ONLY",
+    )
+    assert smoke_result["candidate_count"] == 3
+    assert expanded_result["search_mode"] == "EXPANDED_SEARCH"
+    assert expanded_result["candidate_count"] == 24
+    assert expanded_result["candidate_count_by_family"] == {"MACD_RSI_MOMENTUM": 8, "RSI_OVERSOLD_REBOUND": 8, "VOLUME_PULLBACK_LONG": 8}
+    assert {key: len(value) for key, value in expanded_result["candidate_parameter_summary_by_family"].items()} == {
+        "MACD_RSI_MOMENTUM": 8,
+        "RSI_OVERSOLD_REBOUND": 8,
+        "VOLUME_PULLBACK_LONG": 8,
+    }
+    ranking_payload = json.loads(Path(expanded_result["ranking_report_path"]).read_text(encoding="utf-8"))
+    assert ranking_payload["candidate_count_by_family"] == expanded_result["candidate_count_by_family"]
+    assert all("rank_score" in row and "rank_score_components" in row for row in ranking_payload["rows"])
+    assert all("parameter_set_id" in row and "parameter_summary" in row for row in ranking_payload["rows"])
+    assert all(row["rank_score"] is not None for row in ranking_payload["rows"])
+    ranking_summary = json.loads(Path(expanded_result["ranking_summary_path"]).read_text(encoding="utf-8"))
+    assert "best_candidate_by_symbol" in ranking_summary
+    assert "best_candidate_by_family" in ranking_summary
+    assert "rejected_count_by_reason" in ranking_summary
+    dumped = json.dumps({"ranking": ranking_payload, "summary": ranking_summary}, ensure_ascii=False).lower()
+    assert "secretkey" not in dumped
+    assert "authorization" not in dumped
+    assert "\"token\"" not in dumped
+
+
 def test_capture_and_train_wrapper_reports_partial_provider_limit(tmp_path, monkeypatch) -> None:
     fixture = _fixture(tmp_path)
     token_store_root = tmp_path / "oauth_tokens"
@@ -1240,6 +1355,10 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     ranking_payload = json.loads(Path(result["aggregate_ranking_report_path"]).read_text(encoding="utf-8"))
     assert {row["symbol"] for row in ranking_payload["rows"]} == {"005930", "000660", "035420"}
     assert any(row["symbol"] == "000660" and row["ranking_available"] is False for row in ranking_payload["rows"])
+    assert any("rank_score" in row and "rank_score_components" in row for row in ranking_payload["rows"])
+    ranking_summary = json.loads(Path(result["aggregate_ranking_summary_path"]).read_text(encoding="utf-8"))
+    assert "best_candidate_by_symbol" in ranking_summary
+    assert "rejected_count_by_reason" in ranking_summary
 
 
 def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, monkeypatch) -> None:

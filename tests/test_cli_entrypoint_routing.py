@@ -76,6 +76,44 @@ def test_kiwoom_capture_and_train_help_uses_command_router() -> None:
     assert "Evaluate a stock trade proposal" not in result.stdout
 
 
+def test_kiwoom_capture_and_train_parser_accepts_expanded_search() -> None:
+    parser = build_command_parser()
+    args = parser.parse_args(
+        [
+            "kiwoom-ka10081-capture-and-train-run",
+            "--kiwoom-environment",
+            "MOCK",
+            "--credential-ref",
+            "/tmp/ref",
+            "--token-store-root",
+            "local_data/kiwoom_tokens",
+            "--api-id",
+            "KA10081",
+            "--symbols",
+            "005930",
+            "--start-date",
+            "2020-01-01",
+            "--end-date",
+            "2026-06-27",
+            "--store-root",
+            "local_data/store",
+            "--raw-lake-root",
+            "local_data/raw",
+            "--training-output-root",
+            "local_data/offline_strategy",
+            "--search-mode",
+            "EXPANDED_SEARCH",
+            "--allow-real-chart-capture",
+            "--acknowledge-readonly-only",
+            "--acknowledge-no-orders",
+            "--acknowledge-user-initiated",
+            "--acknowledge-rate-limit-and-capacity",
+            "--acknowledge-credential-redaction",
+        ]
+    )
+    assert args.search_mode == "EXPANDED_SEARCH"
+
+
 def test_unknown_command_fails_with_router_error() -> None:
     result = _run_cli("kiwoom-oauth-token-issue-run-typo")
     assert result.returncode != 0

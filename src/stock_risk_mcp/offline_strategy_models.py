@@ -283,6 +283,8 @@ class OfflineStrategyCandidate(StrictModel):
     family: OfflineStrategyFamily
     direction: OfflineStrategyDirection
     promotion_eligible: bool = True
+    parameter_set_id: str | None = None
+    parameter_summary: str | None = None
     parameter_values: dict[str, ScalarValue] = Field(default_factory=dict)
     asset_liquidity_profile: OfflineStrategyAssetLiquidityProfile = OfflineStrategyAssetLiquidityProfile.LARGE_CAP
 
@@ -291,10 +293,32 @@ class OfflineStrategyCandidate(StrictModel):
     def normalize_upper(cls, value, info):
         return _upper_required(value, info.field_name)
 
+    @field_validator("parameter_set_id", mode="before")
+    @classmethod
+    def normalize_parameter_set_id(cls, value):
+        if value is None:
+            return None
+        return _upper_required(value, "parameter_set_id")
+
+    @field_validator("parameter_summary", mode="before")
+    @classmethod
+    def normalize_summary(cls, value):
+        if value is None:
+            return None
+        return _string_required(value, "parameter_summary")
+
     @field_validator("parameter_values", mode="before")
     @classmethod
     def normalize_map(cls, value):
         return _validate_scalar_map(value or {}, "parameter_values")
+
+    @model_validator(mode="after")
+    def finalize_parameter_metadata(self):
+        if not self.parameter_set_id:
+            self.parameter_set_id = f"{self.template_id.value}-P001"
+        if not self.parameter_summary:
+            self.parameter_summary = ",".join(f"{key}={self.parameter_values[key]}" for key in sorted(self.parameter_values)) or "DEFAULT"
+        return self
 
 
 class OfflineStrategySignal(_BaseSafety):
