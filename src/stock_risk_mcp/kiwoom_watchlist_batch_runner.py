@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import math
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 from stock_risk_mcp.historical_market_data_models import HistoricalChartRequestSpec, HistoricalMarketDataPipelineInput
@@ -92,6 +94,14 @@ def load_watchlist_symbols(symbols_file: str | None) -> list[dict[str, object]]:
                     )
         return rows
     raise ValueError(f"unsupported symbols file format: {path.suffix}")
+
+
+def _watchlist_symbol_metadata(symbols_file: str | None) -> dict[str, dict[str, object]]:
+    return {
+        str(item.get("symbol") or "").strip().upper(): dict(item)
+        for item in load_watchlist_symbols(symbols_file)
+        if str(item.get("symbol") or "").strip()
+    }
 
 
 def merge_symbol_sources(explicit_symbols: list[str], file_entries: list[dict[str, object]]) -> list[str]:
@@ -501,6 +511,385 @@ def _contains_secret_marker(value: object) -> bool:
             return False
         return any(marker in upper for marker in markers)
     return False
+
+
+def _review_safe_number(value: object) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _review_safe_int(value: object) -> int:
+    try:
+        if value is None or value == "":
+            return 0
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _sector_for_symbol(symbol: str, metadata_by_symbol: dict[str, dict[str, object]]) -> str:
+    metadata = metadata_by_symbol.get(symbol, {})
+    sector = str(metadata.get("sector") or "").strip()
+    return sector or "UNKNOWN_SECTOR"
+
+
+def _risk_bucket_for_row(row: dict[str, object]) -> tuple[str, str]:
+    leakage_status = str(row.get("leakage_audit_status") or "")
+    same_bar_fill_count = _review_safe_int(row.get("same_bar_fill_count"))
+    lookahead_violation_count = _review_safe_int(row.get("lookahead_violation_count"))
+    drawdown_warning = bool(row.get("drawdown_warning"))
+    max_drawdown = abs(_review_safe_number(row.get("max_drawdown")) or 0.0)
+    profit_factor = _review_safe_number(row.get("profit_factor"))
+    average_trade_return = _review_safe_number(row.get("average_trade_return"))
+    trade_count = _review_safe_int(row.get("actual_trade_count") or row.get("trade_count"))
+    if leakage_status == "LEAKAGE_AUDIT_FAILED" or same_bar_fill_count > 0 or lookahead_violation_count > 0:
+        return "HIGH_RISK_REVIEW", "LEAKAGE_REVIEW_REQUIRED"
+    if drawdown_warning or max_drawdown >= 0.20 or (profit_factor is not None and profit_factor < 1.0) or trade_count < 5:
+        return "HIGH_RISK_REVIEW", "INSUFFICIENT_TRAINING_EVIDENCE"
+    if max_drawdown >= 0.12 or (profit_factor is not None and profit_factor < 1.2) or (average_trade_return is not None and average_trade_return <= 0) or trade_count < 10:
+        return "MEDIUM_RISK_REVIEW", "CANDIDATE_FOR_HUMAN_REVIEW"
+    return "LOW_RISK_REVIEW", "CANDIDATE_FOR_HUMAN_REVIEW"
+
+
+def _review_candidate_entry(
+    row: dict[str, object],
+    *,
+    metadata_by_symbol: dict[str, dict[str, object]],
+    review_rank: int | None = None,
+    risk_bucket: str | None = None,
+    review_reason: str | None = None,
+) -> dict[str, object]:
+    symbol = str(row.get("symbol") or "")
+    metadata = metadata_by_symbol.get(symbol, {})
+    sector = _sector_for_symbol(symbol, metadata_by_symbol)
+    leakage_status = str(row.get("leakage_audit_status") or "UNKNOWN")
+    resolved_risk_bucket, resolved_review_reason = _risk_bucket_for_row(row)
+    return {
+        "symbol": symbol,
+        "symbol_name": metadata.get("name"),
+        "sector": sector,
+        "family": row.get("strategy_family"),
+        "candidate_id": row.get("candidate_id"),
+        "strategy_id": row.get("internal_family"),
+        "parameter_hash": row.get("parameter_set_id"),
+        "parameter_summary": row.get("parameter_summary"),
+        "review_rank": review_rank,
+        "promotion_score": row.get("rank_score"),
+        "max_drawdown": row.get("max_drawdown"),
+        "profit_factor": row.get("profit_factor"),
+        "average_trade_return": row.get("average_trade_return"),
+        "trade_count": row.get("actual_trade_count"),
+        "leakage_audit_status": leakage_status,
+        "same_bar_fill_count": row.get("same_bar_fill_count"),
+        "lookahead_violation_count": row.get("lookahead_violation_count"),
+        "drawdown_sanity_warnings": bool(row.get("drawdown_warning")),
+        "risk_bucket": risk_bucket or resolved_risk_bucket,
+        "review_reason": review_reason or resolved_review_reason,
+    }
+
+
+def _dominant_group_warning(
+    counts: dict[str, int],
+    *,
+    total_count: int,
+    threshold_ratio: float,
+    threshold_label: str,
+    group_label: str,
+) -> dict[str, object]:
+    if not counts or total_count <= 0:
+        return {
+            "status": "OK",
+            "dominant_group": None,
+            "dominant_group_count": 0,
+            "dominant_group_ratio": 0.0,
+            "thresholds": {threshold_label: threshold_ratio},
+            "message": f"no {group_label} concentration detected",
+        }
+    dominant_group, dominant_count = max(counts.items(), key=lambda item: (item[1], item[0]))
+    dominant_ratio = round(dominant_count / total_count, 6)
+    return {
+        "status": "WARNING" if dominant_ratio > threshold_ratio else "OK",
+        "dominant_group": dominant_group,
+        "dominant_group_count": dominant_count,
+        "dominant_group_ratio": dominant_ratio,
+        "thresholds": {threshold_label: threshold_ratio},
+        "message": (
+            f"{group_label} concentration exceeds threshold"
+            if dominant_ratio > threshold_ratio
+            else f"{group_label} concentration within threshold"
+        ),
+    }
+
+
+def _write_watchlist_review_reports(
+    *,
+    aggregate_run_root: str,
+    watchlist_dataset_id: str,
+    offline_strategy_run_id: str,
+    symbols_file: str | None,
+    ranking_report_path: str | None,
+    ranking_summary_path: str | None,
+    requested_symbols: list[str],
+) -> tuple[str | None, str | None, dict[str, object], dict[str, object]]:
+    if not ranking_report_path or not Path(ranking_report_path).exists():
+        return None, None, {}, {}
+    ranking_payload = _load_json_if_exists(ranking_report_path) or {}
+    ranking_summary_payload = _load_json_if_exists(ranking_summary_path) or {}
+    rows = list(ranking_payload.get("rows", []))
+    metadata_by_symbol = _watchlist_symbol_metadata(symbols_file)
+    generated_at = datetime.now(timezone.utc).isoformat()
+    promoted_rows = [row for row in rows if str(row.get("promotion_status") or "") == "PROMOTED_OFFLINE_CANDIDATE"]
+    rejected_rows = [row for row in rows if row not in promoted_rows]
+    candidate_count_by_sector = dict(sorted(Counter(_sector_for_symbol(str(row.get("symbol") or ""), metadata_by_symbol) for row in rows).items()))
+    promoted_count_by_sector = dict(sorted(Counter(_sector_for_symbol(str(row.get("symbol") or ""), metadata_by_symbol) for row in promoted_rows).items()))
+    symbol_to_sector = {symbol: _sector_for_symbol(symbol, metadata_by_symbol) for symbol in requested_symbols}
+    promoted_symbols = sorted({str(row.get("symbol") or "") for row in promoted_rows if str(row.get("symbol") or "")})
+    rejected_symbols = sorted({str(row.get("symbol") or "") for row in rejected_rows if str(row.get("symbol") or "")})
+    rejected_only_symbols = sorted(symbol for symbol in rejected_symbols if symbol not in set(promoted_symbols))
+    best_candidate_by_symbol: dict[str, dict[str, object]] = {}
+    best_candidate_by_family: dict[str, dict[str, object]] = {}
+    best_candidate_by_sector: dict[str, dict[str, object]] = {}
+    risk_bucket_by_candidate: dict[str, str] = {}
+    risk_bucket_counts: dict[str, int] = {}
+    risk_triage_notes: list[str] = []
+    promoted_rows_sorted = sorted(
+        promoted_rows,
+        key=lambda row: (
+            -float(row.get("rank_score") or 0.0),
+            abs(_review_safe_number(row.get("max_drawdown")) or 0.0),
+            -(_review_safe_number(row.get("profit_factor")) or 0.0),
+            str(row.get("symbol") or ""),
+            str(row.get("candidate_id") or ""),
+        ),
+    )
+    top_promoted_candidates: list[dict[str, object]] = []
+    for index, row in enumerate(promoted_rows_sorted, start=1):
+        symbol = str(row.get("symbol") or "")
+        family = str(row.get("strategy_family") or "")
+        sector = _sector_for_symbol(symbol, metadata_by_symbol)
+        risk_bucket, review_reason = _risk_bucket_for_row(row)
+        candidate_key = str(row.get("candidate_id") or f"{symbol}:{family}:{row.get('parameter_set_id')}")
+        risk_bucket_by_candidate[candidate_key] = risk_bucket
+        risk_bucket_counts[risk_bucket] = risk_bucket_counts.get(risk_bucket, 0) + 1
+        if risk_bucket == "HIGH_RISK_REVIEW":
+            risk_triage_notes.append(f"{candidate_key}: {review_reason}")
+        candidate_entry = _review_candidate_entry(
+            row,
+            metadata_by_symbol=metadata_by_symbol,
+            review_rank=index,
+            risk_bucket=risk_bucket,
+            review_reason=review_reason,
+        )
+        top_promoted_candidates.append(candidate_entry)
+        if symbol and symbol not in best_candidate_by_symbol:
+            best_candidate_by_symbol[symbol] = candidate_entry
+        if family and family not in best_candidate_by_family:
+            best_candidate_by_family[family] = candidate_entry
+        if sector and sector not in best_candidate_by_sector:
+            best_candidate_by_sector[sector] = candidate_entry
+    duplicate_promoted_symbol_count = sum(1 for count in Counter(item["symbol"] for item in top_promoted_candidates if item["symbol"]).values() if count > 1)
+    multi_family_promoted_symbols = sorted(
+        symbol
+        for symbol in promoted_symbols
+        if len({str(row.get("strategy_family") or "") for row in promoted_rows if str(row.get("symbol") or "") == symbol}) > 1
+    )
+    duplicate_metric_groups: dict[str, list[dict[str, object]]] = {}
+    for row in promoted_rows:
+        duplicate_key = json.dumps(
+            {
+                "symbol": row.get("symbol"),
+                "family": row.get("strategy_family"),
+                "parameter_summary": row.get("parameter_summary"),
+                "profit_factor": row.get("profit_factor"),
+                "average_trade_return": row.get("average_trade_return"),
+                "max_drawdown": row.get("max_drawdown"),
+                "actual_trade_count": row.get("actual_trade_count"),
+                "rank_score": row.get("rank_score"),
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        duplicate_metric_groups.setdefault(duplicate_key, []).append(row)
+    duplicate_metric_rows = [
+        {
+            "symbol": group[0].get("symbol"),
+            "family": group[0].get("strategy_family"),
+            "parameter_summary": group[0].get("parameter_summary"),
+            "candidate_ids": [item.get("candidate_id") for item in group],
+            "metric_signature": {
+                "profit_factor": group[0].get("profit_factor"),
+                "average_trade_return": group[0].get("average_trade_return"),
+                "max_drawdown": group[0].get("max_drawdown"),
+                "actual_trade_count": group[0].get("actual_trade_count"),
+                "rank_score": group[0].get("rank_score"),
+            },
+        }
+        for group in duplicate_metric_groups.values()
+        if len(group) > 1
+    ]
+    top_n_default = 10
+    top_n_sector_counts = Counter(
+        item["sector"] for item in top_promoted_candidates[:top_n_default] if str(item.get("sector") or "")
+    )
+    sector_warning = {
+        "status": "OK",
+        "dominant_sector": None,
+        "dominant_sector_promoted_count": 0,
+        "dominant_sector_promoted_ratio": 0.0,
+        "dominant_sector_top_n_count": 0,
+        "dominant_sector_top_n_ratio": 0.0,
+        "thresholds": {"promoted_ratio": 0.40, "top_n_ratio": 0.50},
+        "message": "sector concentration within threshold",
+    }
+    if promoted_count_by_sector:
+        dominant_sector, promoted_count = max(promoted_count_by_sector.items(), key=lambda item: (item[1], item[0]))
+        dominant_top_n_count = top_n_sector_counts.get(dominant_sector, 0)
+        promoted_ratio = round(promoted_count / max(len(promoted_rows), 1), 6)
+        top_n_ratio = round(dominant_top_n_count / max(min(len(top_promoted_candidates), top_n_default), 1), 6)
+        warning = promoted_ratio > 0.40 or top_n_ratio > 0.50
+        sector_warning = {
+            "status": "WARNING" if warning else "OK",
+            "dominant_sector": dominant_sector,
+            "dominant_sector_promoted_count": promoted_count,
+            "dominant_sector_promoted_ratio": promoted_ratio,
+            "dominant_sector_top_n_count": dominant_top_n_count,
+            "dominant_sector_top_n_ratio": top_n_ratio,
+            "thresholds": {"promoted_ratio": 0.40, "top_n_ratio": 0.50},
+            "message": "sector concentration exceeds threshold" if warning else "sector concentration within threshold",
+        }
+    family_warning = _dominant_group_warning(
+        dict(Counter(item["family"] for item in top_promoted_candidates if str(item.get("family") or ""))),
+        total_count=len(top_promoted_candidates),
+        threshold_ratio=0.50,
+        threshold_label="promoted_ratio",
+        group_label="family",
+    )
+    family_warning["multi_family_promoted_symbols"] = multi_family_promoted_symbols
+    warnings: list[str] = []
+    if sector_warning["status"] == "WARNING":
+        warnings.append("SECTOR_CONCENTRATION_WARNING")
+    if family_warning["status"] == "WARNING":
+        warnings.append("FAMILY_CONCENTRATION_WARNING")
+    if duplicate_metric_rows:
+        warnings.append("DUPLICATE_METRIC_ROWS_WARNING")
+    if ranking_summary_payload.get("leakage_audit_status") == "LEAKAGE_AUDIT_FAILED":
+        warnings.append("LEAKAGE_REVIEW_REQUIRED")
+    promotion_review_payload = {
+        "schema_version": "v15.3.1",
+        "artifact_type": "WATCHLIST_PROMOTION_REVIEW",
+        "review_status": "REVIEW_ONLY",
+        "watchlist_dataset_id": watchlist_dataset_id,
+        "offline_strategy_run_id": offline_strategy_run_id,
+        "run_root": aggregate_run_root,
+        "generated_at": generated_at,
+        "source_ranking_report_path": ranking_report_path,
+        "source_watchlist_path": symbols_file,
+        "total_symbols": len(requested_symbols),
+        "ranking_available_symbol_count": int(ranking_summary_payload.get("ranking_available_symbol_count", 0)),
+        "ranking_missing_symbol_count": int(ranking_summary_payload.get("ranking_missing_symbol_count", 0)),
+        "ranking_missing_symbols": list(ranking_summary_payload.get("ranking_missing_symbols", [])),
+        "total_candidate_rows": len(rows),
+        "promoted_candidate_count": len(promoted_rows),
+        "rejected_candidate_count": len(rejected_rows),
+        "promoted_symbol_count": len(promoted_symbols),
+        "rejected_only_symbol_count": len(rejected_only_symbols),
+        "promoted_count_by_symbol": dict(sorted(Counter(str(row.get("symbol") or "") for row in promoted_rows if str(row.get("symbol") or "")).items())),
+        "promoted_count_by_family": dict(sorted(Counter(str(row.get("strategy_family") or "") for row in promoted_rows if str(row.get("strategy_family") or "")).items())),
+        "promoted_count_by_sector": promoted_count_by_sector,
+        "candidate_count_by_sector": candidate_count_by_sector,
+        "symbol_to_sector": dict(sorted(symbol_to_sector.items())),
+        "promoted_symbols": promoted_symbols,
+        "rejected_only_symbols": rejected_only_symbols,
+        "top_promoted_candidates": top_promoted_candidates[:top_n_default],
+        "best_candidate_by_symbol": best_candidate_by_symbol,
+        "best_candidate_by_family": best_candidate_by_family,
+        "best_candidate_by_sector": best_candidate_by_sector,
+        "sector_concentration_warning": sector_warning,
+        "family_concentration_warning": family_warning,
+        "duplicate_promoted_symbol_count": duplicate_promoted_symbol_count,
+        "multi_family_promoted_symbols": multi_family_promoted_symbols,
+        "duplicate_metric_rows_count": len(duplicate_metric_rows),
+        "duplicate_metric_rows": duplicate_metric_rows,
+        "risk_bucket_counts": dict(sorted(risk_bucket_counts.items())),
+        "risk_bucket_by_candidate": risk_bucket_by_candidate,
+        "risk_triage_notes": risk_triage_notes,
+        "safety_redaction_status": "PASSED",
+        "warnings": warnings,
+    }
+    max_candidates_per_symbol = 1
+    max_candidates_per_sector = 3
+    max_candidates_per_family = 5
+    selected_candidates: list[dict[str, object]] = []
+    excluded_candidates: list[dict[str, object]] = []
+    selected_symbol_counts: Counter[str] = Counter()
+    selected_sector_counts: Counter[str] = Counter()
+    selected_family_counts: Counter[str] = Counter()
+    top_promoted_candidates_full = top_promoted_candidates
+    for item in top_promoted_candidates_full:
+        symbol = str(item.get("symbol") or "")
+        sector = str(item.get("sector") or "UNKNOWN_SECTOR")
+        family = str(item.get("family") or "UNKNOWN_FAMILY")
+        exclusion_reason = None
+        if len(selected_candidates) >= top_n_default:
+            exclusion_reason = "TOP_N_CAP_REACHED"
+        elif selected_symbol_counts[symbol] >= max_candidates_per_symbol:
+            exclusion_reason = "MAX_CANDIDATES_PER_SYMBOL"
+        elif selected_sector_counts[sector] >= max_candidates_per_sector:
+            exclusion_reason = "MAX_CANDIDATES_PER_SECTOR"
+        elif selected_family_counts[family] >= max_candidates_per_family:
+            exclusion_reason = "MAX_CANDIDATES_PER_FAMILY"
+        elif str(item.get("risk_bucket") or "") == "HIGH_RISK_REVIEW":
+            exclusion_reason = "HIGH_RISK_REVIEW"
+        if exclusion_reason:
+            excluded_candidates.append({**item, "exclusion_reason": exclusion_reason})
+            continue
+        selected_symbol_counts[symbol] += 1
+        selected_sector_counts[sector] += 1
+        selected_family_counts[family] += 1
+        selected_candidates.append(
+            {
+                **item,
+                "selection_reason": "PROMOTED_CLEANER_DIVERSIFIED_CANDIDATE",
+            }
+        )
+    portfolio_payload = {
+        "schema_version": "v15.3.1",
+        "artifact_type": "WATCHLIST_PORTFOLIO_CANDIDATE_REPORT",
+        "review_status": "REVIEW_ONLY",
+        "watchlist_dataset_id": watchlist_dataset_id,
+        "offline_strategy_run_id": offline_strategy_run_id,
+        "run_root": aggregate_run_root,
+        "generated_at": generated_at,
+        "source_promotion_review_path": None,
+        "top_n_default": top_n_default,
+        "selected_candidates": selected_candidates,
+        "selection_reason": "PROMOTED_CANDIDATES_FILTERED_BY_DIVERSIFICATION_AND_REVIEW_RISK",
+        "excluded_promoted_candidates": excluded_candidates,
+        "exclusion_reason": "SEE_PER_CANDIDATE_EXCLUSION_REASON",
+        "max_candidates_per_symbol": max_candidates_per_symbol,
+        "max_candidates_per_sector": max_candidates_per_sector,
+        "max_candidates_per_family": max_candidates_per_family,
+        "review_status_reason": "NOT_TRADE_READY",
+        "portfolio_candidate_count": len(selected_candidates),
+        "portfolio_candidate_symbols": sorted({str(item.get("symbol") or "") for item in selected_candidates if str(item.get("symbol") or "")}),
+        "portfolio_candidate_sector_counts": dict(sorted(selected_sector_counts.items())),
+        "portfolio_candidate_family_counts": dict(sorted(selected_family_counts.items())),
+    }
+    output_root = Path(aggregate_run_root) / "reports"
+    output_root.mkdir(parents=True, exist_ok=True)
+    promotion_review_path = output_root / "offline_strategy_watchlist_promotion_review.json"
+    portfolio_path = output_root / "offline_strategy_portfolio_candidate_report.json"
+    promotion_review_path.write_text(json.dumps(promotion_review_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    portfolio_payload["source_promotion_review_path"] = str(promotion_review_path)
+    portfolio_path.write_text(json.dumps(portfolio_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    dumped = json.dumps({"promotion_review": promotion_review_payload, "portfolio": portfolio_payload}, ensure_ascii=False)
+    if _contains_secret_marker(dumped):
+        promotion_review_payload["safety_redaction_status"] = "FAILED"
+    return str(promotion_review_path), str(portfolio_path), promotion_review_payload, portfolio_payload
 
 
 def _validate_batch_identity(expected_symbols: list[str], capture_state_path: str | None) -> tuple[str, list[str], str | None]:
@@ -939,6 +1328,15 @@ def run_kiwoom_watchlist_capture_and_train(
     final["ledger_validation_errors"] = coverage_consistency_errors + ledger_validation_errors
     ranking_report_payload = _load_json_if_exists(aggregate_ranking_report_path)
     ranking_summary_payload = _load_json_if_exists(aggregate_ranking_summary_path)
+    promotion_review_report_path, portfolio_candidate_report_path, promotion_review_payload, portfolio_candidate_payload = _write_watchlist_review_reports(
+        aggregate_run_root=str(run_context["offline_strategy_run_root"]),
+        watchlist_dataset_id=watchlist_dataset_id,
+        offline_strategy_run_id=run_context["offline_strategy_run_id"],
+        symbols_file=symbols_file,
+        ranking_report_path=aggregate_ranking_report_path,
+        ranking_summary_path=aggregate_ranking_summary_path,
+        requested_symbols=symbols,
+    )
     rate_budget_estimate = _rate_budget_estimate(
         batch_results=batch_results,
         pending_symbols=pending,
@@ -970,6 +1368,8 @@ def run_kiwoom_watchlist_capture_and_train(
             "trade_audit_report_path": None,
             "watchlist_ranking_report_path": aggregate_ranking_report_path,
             "watchlist_ranking_summary_path": aggregate_ranking_summary_path,
+            "promotion_review_report_path": promotion_review_report_path,
+            "portfolio_candidate_report_path": portfolio_candidate_report_path,
         },
     }
     artifact_manifest_path.write_text(json.dumps(artifact_manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1026,6 +1426,8 @@ def run_kiwoom_watchlist_capture_and_train(
             "comparison_path": str(comparison_path),
             "watchlist_ranking_report_path": aggregate_ranking_report_path,
             "watchlist_ranking_summary_path": aggregate_ranking_summary_path,
+            "promotion_review_report_path": promotion_review_report_path,
+            "portfolio_candidate_report_path": portfolio_candidate_report_path,
             "created_at": run_context["created_at"],
             "dataset_id": watchlist_dataset_id,
             "search_mode": search_mode_value,
@@ -1047,6 +1449,18 @@ def run_kiwoom_watchlist_capture_and_train(
     final["same_bar_fill_count"] = int((ranking_summary_payload or {}).get("same_bar_fill_count", 0))
     final["lookahead_violation_count"] = int((ranking_summary_payload or {}).get("lookahead_violation_count", 0))
     final["drawdown_sanity_warning_count"] = int((ranking_summary_payload or {}).get("drawdown_sanity_warning_count", 0))
+    final["promotion_review_report_path"] = promotion_review_report_path
+    final["portfolio_candidate_report_path"] = portfolio_candidate_report_path
+    final["portfolio_candidate_count"] = int((portfolio_candidate_payload or {}).get("portfolio_candidate_count", 0))
+    final["portfolio_candidate_symbols"] = list((portfolio_candidate_payload or {}).get("portfolio_candidate_symbols", []))
+    final["portfolio_candidate_sector_counts"] = dict((portfolio_candidate_payload or {}).get("portfolio_candidate_sector_counts", {}))
+    final["portfolio_candidate_family_counts"] = dict((portfolio_candidate_payload or {}).get("portfolio_candidate_family_counts", {}))
+    final["promoted_count_by_symbol"] = dict((promotion_review_payload or {}).get("promoted_count_by_symbol", {}))
+    final["promoted_count_by_family"] = dict((promotion_review_payload or {}).get("promoted_count_by_family", {}))
+    final["promoted_count_by_sector"] = dict((promotion_review_payload or {}).get("promoted_count_by_sector", {}))
+    final["risk_bucket_counts"] = dict((promotion_review_payload or {}).get("risk_bucket_counts", {}))
+    final["sector_concentration_warning"] = (promotion_review_payload or {}).get("sector_concentration_warning")
+    final["family_concentration_warning"] = (promotion_review_payload or {}).get("family_concentration_warning")
     final["rate_limit_profile"] = rate_limit_profile or final.get("tr_rate_limit_profile")
     final.update(rate_budget_estimate)
     _write_watchlist_progress(progress_path, watchlist_progress)

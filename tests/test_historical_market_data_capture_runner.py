@@ -1642,6 +1642,14 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert "ranking_missing_symbol_count" in ranking_summary
     assert result["watchlist_ranking_summary_path"] == result["aggregate_ranking_summary_path"]
     assert Path(result["watchlist_ranking_summary_path"]).exists()
+    assert Path(result["promotion_review_report_path"]).exists()
+    assert Path(result["portfolio_candidate_report_path"]).exists()
+    promotion_review = json.loads(Path(result["promotion_review_report_path"]).read_text(encoding="utf-8"))
+    portfolio_review = json.loads(Path(result["portfolio_candidate_report_path"]).read_text(encoding="utf-8"))
+    assert promotion_review["artifact_type"] == "WATCHLIST_PROMOTION_REVIEW"
+    assert portfolio_review["artifact_type"] == "WATCHLIST_PORTFOLIO_CANDIDATE_REPORT"
+    assert result["portfolio_candidate_count"] == portfolio_review["portfolio_candidate_count"]
+    assert result["portfolio_candidate_symbols"] == portfolio_review["portfolio_candidate_symbols"]
     assert Path(result["offline_strategy_artifact_manifest_path"]).exists()
     assert result["offline_strategy_output_root"] != str(tmp_path / "offline")
     assert "estimated_tr_requests_remaining" in result
@@ -1649,6 +1657,322 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert "estimated_minutes_remaining_at_current_rate" in result
     assert "tr_request_count_this_run" in result
     assert "tr_request_count_last_hour" in result
+
+
+def test_watchlist_review_reports_include_sector_duplicate_risk_and_portfolio_caps(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                ),
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-035420-TEST", "provider_symbol": "035420", "canonical_instrument_id": "035420"}
+                ),
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-035720-TEST", "provider_symbol": "035720", "canonical_instrument_id": "035720"}
+                ),
+            ]
+        }
+    )
+    symbols_file = tmp_path / "watchlist.csv"
+    symbols_file.write_text(
+        "\n".join(
+            [
+                "symbol,name,sector,priority",
+                "005930,Samsung,SEMICONDUCTOR,1",
+                "000660,SK Hynix,SEMICONDUCTOR,1",
+                "035420,Naver,INTERNET,2",
+                "035720,Kakao,INTERNET,2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_run(_pipeline, **kwargs):
+        del kwargs
+        batch_symbols = [spec.provider_symbol for spec in _pipeline.request_specs]
+        state_path = tmp_path / f"{_pipeline.dataset_id.lower()}-state.json"
+        ranking_path = tmp_path / f"{_pipeline.dataset_id.lower()}-ranking.json"
+        rows = [
+            {
+                "symbol": "005930",
+                "strategy_family": "MACD_RSI_MOMENTUM",
+                "internal_family": "MACD_RSI_MOMENTUM",
+                "candidate_id": "005930-MACD-1",
+                "parameter_set_id": "P001",
+                "parameter_summary": "FAST-12-26-9",
+                "promotion_status": "PROMOTED_OFFLINE_CANDIDATE",
+                "rank_score": 10.5,
+                "profit_factor": 1.8,
+                "average_trade_return": 0.04,
+                "actual_trade_count": 14,
+                "max_drawdown": 0.08,
+                "rejection_reasons": [],
+                "signal_count_before_filters": 20,
+                "entry_signal_count": 10,
+                "exit_signal_count": 8,
+                "final_entry_condition_count": 9,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 0,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": False,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+            {
+                "symbol": "005930",
+                "strategy_family": "RSI_OVERSOLD_REBOUND",
+                "internal_family": "RSI_OVERSOLD_REBOUND",
+                "candidate_id": "005930-RSI-1",
+                "parameter_set_id": "P002",
+                "parameter_summary": "RSI-14-30",
+                "promotion_status": "PROMOTED_OFFLINE_CANDIDATE",
+                "rank_score": 9.4,
+                "profit_factor": 1.6,
+                "average_trade_return": 0.03,
+                "actual_trade_count": 12,
+                "max_drawdown": 0.10,
+                "rejection_reasons": [],
+                "signal_count_before_filters": 18,
+                "entry_signal_count": 9,
+                "exit_signal_count": 8,
+                "final_entry_condition_count": 8,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 0,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": False,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+            {
+                "symbol": "000660",
+                "strategy_family": "RSI_OVERSOLD_REBOUND",
+                "internal_family": "RSI_OVERSOLD_REBOUND",
+                "candidate_id": "000660-RSI-1",
+                "parameter_set_id": "P003",
+                "parameter_summary": "RSI-14-30",
+                "promotion_status": "PROMOTED_OFFLINE_CANDIDATE",
+                "rank_score": 8.7,
+                "profit_factor": 1.5,
+                "average_trade_return": 0.025,
+                "actual_trade_count": 11,
+                "max_drawdown": 0.09,
+                "rejection_reasons": [],
+                "signal_count_before_filters": 15,
+                "entry_signal_count": 8,
+                "exit_signal_count": 7,
+                "final_entry_condition_count": 8,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 0,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": False,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+            {
+                "symbol": "000660",
+                "strategy_family": "RSI_OVERSOLD_REBOUND",
+                "internal_family": "RSI_OVERSOLD_REBOUND",
+                "candidate_id": "000660-RSI-2",
+                "parameter_set_id": "P003B",
+                "parameter_summary": "RSI-14-30",
+                "promotion_status": "PROMOTED_OFFLINE_CANDIDATE",
+                "rank_score": 8.7,
+                "profit_factor": 1.5,
+                "average_trade_return": 0.025,
+                "actual_trade_count": 11,
+                "max_drawdown": 0.09,
+                "rejection_reasons": [],
+                "signal_count_before_filters": 15,
+                "entry_signal_count": 8,
+                "exit_signal_count": 7,
+                "final_entry_condition_count": 8,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 0,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": False,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+            {
+                "symbol": "035420",
+                "strategy_family": "VOLUME_PULLBACK_LONG",
+                "internal_family": "VOLUME_PULLBACK_LONG",
+                "candidate_id": "035420-VOL-1",
+                "parameter_set_id": "P004",
+                "parameter_summary": "VOL-PB-1",
+                "promotion_status": "PROMOTED_OFFLINE_CANDIDATE",
+                "rank_score": 7.8,
+                "profit_factor": 1.3,
+                "average_trade_return": 0.015,
+                "actual_trade_count": 9,
+                "max_drawdown": 0.13,
+                "rejection_reasons": [],
+                "signal_count_before_filters": 12,
+                "entry_signal_count": 7,
+                "exit_signal_count": 6,
+                "final_entry_condition_count": 6,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 0,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": False,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+            {
+                "symbol": "035720",
+                "strategy_family": "VOLUME_PULLBACK_LONG",
+                "internal_family": "VOLUME_PULLBACK_LONG",
+                "candidate_id": "035720-VOL-1",
+                "parameter_set_id": "P005",
+                "parameter_summary": "VOL-PB-2",
+                "promotion_status": "PROMOTED_OFFLINE_CANDIDATE",
+                "rank_score": 6.2,
+                "profit_factor": 0.9,
+                "average_trade_return": -0.01,
+                "actual_trade_count": 3,
+                "max_drawdown": 0.28,
+                "rejection_reasons": [],
+                "signal_count_before_filters": 5,
+                "entry_signal_count": 2,
+                "exit_signal_count": 2,
+                "final_entry_condition_count": 2,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 1,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": True,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+            {
+                "symbol": "035720",
+                "strategy_family": "MACD_RSI_MOMENTUM",
+                "internal_family": "MACD_RSI_MOMENTUM",
+                "candidate_id": "035720-MACD-REJECT",
+                "parameter_set_id": "P006",
+                "parameter_summary": "FAST-8-17-5",
+                "promotion_status": "REJECTED_OFFLINE_CANDIDATE",
+                "rank_score": 2.0,
+                "profit_factor": 0.8,
+                "average_trade_return": -0.02,
+                "actual_trade_count": 2,
+                "max_drawdown": 0.31,
+                "rejection_reasons": ["NO_TRADES"],
+                "signal_count_before_filters": 3,
+                "entry_signal_count": 0,
+                "exit_signal_count": 0,
+                "final_entry_condition_count": 0,
+                "missing_indicator_columns": [],
+                "same_bar_fill_count": 0,
+                "lookahead_violation_count": 0,
+                "drawdown_warning": True,
+                "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+                "ranking_available": True,
+            },
+        ]
+        ranking_path.write_text(json.dumps({"rows": [row for row in rows if row["symbol"] in batch_symbols]}), encoding="utf-8")
+        state_path.write_text(json.dumps({"requested_symbols": batch_symbols}), encoding="utf-8")
+        return {
+            "status": "COMPLETED",
+            "provider_limit_hit": False,
+            "can_resume": False,
+            "capture_state_path": str(state_path),
+            "capture_state_root": str(tmp_path),
+            "dataset_id": _pipeline.dataset_id,
+            "dataset_symbols": batch_symbols,
+            "completed_symbols": batch_symbols,
+            "full_coverage_symbols": batch_symbols,
+            "partial_symbols": [],
+            "failed_symbols": [],
+            "skipped_symbols": [],
+            "symbol_results": [
+                {
+                    "requested_symbol": symbol,
+                    "cache_coverage_status": "FULL_TRADING_COVERAGE",
+                    "post_backfill_coverage_status": "FULL_TRADING_COVERAGE",
+                    "trading_coverage_ratio": 1.0,
+                }
+                for symbol in batch_symbols
+            ],
+            "reused_from_cache": [],
+            "fetched_now": batch_symbols,
+            "backfilled_symbols": [],
+            "ranking_report_path": str(ranking_path),
+            "manifest_path": "manifest.json",
+            "per_symbol_row_count": {symbol: 10 for symbol in batch_symbols},
+            "per_symbol_date_min": {symbol: "2020-01-02" for symbol in batch_symbols},
+            "per_symbol_date_max": {symbol: "2026-06-26" for symbol in batch_symbols},
+            "per_symbol_coverage_status": {symbol: "FULL_TRADING_COVERAGE" for symbol in batch_symbols},
+            "per_symbol_coverage_basis": {symbol: "TRADING_DAYS" for symbol in batch_symbols},
+            "excluded_symbols": [],
+            "exclusion_reasons": {},
+            "training_input_symbols": batch_symbols,
+            "candidate_count": len(batch_symbols),
+            "promotion_decision_count": len(batch_symbols),
+            "leakage_audit_status": "LEAKAGE_AUDIT_PASSED",
+        }
+
+    monkeypatch.setattr(batch_runner_module, "run_kiwoom_ka10081_capture_and_train", fake_run)
+    result = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
+        fixture,
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "offline"),
+        training_handoff_mode="persisted_manifest",
+        requested_template_ids=[],
+        asset_liquidity_profile="LARGE_CAP",
+        strategy_families=["MACD_RSI", "RSI_OVERSOLD_REBOUND", "VOLUME_LONG_CANDLE_PULLBACK"],
+        search_mode="EXPANDED_SEARCH",
+        walk_forward_mode="ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="CONSERVATIVE_NEXT_BAR_FILL",
+        direction="LONG_ONLY",
+        request_sleep_seconds=0.25,
+        symbol_sleep_seconds=0.5,
+        max_symbols_per_run=0,
+        stop_on_provider_limit=True,
+        resume_from_capture_state=None,
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=None,
+        prefer_full_coverage_training=True,
+        symbols=["005930", "000660", "035420", "035720"],
+        symbols_file=str(symbols_file),
+        batch_size=2,
+        batch_index=1,
+        max_batches=2,
+        resume_all=True,
+        capture_state_root=str(tmp_path / "capture_state"),
+    )
+    promotion_review = json.loads(Path(result["promotion_review_report_path"]).read_text(encoding="utf-8"))
+    portfolio_review = json.loads(Path(result["portfolio_candidate_report_path"]).read_text(encoding="utf-8"))
+    assert promotion_review["promoted_count_by_sector"] == {"INTERNET": 2, "SEMICONDUCTOR": 4}
+    assert promotion_review["candidate_count_by_sector"] == {"INTERNET": 3, "SEMICONDUCTOR": 4}
+    assert promotion_review["symbol_to_sector"]["005930"] == "SEMICONDUCTOR"
+    assert promotion_review["duplicate_promoted_symbol_count"] == 2
+    assert promotion_review["multi_family_promoted_symbols"] == ["005930"]
+    assert promotion_review["duplicate_metric_rows_count"] == 1
+    assert promotion_review["risk_bucket_counts"]["HIGH_RISK_REVIEW"] >= 1
+    assert promotion_review["risk_bucket_counts"]["MEDIUM_RISK_REVIEW"] >= 1
+    assert promotion_review["sector_concentration_warning"]["status"] == "WARNING"
+    assert promotion_review["family_concentration_warning"]["status"] == "OK"
+    assert portfolio_review["max_candidates_per_symbol"] == 1
+    assert portfolio_review["max_candidates_per_sector"] == 3
+    assert portfolio_review["max_candidates_per_family"] == 5
+    assert "005930" in portfolio_review["portfolio_candidate_symbols"]
+    assert portfolio_review["portfolio_candidate_symbols"].count("005930") == 1
+    assert all(item["symbol"] != "035720" for item in portfolio_review["selected_candidates"])
+    excluded_reasons = {item["candidate_id"]: item["exclusion_reason"] for item in portfolio_review["excluded_promoted_candidates"]}
+    assert excluded_reasons["005930-RSI-1"] == "MAX_CANDIDATES_PER_SYMBOL"
+    assert excluded_reasons["000660-RSI-2"] == "MAX_CANDIDATES_PER_SYMBOL"
+    assert excluded_reasons["035720-VOL-1"] == "HIGH_RISK_REVIEW"
+    dumped = json.dumps({"promotion": promotion_review, "portfolio": portfolio_review}, ensure_ascii=False).lower()
+    assert "secretkey" not in dumped
+    assert "authorization" not in dumped
+    assert "\"token\"" not in dumped
 
 
 def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, monkeypatch) -> None:
