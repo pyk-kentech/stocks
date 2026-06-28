@@ -21,6 +21,7 @@ mkdir -p "${LOG_DIR}" "${TOKEN_ROOT}" "${STORE_ROOT}" "${RAW_LAKE_ROOT}" "${TRAI
 : "${KIWOOM_BATCH_INDEX:=1}"
 : "${KIWOOM_MAX_BATCHES:=}"
 : "${KIWOOM_RESUME_STATE:=}"
+: "${KIWOOM_RESUME_ALL:=0}"
 : "${KIWOOM_REQUEST_SLEEP_SECONDS:=0.25}"
 : "${KIWOOM_SYMBOL_SLEEP_SECONDS:=0.50}"
 
@@ -78,6 +79,9 @@ fi
 if [[ -n "${KIWOOM_RESUME_STATE}" ]]; then
   CMD+=(--resume-from-capture-state "${KIWOOM_RESUME_STATE}")
 fi
+if [[ "${KIWOOM_RESUME_ALL}" == "1" ]]; then
+  CMD+=(--resume-all)
+fi
 
 echo "Running:"
 printf ' %q' "${CMD[@]}"
@@ -87,11 +91,15 @@ echo
 
 echo "Output log path: ${OUTPUT_FILE}"
 echo 'Capture state find command:'
-echo 'find local_data -name "kiwoom_capture_state.json" -print'
+echo 'find local_data -name "*watchlist*state*.json" -o -name "kiwoom_capture_state.json"'
 
 if command -v jq >/dev/null 2>&1; then
   STATUS="$(jq -r '.status // ""' "${OUTPUT_FILE}")"
+  WATCHLIST_PROGRESS="$(jq -r '.watchlist_progress_path // ""' "${OUTPUT_FILE}")"
   NEXT_RESUME="$(jq -r '.next_resume_command // ""' "${OUTPUT_FILE}")"
+  if [[ -n "${WATCHLIST_PROGRESS}" && "${WATCHLIST_PROGRESS}" != "null" ]]; then
+    echo "Watchlist progress ledger path: ${WATCHLIST_PROGRESS}"
+  fi
   if [[ -n "${NEXT_RESUME}" && "${NEXT_RESUME}" != "null" ]]; then
     echo "Next resume command:"
     echo "${NEXT_RESUME}"

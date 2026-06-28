@@ -1215,6 +1215,164 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert result["batch_index"] == 1
     assert result["batch_symbols"] == ["005930", "000660"]
     assert "resume-from-capture-state" in result["next_resume_command"]
+    assert Path(result["watchlist_progress_path"]).exists()
+    ledger = json.loads(Path(result["watchlist_progress_path"]).read_text(encoding="utf-8"))
+    assert ledger["pending_symbols"] == ["000660", "035420"]
+    assert ledger["skipped_symbols"] == []
+    assert "resume-all" not in ledger["next_resume_command"]
+
+
+def test_watchlist_resume_all_retries_pending_before_later_batches(tmp_path, monkeypatch) -> None:
+    fixture = _fixture(tmp_path).model_copy(
+        update={
+            "request_specs": _fixture(tmp_path).request_specs
+            + [
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-000660-TEST", "provider_symbol": "000660", "canonical_instrument_id": "000660"}
+                ),
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-035420-TEST", "provider_symbol": "035420", "canonical_instrument_id": "035420"}
+                ),
+                _fixture(tmp_path).request_specs[0].model_copy(
+                    update={"request_id": "KA10081-035720-TEST", "provider_symbol": "035720", "canonical_instrument_id": "035720"}
+                ),
+            ]
+        }
+    )
+    seen_batches: list[list[str]] = []
+
+    def fake_run(_pipeline, **kwargs):
+        del kwargs
+        batch_symbols = [spec.provider_symbol for spec in _pipeline.request_specs]
+        seen_batches.append(batch_symbols)
+        if batch_symbols == ["005930", "000660"]:
+            return {
+                "status": "COMPLETED_WITH_PROVIDER_LIMIT",
+                "provider_limit_hit": True,
+                "can_resume": True,
+                "capture_state_path": str(tmp_path / "batch1-state.json"),
+                "capture_state_root": str(tmp_path),
+                "dataset_id": _pipeline.dataset_id,
+                "dataset_symbols": batch_symbols,
+                "completed_symbols": ["005930"],
+                "full_coverage_symbols": ["005930"],
+                "partial_symbols": [],
+                "failed_symbols": [],
+                "skipped_symbols": ["000660"],
+                "reused_from_cache": [],
+                "fetched_now": ["005930"],
+                "backfilled_symbols": [],
+                "ranking_report_path": str(tmp_path / "batch1-ranking.json"),
+                "manifest_path": "manifest.json",
+                "per_symbol_row_count": {"005930": 10},
+                "per_symbol_date_min": {"005930": "2020-01-02"},
+                "per_symbol_date_max": {"005930": "2026-06-26"},
+                "per_symbol_coverage_status": {"005930": "FULL_TRADING_COVERAGE"},
+                "per_symbol_coverage_basis": {"005930": "TRADING_DAYS"},
+                "excluded_symbols": ["000660"],
+                "exclusion_reasons": {"000660": "SKIPPED_OR_NOT_CAPTURED"},
+            }
+        return {
+            "status": "COMPLETED",
+            "provider_limit_hit": False,
+            "can_resume": False,
+            "capture_state_path": str(tmp_path / "batchx-state.json"),
+            "capture_state_root": str(tmp_path),
+            "dataset_id": _pipeline.dataset_id,
+            "dataset_symbols": batch_symbols,
+            "completed_symbols": batch_symbols,
+            "full_coverage_symbols": batch_symbols,
+            "partial_symbols": [],
+            "failed_symbols": [],
+            "skipped_symbols": [],
+            "reused_from_cache": [],
+            "fetched_now": batch_symbols,
+            "backfilled_symbols": [],
+            "ranking_report_path": str(tmp_path / f"{'-'.join(batch_symbols)}-ranking.json"),
+            "manifest_path": "manifest.json",
+            "per_symbol_row_count": {symbol: 10 for symbol in batch_symbols},
+            "per_symbol_date_min": {symbol: "2020-01-02" for symbol in batch_symbols},
+            "per_symbol_date_max": {symbol: "2026-06-26" for symbol in batch_symbols},
+            "per_symbol_coverage_status": {symbol: "FULL_TRADING_COVERAGE" for symbol in batch_symbols},
+            "per_symbol_coverage_basis": {symbol: "TRADING_DAYS" for symbol in batch_symbols},
+            "excluded_symbols": [],
+            "exclusion_reasons": {},
+        }
+
+    (tmp_path / "batch1-ranking.json").write_text(json.dumps({"rows": []}), encoding="utf-8")
+    (tmp_path / "000660-035420-ranking.json").write_text(json.dumps({"rows": []}), encoding="utf-8")
+    monkeypatch.setattr(batch_runner_module, "run_kiwoom_ka10081_capture_and_train", fake_run)
+
+    first = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
+        fixture,
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "offline"),
+        training_handoff_mode="persisted_manifest",
+        requested_template_ids=[],
+        asset_liquidity_profile="LARGE_CAP",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+        walk_forward_mode="ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="CONSERVATIVE_NEXT_BAR_FILL",
+        direction="LONG_ONLY",
+        request_sleep_seconds=0.25,
+        symbol_sleep_seconds=0.5,
+        max_symbols_per_run=0,
+        stop_on_provider_limit=True,
+        resume_from_capture_state=None,
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=None,
+        prefer_full_coverage_training=True,
+        symbols=["005930", "000660", "035420", "035720"],
+        symbols_file="examples/kiwoom_watchlist_sample.txt",
+        batch_size=2,
+        batch_index=1,
+        max_batches=None,
+        resume_all=False,
+        capture_state_root=str(tmp_path / "capture_state"),
+    )
+    second = batch_runner_module.run_kiwoom_watchlist_capture_and_train(
+        fixture,
+        environment=KiwoomEnvironment.MOCK,
+        token_store_root=str(tmp_path / "oauth_tokens"),
+        training_output_root=str(tmp_path / "offline"),
+        training_handoff_mode="persisted_manifest",
+        requested_template_ids=[],
+        asset_liquidity_profile="LARGE_CAP",
+        strategy_families=["RSI_OVERSOLD_REBOUND"],
+        search_mode="SMOKE_SEARCH",
+        walk_forward_mode="ANCHORED_CHRONOLOGICAL_WALK_FORWARD",
+        promotion_profile="STABILITY_FIRST",
+        fill_policy="CONSERVATIVE_NEXT_BAR_FILL",
+        direction="LONG_ONLY",
+        request_sleep_seconds=0.25,
+        symbol_sleep_seconds=0.5,
+        max_symbols_per_run=0,
+        stop_on_provider_limit=True,
+        resume_from_capture_state=str(tmp_path / "batch1-state.json"),
+        reuse_existing_raw_lake=True,
+        allow_training_on_partial_capture=False,
+        backfill_cache_gaps=True,
+        max_backfill_pages_per_symbol=None,
+        prefer_full_coverage_training=True,
+        symbols=["005930", "000660", "035420", "035720"],
+        symbols_file="examples/kiwoom_watchlist_sample.txt",
+        batch_size=2,
+        batch_index=1,
+        max_batches=None,
+        resume_all=True,
+        capture_state_root=str(tmp_path / "capture_state"),
+    )
+    assert seen_batches[0] == ["005930", "000660"]
+    assert seen_batches[1] == ["000660", "035420"]
+    assert seen_batches[2] == ["035720"]
+    assert second["watchlist_status"] in {"WATCHLIST_PARTIAL_PENDING", "WATCHLIST_COMPLETED"}
+    assert second["resume_all"] is True
+    assert second["next_resume_command"] is None
 
 
 def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp_path, monkeypatch) -> None:
