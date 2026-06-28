@@ -1644,12 +1644,24 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert Path(result["watchlist_ranking_summary_path"]).exists()
     assert Path(result["promotion_review_report_path"]).exists()
     assert Path(result["portfolio_candidate_report_path"]).exists()
+    assert Path(result["training_readiness_gate_report_path"]).exists()
+    assert Path(result["training_dataset_manifest_path"]).exists()
+    assert Path(result["smoke_training_report_path"]).exists()
     promotion_review = json.loads(Path(result["promotion_review_report_path"]).read_text(encoding="utf-8"))
     portfolio_review = json.loads(Path(result["portfolio_candidate_report_path"]).read_text(encoding="utf-8"))
+    training_gate = json.loads(Path(result["training_readiness_gate_report_path"]).read_text(encoding="utf-8"))
+    dataset_manifest = json.loads(Path(result["training_dataset_manifest_path"]).read_text(encoding="utf-8"))
+    smoke_report = json.loads(Path(result["smoke_training_report_path"]).read_text(encoding="utf-8"))
     assert promotion_review["artifact_type"] == "WATCHLIST_PROMOTION_REVIEW"
     assert portfolio_review["artifact_type"] == "WATCHLIST_PORTFOLIO_CANDIDATE_REPORT"
+    assert training_gate["artifact_type"] == "OFFLINE_STRATEGY_TRAINING_READINESS_GATE"
+    assert dataset_manifest["artifact_type"] == "OFFLINE_STRATEGY_TRAINING_DATASET_MANIFEST"
+    assert smoke_report["artifact_type"] == "OFFLINE_STRATEGY_SMOKE_TRAINING_REPORT"
     assert result["portfolio_candidate_count"] == portfolio_review["portfolio_candidate_count"]
     assert result["portfolio_candidate_symbols"] == portfolio_review["portfolio_candidate_symbols"]
+    assert result["training_readiness_status"] == training_gate["training_readiness_status"]
+    assert result["dataset_candidate_row_count"] == dataset_manifest["row_count"]
+    assert result["smoke_training_status"] == smoke_report["smoke_training_status"]
     assert Path(result["offline_strategy_artifact_manifest_path"]).exists()
     assert result["offline_strategy_output_root"] != str(tmp_path / "offline")
     assert "estimated_tr_requests_remaining" in result
@@ -1959,6 +1971,29 @@ def test_watchlist_review_reports_include_sector_duplicate_risk_and_portfolio_ca
     assert promotion_review["risk_bucket_counts"]["MEDIUM_RISK_REVIEW"] >= 1
     assert promotion_review["sector_concentration_warning"]["status"] == "WARNING"
     assert promotion_review["family_concentration_warning"]["status"] == "OK"
+    training_gate = json.loads(Path(result["training_readiness_gate_report_path"]).read_text(encoding="utf-8"))
+    dataset_manifest = json.loads(Path(result["training_dataset_manifest_path"]).read_text(encoding="utf-8"))
+    smoke_report = json.loads(Path(result["smoke_training_report_path"]).read_text(encoding="utf-8"))
+    summary_payload = json.loads(Path(result["watchlist_ranking_summary_path"]).read_text(encoding="utf-8"))
+    assert training_gate["smoke_training_allowed"] is True
+    assert training_gate["baseline_training_allowed"] is True
+    assert training_gate["real_model_training_allowed"] is False
+    assert training_gate["training_readiness_status"] == "READY_FOR_SMOKE_AND_BASELINE_ONLY"
+    assert "MOCK_ONLY_VERIFICATION" in training_gate["blocking_reasons"]
+    assert "WALK_FORWARD_SPLIT_NOT_PROVEN" in training_gate["blocking_reasons"]
+    assert dataset_manifest["label_mode"] == "PROXY_LABEL_ONLY"
+    assert dataset_manifest["label_name"] == "candidate_quality_proxy_label"
+    assert dataset_manifest["label_distribution"] == {"0": 1, "1": 3, "2": 3}
+    assert len(dataset_manifest["candidate_rows_preview"]) <= 10
+    assert smoke_report["baseline_status"] == "COMPLETED"
+    assert smoke_report["smoke_model_status"] == "COMPLETED"
+    assert smoke_report["split_policy"] == "SMOKE_DETERMINISTIC_SPLIT_ONLY"
+    assert "RANDOM_SEEDED_BASELINE" in smoke_report["baseline_results"]
+    assert "RULE_BASED_DIVERSIFIED_PORTFOLIO_BASELINE" in smoke_report["baseline_results"]
+    assert summary_payload["training_readiness_gate_report_path"] == result["training_readiness_gate_report_path"]
+    assert summary_payload["training_dataset_manifest_path"] == result["training_dataset_manifest_path"]
+    assert summary_payload["smoke_training_report_path"] == result["smoke_training_report_path"]
+    assert summary_payload["training_readiness_status"] == "READY_FOR_SMOKE_AND_BASELINE_ONLY"
     assert portfolio_review["max_candidates_per_symbol"] == 1
     assert portfolio_review["max_candidates_per_sector"] == 3
     assert portfolio_review["max_candidates_per_family"] == 5
@@ -1969,7 +2004,17 @@ def test_watchlist_review_reports_include_sector_duplicate_risk_and_portfolio_ca
     assert excluded_reasons["005930-RSI-1"] == "MAX_CANDIDATES_PER_SYMBOL"
     assert excluded_reasons["000660-RSI-2"] == "MAX_CANDIDATES_PER_SYMBOL"
     assert excluded_reasons["035720-VOL-1"] == "HIGH_RISK_REVIEW"
-    dumped = json.dumps({"promotion": promotion_review, "portfolio": portfolio_review}, ensure_ascii=False).lower()
+    dumped = json.dumps(
+        {
+            "promotion": promotion_review,
+            "portfolio": portfolio_review,
+            "training_gate": training_gate,
+            "dataset_manifest": dataset_manifest,
+            "smoke_report": smoke_report,
+            "summary": summary_payload,
+        },
+        ensure_ascii=False,
+    ).lower()
     assert "secretkey" not in dumped
     assert "authorization" not in dumped
     assert "\"token\"" not in dumped

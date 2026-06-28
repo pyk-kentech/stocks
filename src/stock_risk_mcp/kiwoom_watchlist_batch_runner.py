@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 from collections import Counter
@@ -623,6 +624,459 @@ def _dominant_group_warning(
             else f"{group_label} concentration within threshold"
         ),
     }
+
+
+def _stable_hash_int(*parts: object) -> int:
+    joined = "|".join(str(part) for part in parts)
+    return int(hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16], 16)
+
+
+def _update_watchlist_summary_payload(
+    summary_path: str | None,
+    updates: dict[str, object],
+) -> dict[str, object]:
+    payload = _load_json_if_exists(summary_path) or {}
+    payload.update(updates)
+    if summary_path:
+        Path(summary_path).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return payload
+
+
+def _build_training_dataset_rows(
+    *,
+    ranking_rows: list[dict[str, object]],
+    promotion_review_payload: dict[str, object],
+    portfolio_candidate_payload: dict[str, object],
+    metadata_by_symbol: dict[str, dict[str, object]],
+) -> tuple[list[dict[str, object]], dict[str, int]]:
+    selected_candidate_ids = {
+        str(item.get("candidate_id") or "")
+        for item in portfolio_candidate_payload.get("selected_candidates", [])
+        if str(item.get("candidate_id") or "")
+    }
+    risk_bucket_by_candidate = dict(promotion_review_payload.get("risk_bucket_by_candidate", {}))
+    rows: list[dict[str, object]] = []
+    label_distribution: dict[str, int] = {}
+    for row in ranking_rows:
+        symbol = str(row.get("symbol") or "")
+        candidate_id = str(row.get("candidate_id") or "")
+        sector = _sector_for_symbol(symbol, metadata_by_symbol)
+        risk_bucket = str(risk_bucket_by_candidate.get(candidate_id) or "UNKNOWN")
+        risk_bucket_order = {"LOW_RISK_REVIEW": 0, "MEDIUM_RISK_REVIEW": 1, "HIGH_RISK_REVIEW": 2}.get(risk_bucket, 9)
+        promoted = str(row.get("promotion_status") or "") == "PROMOTED_OFFLINE_CANDIDATE"
+        portfolio_selected = candidate_id in selected_candidate_ids
+        if portfolio_selected and risk_bucket in {"LOW_RISK_REVIEW", "MEDIUM_RISK_REVIEW"}:
+            proxy_label = 2
+        elif promoted:
+            proxy_label = 1
+        else:
+            proxy_label = 0
+        label_distribution[str(proxy_label)] = label_distribution.get(str(proxy_label), 0) + 1
+        safe_row = {
+            "row_id": hashlib.sha256(
+                json.dumps(
+                    {
+                        "symbol": symbol,
+                        "candidate_id": candidate_id,
+                        "parameter_hash": row.get("parameter_set_id"),
+                    },
+                    sort_keys=True,
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest(),
+            "symbol": symbol,
+            "sector": sector,
+            "family": row.get("strategy_family"),
+            "candidate_id": candidate_id,
+            "strategy_id": row.get("internal_family"),
+            "parameter_hash": row.get("parameter_set_id"),
+            "promotion_status": row.get("promotion_status"),
+            "portfolio_selected_status": "SELECTED" if portfolio_selected else "NOT_SELECTED",
+            "risk_bucket": risk_bucket,
+            "risk_bucket_order": risk_bucket_order,
+            "max_drawdown": row.get("max_drawdown"),
+            "profit_factor": row.get("profit_factor"),
+            "average_trade_return": row.get("average_trade_return"),
+            "trade_count": row.get("actual_trade_count"),
+            "same_bar_fill_count": row.get("same_bar_fill_count"),
+            "lookahead_violation_count": row.get("lookahead_violation_count"),
+            "drawdown_sanity_warning_count": 1 if row.get("drawdown_warning") else 0,
+            "leakage_audit_clean_flag": str(row.get("leakage_audit_status") or "") == "LEAKAGE_AUDIT_PASSED",
+            "candidate_quality_proxy_label": proxy_label,
+        }
+        rows.append(safe_row)
+    return rows, dict(sorted(label_distribution.items()))
+
+
+def _compute_proxy_metrics(
+    dataset_rows: list[dict[str, object]],
+    sorted_rows: list[dict[str, object]],
+    *,
+    top_k: int,
+) -> dict[str, object]:
+    if not dataset_rows:
+        return {
+            "top_k": top_k,
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "average_proxy_label_top_k": 0.0,
+            "selected_top_k_overlap": 0,
+        }
+    positive_ids = {row["row_id"] for row in dataset_rows if int(row.get("candidate_quality_proxy_label") or 0) > 0}
+    ideal_top_ids = [
+        row["row_id"]
+        for row in sorted(
+            dataset_rows,
+            key=lambda item: (
+                -int(item.get("candidate_quality_proxy_label") or 0),
+                -float(item.get("profit_factor") or 0.0),
+                float(item.get("max_drawdown") or 999.0),
+                str(item.get("row_id") or ""),
+            ),
+        )[:top_k]
+    ]
+    selected_top = sorted_rows[:top_k]
+    selected_ids = [row["row_id"] for row in selected_top]
+    selected_positive = sum(1 for row in selected_top if int(row.get("candidate_quality_proxy_label") or 0) > 0)
+    precision = round(selected_positive / max(min(top_k, len(selected_top)), 1), 6)
+    recall = round(selected_positive / max(len(positive_ids), 1), 6)
+    avg_label = round(sum(int(row.get("candidate_quality_proxy_label") or 0) for row in selected_top) / max(len(selected_top), 1), 6)
+    overlap = len(set(selected_ids) & set(ideal_top_ids))
+    return {
+        "top_k": top_k,
+        "precision_at_k": precision,
+        "recall_at_k": recall,
+        "average_proxy_label_top_k": avg_label,
+        "selected_top_k_overlap": overlap,
+    }
+
+
+def _score_rows_for_baseline(dataset_rows: list[dict[str, object]], baseline_name: str) -> tuple[str, list[dict[str, object]], str | None]:
+    enriched: list[dict[str, object]] = []
+    for row in dataset_rows:
+        score: float | None
+        if baseline_name == "RANDOM_SEEDED_BASELINE":
+            score = (_stable_hash_int(row.get("symbol"), row.get("candidate_id"), "seeded") % 1_000_000) / 1_000_000.0
+        elif baseline_name == "PROMOTION_STATUS_BASELINE":
+            score = 1.0 if str(row.get("promotion_status") or "") == "PROMOTED_OFFLINE_CANDIDATE" else 0.0
+        elif baseline_name == "LOW_DRAWDOWN_SORT_BASELINE":
+            drawdown = _review_safe_number(row.get("max_drawdown"))
+            score = -abs(drawdown) if drawdown is not None else None
+        elif baseline_name == "PROFIT_FACTOR_SORT_BASELINE":
+            score = _review_safe_number(row.get("profit_factor"))
+        elif baseline_name == "AVERAGE_TRADE_RETURN_SORT_BASELINE":
+            score = _review_safe_number(row.get("average_trade_return"))
+        elif baseline_name == "RULE_BASED_DIVERSIFIED_PORTFOLIO_BASELINE":
+            pf = _review_safe_number(row.get("profit_factor")) or 0.0
+            avg_ret = _review_safe_number(row.get("average_trade_return")) or 0.0
+            drawdown = abs(_review_safe_number(row.get("max_drawdown")) or 0.0)
+            risk_penalty = float(int(row.get("risk_bucket_order") or 0)) * 0.5
+            promotion_bonus = 1.0 if str(row.get("promotion_status") or "") == "PROMOTED_OFFLINE_CANDIDATE" else 0.0
+            portfolio_bonus = 1.0 if str(row.get("portfolio_selected_status") or "") == "SELECTED" else 0.0
+            score = pf + avg_ret * 10.0 + promotion_bonus + portfolio_bonus - drawdown * 10.0 - risk_penalty
+        else:
+            return "SKIPPED_UNKNOWN_BASELINE", [], "UNKNOWN_BASELINE"
+        if score is None:
+            return "SKIPPED_MISSING_FIELD", [], "MISSING_REQUIRED_FIELD"
+        enriched.append({**row, "_score": score})
+    ordered = sorted(enriched, key=lambda item: (-float(item["_score"]), str(item.get("row_id") or "")))
+    return "COMPLETED", ordered, None
+
+
+def _build_smoke_model_scores(
+    train_rows: list[dict[str, object]],
+    all_rows: list[dict[str, object]],
+) -> tuple[str, list[dict[str, object]], dict[str, object]]:
+    positive_train = [row for row in train_rows if int(row.get("candidate_quality_proxy_label") or 0) > 0]
+    negative_train = [row for row in train_rows if int(row.get("candidate_quality_proxy_label") or 0) == 0]
+    if not positive_train or not negative_train:
+        return "SKIPPED_INSUFFICIENT_CLASS_COVERAGE", [], {"positive_train_rows": len(positive_train), "negative_train_rows": len(negative_train)}
+    positive_pf = sorted((_review_safe_number(row.get("profit_factor")) or 0.0) for row in positive_train)
+    positive_drawdown = sorted(abs(_review_safe_number(row.get("max_drawdown")) or 0.0) for row in positive_train)
+    positive_trade_count = sorted(_review_safe_int(row.get("trade_count")) for row in positive_train)
+    mid = len(positive_pf) // 2
+    threshold_pf = positive_pf[mid]
+    threshold_drawdown = positive_drawdown[mid]
+    threshold_trade_count = positive_trade_count[mid]
+    scored: list[dict[str, object]] = []
+    for row in all_rows:
+        pf = _review_safe_number(row.get("profit_factor")) or 0.0
+        avg_ret = _review_safe_number(row.get("average_trade_return")) or 0.0
+        drawdown = abs(_review_safe_number(row.get("max_drawdown")) or 0.0)
+        trade_count = _review_safe_int(row.get("trade_count"))
+        score = 0.0
+        score += 1.0 if pf >= threshold_pf else -0.5
+        score += 1.0 if drawdown <= threshold_drawdown else -0.5
+        score += 0.5 if trade_count >= threshold_trade_count else -0.25
+        score += avg_ret * 10.0
+        score -= float(_review_safe_int(row.get("lookahead_violation_count"))) * 5.0
+        score -= float(_review_safe_int(row.get("same_bar_fill_count"))) * 2.0
+        scored.append({**row, "_score": score})
+    scored.sort(key=lambda item: (-float(item["_score"]), str(item.get("row_id") or "")))
+    return "COMPLETED", scored, {
+        "profit_factor_threshold": threshold_pf,
+        "max_drawdown_threshold": threshold_drawdown,
+        "trade_count_threshold": threshold_trade_count,
+    }
+
+
+def _write_watchlist_training_reports(
+    *,
+    aggregate_run_root: str,
+    watchlist_dataset_id: str,
+    offline_strategy_run_id: str,
+    data_source_mode: str,
+    ranking_report_path: str | None,
+    ranking_summary_path: str | None,
+    promotion_review_report_path: str | None,
+    portfolio_candidate_report_path: str | None,
+    full_coverage_symbol_count: int,
+    provider_limit_hit: bool,
+    symbols_file: str | None,
+) -> tuple[str | None, str | None, str | None, dict[str, object], dict[str, object], dict[str, object]]:
+    if not ranking_report_path or not Path(ranking_report_path).exists():
+        return None, None, None, {}, {}, {}
+    ranking_payload = _load_json_if_exists(ranking_report_path) or {}
+    ranking_summary_payload = _load_json_if_exists(ranking_summary_path) or {}
+    promotion_review_payload = _load_json_if_exists(promotion_review_report_path) or {}
+    portfolio_candidate_payload = _load_json_if_exists(portfolio_candidate_report_path) or {}
+    metadata_by_symbol = _watchlist_symbol_metadata(symbols_file)
+    ranking_rows = list(ranking_payload.get("rows", []))
+    dataset_rows, label_distribution = _build_training_dataset_rows(
+        ranking_rows=ranking_rows,
+        promotion_review_payload=promotion_review_payload,
+        portfolio_candidate_payload=portfolio_candidate_payload,
+        metadata_by_symbol=metadata_by_symbol,
+    )
+    leakage_status_value = ranking_summary_payload.get("leakage_audit_status")
+    leakage_gate_status = "INCOMPLETE_AUDIT_METADATA"
+    smoke_training_allowed = True
+    if leakage_status_value is not None:
+        leakage_failed = str(leakage_status_value or "") != "LEAKAGE_AUDIT_PASSED"
+        lookahead_count = _review_safe_int(ranking_summary_payload.get("lookahead_violation_count"))
+        same_bar_count = _review_safe_int(ranking_summary_payload.get("same_bar_fill_count"))
+        if leakage_failed or lookahead_count > 0:
+            leakage_gate_status = "BLOCKS_SMOKE_TRAINING"
+            smoke_training_allowed = False
+        else:
+            leakage_gate_status = "LEAKAGE_AUDIT_PASSED"
+    family_warning = dict(promotion_review_payload.get("family_concentration_warning", {}))
+    sector_warning = dict(promotion_review_payload.get("sector_concentration_warning", {}))
+    blocking_reasons = [
+        "MOCK_ONLY_VERIFICATION" if data_source_mode == "MOCK_ONLY" else None,
+        "REAL_KIWOOM_DATA_NOT_VERIFIED" if data_source_mode == "MOCK_ONLY" else None,
+        "PROXY_LABEL_ONLY",
+        "WALK_FORWARD_SPLIT_NOT_PROVEN",
+        "PROMOTED_FAMILY_CONCENTRATION_100_PERCENT" if float(family_warning.get("dominant_group_ratio") or 0.0) >= 1.0 else None,
+        "INSUFFICIENT_SYMBOL_SCALE_FOR_REAL_MODEL_TRAINING" if full_coverage_symbol_count < 50 else None,
+    ]
+    family_diversity_gate_status = "OK"
+    if float(family_warning.get("dominant_group_ratio") or 0.0) > 0.9:
+        family_diversity_gate_status = "BLOCKS_REAL_MODEL_TRAINING"
+    sector_diversity_gate_status = "OK"
+    if str(sector_warning.get("status") or "") == "WARNING":
+        sector_diversity_gate_status = "BLOCKS_REAL_MODEL_TRAINING"
+    real_model_training_allowed = False
+    baseline_training_allowed = bool(dataset_rows)
+    gate_payload = {
+        "schema_version": "v15.4.0",
+        "artifact_type": "OFFLINE_STRATEGY_TRAINING_READINESS_GATE",
+        "review_status": "TRAINING_READINESS_REVIEW",
+        "offline_strategy_run_id": offline_strategy_run_id,
+        "watchlist_dataset_id": watchlist_dataset_id,
+        "run_root": aggregate_run_root,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source_ranking_report_path": ranking_report_path,
+        "source_promotion_review_report_path": promotion_review_report_path,
+        "source_portfolio_candidate_report_path": portfolio_candidate_report_path,
+        "data_source_mode": data_source_mode,
+        "candidate_row_count": len(ranking_rows),
+        "promoted_candidate_count": int(promotion_review_payload.get("promoted_candidate_count", 0)),
+        "portfolio_candidate_count": int(portfolio_candidate_payload.get("portfolio_candidate_count", 0)),
+        "full_coverage_symbol_count": full_coverage_symbol_count,
+        "provider_limit_hit": bool(provider_limit_hit),
+        "leakage_gate_status": leakage_gate_status,
+        "split_gate_status": "SMOKE_SPLIT_ONLY",
+        "label_gate_status": "PROXY_LABEL_ONLY",
+        "family_diversity_gate_status": family_diversity_gate_status,
+        "sector_diversity_gate_status": sector_diversity_gate_status,
+        "smoke_training_allowed": smoke_training_allowed and baseline_training_allowed,
+        "baseline_training_allowed": baseline_training_allowed,
+        "real_model_training_allowed": real_model_training_allowed,
+        "training_readiness_status": "READY_FOR_SMOKE_AND_BASELINE_ONLY" if baseline_training_allowed else "MODEL_TRAINING_BLOCKED",
+        "blocking_reasons": [reason for reason in blocking_reasons if reason],
+        "warnings": [
+            "PROXY_LABEL_ONLY_NOT_FOR_REAL_MODEL_TRAINING",
+            "MOCK_ONLY_VERIFICATION" if data_source_mode == "MOCK_ONLY" else None,
+            "NOT_TRADE_READY",
+            "PROVIDER_LIMIT_HIT_DURING_CAPTURE" if provider_limit_hit else None,
+            "SAME_BAR_FILL_REVIEW_REQUIRED" if _review_safe_int(ranking_summary_payload.get("same_bar_fill_count")) > 0 else None,
+        ],
+        "safety_redaction_status": "PASSED",
+    }
+    gate_payload["warnings"] = [item for item in gate_payload["warnings"] if item]
+    dataset_manifest_payload = {
+        "schema_version": "v15.4.0",
+        "artifact_type": "OFFLINE_STRATEGY_TRAINING_DATASET_MANIFEST",
+        "review_status": "SMOKE_ONLY",
+        "offline_strategy_run_id": offline_strategy_run_id,
+        "watchlist_dataset_id": watchlist_dataset_id,
+        "run_root": aggregate_run_root,
+        "generated_at": gate_payload["generated_at"],
+        "source_ranking_report_path": ranking_report_path,
+        "source_promotion_review_report_path": promotion_review_report_path,
+        "source_portfolio_candidate_report_path": portfolio_candidate_report_path,
+        "dataset_status": "SMOKE_ONLY",
+        "row_count": len(dataset_rows),
+        "symbol_count": len({str(row.get("symbol") or "") for row in dataset_rows if str(row.get("symbol") or "")}),
+        "sector_count": len({str(row.get("sector") or "") for row in dataset_rows if str(row.get("sector") or "")}),
+        "family_count": len({str(row.get("family") or "") for row in dataset_rows if str(row.get("family") or "")}),
+        "label_mode": "PROXY_LABEL_ONLY",
+        "label_name": "candidate_quality_proxy_label",
+        "label_distribution": label_distribution,
+        "feature_columns": [
+            "sector",
+            "family",
+            "promotion_status",
+            "portfolio_selected_status",
+            "risk_bucket_order",
+            "max_drawdown",
+            "profit_factor",
+            "average_trade_return",
+            "trade_count",
+            "same_bar_fill_count",
+            "lookahead_violation_count",
+            "drawdown_sanity_warning_count",
+            "leakage_audit_clean_flag",
+        ],
+        "excluded_columns": [
+            "row_id",
+            "symbol",
+            "candidate_id",
+            "strategy_id",
+            "parameter_hash",
+            "candidate_quality_proxy_label",
+        ],
+        "row_schema": {
+            key: type(value).__name__
+            for key, value in (dataset_rows[0] if dataset_rows else {}).items()
+        },
+        "candidate_rows_preview": dataset_rows[:10],
+        "candidate_row_hashes_preview": [row["row_id"] for row in dataset_rows[:10]],
+        "dataset_limitations": [
+            "PROXY_LABEL_ONLY_NOT_FOR_REAL_MODEL_TRAINING",
+            "SMOKE_SPLIT_ONLY",
+            "MOCK_ONLY_VERIFICATION" if data_source_mode == "MOCK_ONLY" else "READONLY_CAPTURE_ONLY",
+            "NOT_A_REAL_RETURN_MODEL",
+        ],
+        "safety_redaction_status": "PASSED",
+        "warnings": gate_payload["warnings"],
+    }
+    split_buckets = {"train": [], "validation": [], "test": []}
+    for row in dataset_rows:
+        bucket_code = _stable_hash_int(row.get("symbol"), row.get("candidate_id"), "smoke-split") % 10
+        if bucket_code < 6:
+            split_buckets["train"].append(row)
+        elif bucket_code < 8:
+            split_buckets["validation"].append(row)
+        else:
+            split_buckets["test"].append(row)
+    top_k = max(1, min(int(portfolio_candidate_payload.get("portfolio_candidate_count", 10) or 10), len(dataset_rows) or 1))
+    baseline_results: dict[str, object] = {}
+    for baseline_name in [
+        "RANDOM_SEEDED_BASELINE",
+        "PROMOTION_STATUS_BASELINE",
+        "LOW_DRAWDOWN_SORT_BASELINE",
+        "PROFIT_FACTOR_SORT_BASELINE",
+        "AVERAGE_TRADE_RETURN_SORT_BASELINE",
+        "RULE_BASED_DIVERSIFIED_PORTFOLIO_BASELINE",
+    ]:
+        status, ordered_rows, skip_reason = _score_rows_for_baseline(dataset_rows, baseline_name)
+        baseline_results[baseline_name] = {
+            "status": status,
+            "skip_reason": skip_reason,
+            "metrics": _compute_proxy_metrics(dataset_rows, ordered_rows, top_k=top_k) if status == "COMPLETED" else None,
+        }
+    smoke_model_status = "BLOCKED_BY_TRAINING_READINESS_GATE"
+    smoke_model_type = "DETERMINISTIC_RULE_SCORECARD"
+    smoke_model_metrics: dict[str, object] | None = None
+    smoke_model_details: dict[str, object] = {}
+    if gate_payload["smoke_training_allowed"]:
+        smoke_model_status, scored_rows, smoke_model_details = _build_smoke_model_scores(split_buckets["train"], dataset_rows)
+        smoke_model_metrics = _compute_proxy_metrics(dataset_rows, scored_rows, top_k=top_k) if smoke_model_status == "COMPLETED" else None
+    smoke_report_payload = {
+        "schema_version": "v15.4.0",
+        "artifact_type": "OFFLINE_STRATEGY_SMOKE_TRAINING_REPORT",
+        "review_status": "SMOKE_ONLY",
+        "offline_strategy_run_id": offline_strategy_run_id,
+        "watchlist_dataset_id": watchlist_dataset_id,
+        "run_root": aggregate_run_root,
+        "generated_at": gate_payload["generated_at"],
+        "source_training_readiness_gate_path": None,
+        "source_training_dataset_manifest_path": None,
+        "smoke_training_status": "COMPLETED" if smoke_model_status == "COMPLETED" else smoke_model_status,
+        "baseline_status": "COMPLETED" if baseline_results else "SKIPPED_NO_DATA",
+        "baseline_results": baseline_results,
+        "smoke_model_status": smoke_model_status,
+        "smoke_model_type": smoke_model_type,
+        "split_policy": "SMOKE_DETERMINISTIC_SPLIT_ONLY",
+        "train_row_count": len(split_buckets["train"]),
+        "validation_row_count": len(split_buckets["validation"]),
+        "test_row_count": len(split_buckets["test"]),
+        "label_distribution": label_distribution,
+        "metrics": {
+            "smoke_model": smoke_model_metrics,
+            "smoke_model_details": smoke_model_details,
+        },
+        "metric_limitations": [
+            "PROXY_LABEL_ONLY",
+            "MOCK_ONLY_VERIFICATION" if data_source_mode == "MOCK_ONLY" else "READONLY_CAPTURE_ONLY",
+            "NOT_A_REAL_RETURN_MODEL",
+            "NOT_FOR_LIVE_TRADING",
+            "WALK_FORWARD_SPLIT_NOT_PROVEN",
+        ],
+        "real_model_training_allowed": False,
+        "warnings": gate_payload["warnings"],
+        "safety_redaction_status": "PASSED",
+    }
+    output_root = Path(aggregate_run_root) / "reports"
+    gate_path = output_root / "offline_strategy_training_readiness_gate.json"
+    manifest_path = output_root / "offline_strategy_training_dataset_manifest.json"
+    smoke_path = output_root / "offline_strategy_smoke_training_report.json"
+    gate_path.write_text(json.dumps(gate_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    dataset_manifest_payload["source_training_readiness_gate_path"] = str(gate_path)
+    manifest_path.write_text(json.dumps(dataset_manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    smoke_report_payload["source_training_readiness_gate_path"] = str(gate_path)
+    smoke_report_payload["source_training_dataset_manifest_path"] = str(manifest_path)
+    smoke_path.write_text(json.dumps(smoke_report_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    dumped = json.dumps(
+        {"gate": gate_payload, "dataset": dataset_manifest_payload, "smoke": smoke_report_payload},
+        ensure_ascii=False,
+    )
+    if _contains_secret_marker(dumped):
+        gate_payload["safety_redaction_status"] = "FAILED"
+        dataset_manifest_payload["safety_redaction_status"] = "FAILED"
+        smoke_report_payload["safety_redaction_status"] = "FAILED"
+        gate_path.write_text(json.dumps(gate_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        manifest_path.write_text(json.dumps(dataset_manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        smoke_path.write_text(json.dumps(smoke_report_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    summary_updates = {
+        "training_readiness_gate_report_path": str(gate_path),
+        "training_dataset_manifest_path": str(manifest_path),
+        "smoke_training_report_path": str(smoke_path),
+        "training_readiness_status": gate_payload["training_readiness_status"],
+        "smoke_training_allowed": gate_payload["smoke_training_allowed"],
+        "baseline_training_allowed": gate_payload["baseline_training_allowed"],
+        "real_model_training_allowed": gate_payload["real_model_training_allowed"],
+        "training_blocking_reasons": gate_payload["blocking_reasons"],
+        "dataset_candidate_row_count": dataset_manifest_payload["row_count"],
+        "dataset_label_mode": dataset_manifest_payload["label_mode"],
+        "smoke_training_status": smoke_report_payload["smoke_training_status"],
+        "baseline_status": smoke_report_payload["baseline_status"],
+        "smoke_model_status": smoke_report_payload["smoke_model_status"],
+    }
+    _update_watchlist_summary_payload(ranking_summary_path, summary_updates)
+    return str(gate_path), str(manifest_path), str(smoke_path), gate_payload, dataset_manifest_payload, smoke_report_payload
 
 
 def _write_watchlist_review_reports(
@@ -1337,6 +1791,20 @@ def run_kiwoom_watchlist_capture_and_train(
         ranking_summary_path=aggregate_ranking_summary_path,
         requested_symbols=symbols,
     )
+    training_readiness_gate_report_path, training_dataset_manifest_path, smoke_training_report_path, training_gate_payload, training_dataset_payload, smoke_training_payload = _write_watchlist_training_reports(
+        aggregate_run_root=str(run_context["offline_strategy_run_root"]),
+        watchlist_dataset_id=watchlist_dataset_id,
+        offline_strategy_run_id=run_context["offline_strategy_run_id"],
+        data_source_mode="MOCK_ONLY" if environment == KiwoomEnvironment.MOCK else "READONLY_REAL_CAPTURE",
+        ranking_report_path=aggregate_ranking_report_path,
+        ranking_summary_path=aggregate_ranking_summary_path,
+        promotion_review_report_path=promotion_review_report_path,
+        portfolio_candidate_report_path=portfolio_candidate_report_path,
+        full_coverage_symbol_count=len(full),
+        provider_limit_hit=any(bool(result.get("provider_limit_hit")) for result in batch_results),
+        symbols_file=symbols_file,
+    )
+    ranking_summary_payload = _load_json_if_exists(aggregate_ranking_summary_path)
     rate_budget_estimate = _rate_budget_estimate(
         batch_results=batch_results,
         pending_symbols=pending,
@@ -1370,6 +1838,9 @@ def run_kiwoom_watchlist_capture_and_train(
             "watchlist_ranking_summary_path": aggregate_ranking_summary_path,
             "promotion_review_report_path": promotion_review_report_path,
             "portfolio_candidate_report_path": portfolio_candidate_report_path,
+            "training_readiness_gate_report_path": training_readiness_gate_report_path,
+            "training_dataset_manifest_path": training_dataset_manifest_path,
+            "smoke_training_report_path": smoke_training_report_path,
         },
     }
     artifact_manifest_path.write_text(json.dumps(artifact_manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1428,6 +1899,9 @@ def run_kiwoom_watchlist_capture_and_train(
             "watchlist_ranking_summary_path": aggregate_ranking_summary_path,
             "promotion_review_report_path": promotion_review_report_path,
             "portfolio_candidate_report_path": portfolio_candidate_report_path,
+            "training_readiness_gate_report_path": training_readiness_gate_report_path,
+            "training_dataset_manifest_path": training_dataset_manifest_path,
+            "smoke_training_report_path": smoke_training_report_path,
             "created_at": run_context["created_at"],
             "dataset_id": watchlist_dataset_id,
             "search_mode": search_mode_value,
@@ -1461,6 +1935,19 @@ def run_kiwoom_watchlist_capture_and_train(
     final["risk_bucket_counts"] = dict((promotion_review_payload or {}).get("risk_bucket_counts", {}))
     final["sector_concentration_warning"] = (promotion_review_payload or {}).get("sector_concentration_warning")
     final["family_concentration_warning"] = (promotion_review_payload or {}).get("family_concentration_warning")
+    final["training_readiness_gate_report_path"] = training_readiness_gate_report_path
+    final["training_dataset_manifest_path"] = training_dataset_manifest_path
+    final["smoke_training_report_path"] = smoke_training_report_path
+    final["training_readiness_status"] = training_gate_payload.get("training_readiness_status")
+    final["smoke_training_allowed"] = bool(training_gate_payload.get("smoke_training_allowed"))
+    final["baseline_training_allowed"] = bool(training_gate_payload.get("baseline_training_allowed"))
+    final["real_model_training_allowed"] = bool(training_gate_payload.get("real_model_training_allowed"))
+    final["training_blocking_reasons"] = list(training_gate_payload.get("blocking_reasons", []))
+    final["dataset_candidate_row_count"] = int(training_dataset_payload.get("row_count", 0))
+    final["dataset_label_mode"] = training_dataset_payload.get("label_mode")
+    final["smoke_training_status"] = smoke_training_payload.get("smoke_training_status")
+    final["baseline_status"] = smoke_training_payload.get("baseline_status")
+    final["smoke_model_status"] = smoke_training_payload.get("smoke_model_status")
     final["rate_limit_profile"] = rate_limit_profile or final.get("tr_rate_limit_profile")
     final.update(rate_budget_estimate)
     _write_watchlist_progress(progress_path, watchlist_progress)
