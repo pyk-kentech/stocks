@@ -2,6 +2,8 @@ from pathlib import Path
 import json
 from datetime import datetime
 
+import pytest
+
 from stock_risk_mcp.cli import _build_historical_market_data_real_capture_input, build_command_parser
 from stock_risk_mcp.historical_market_data_capture_runner import run_historical_market_data_real_capture
 from stock_risk_mcp import historical_market_data_capture_runner as capture_runner_module
@@ -10,6 +12,7 @@ from stock_risk_mcp import kiwoom_capture_and_train_runner as wrapper_module
 from stock_risk_mcp import kiwoom_watchlist_batch_runner as batch_runner_module
 from stock_risk_mcp.historical_market_data_models import HistoricalChartRawResponse, HistoricalMarketDataPipelineInput, HistoricalMarketDataTransportKind
 from stock_risk_mcp.historical_market_data_transport import MockHistoricalMarketDataTransport, RealKiwoomChartTransport
+from stock_risk_mcp.kiwoom_tr_rate_limiter import KiwoomTrRateLimiter, resolve_kiwoom_tr_rate_limit_config
 from stock_risk_mcp.kiwoom_oauth_models import KiwoomEnvironment, KiwoomOAuthStatus, KiwoomOAuthTokenIssueResponse, KiwoomOAuthTokenRef
 
 
@@ -188,6 +191,85 @@ def _cached_raw_lake_file(
     )
     raw_path.write_text(response.model_dump_json(indent=2), encoding="utf-8")
     return raw_path
+
+
+def test_kiwoom_tr_rate_limiter_enforces_min_interval_and_persists_ledger(tmp_path) -> None:
+    current_time = [100.0]
+    sleeps: list[float] = []
+
+    def now_fn() -> float:
+        return current_time[0]
+
+    def sleep_fn(seconds: float) -> None:
+        sleeps.append(seconds)
+        current_time[0] += seconds
+
+    config = resolve_kiwoom_tr_rate_limit_config(
+        profile_name="CONSERVATIVE",
+        ledger_path=str(tmp_path / "local_data" / "kiwoom_rate_limit" / "ledger.json"),
+        min_request_interval_seconds=4.0,
+    )
+    limiter = KiwoomTrRateLimiter(config, now_fn=now_fn, sleep_fn=sleep_fn)
+    limiter.await_request_slot()
+    limiter.record_request()
+    current_time[0] = 101.0
+    limiter.await_request_slot()
+    limiter.record_request()
+    ledger = json.loads(Path(config.ledger_path).read_text(encoding="utf-8"))
+    assert sleeps == [3.0]
+    assert len(ledger["request_timestamps"]) == 2
+    assert "token" not in json.dumps(ledger).lower()
+    assert "authorization" not in json.dumps(ledger).lower()
+
+
+def test_kiwoom_tr_rate_limiter_enforces_second_minute_and_hour_windows(tmp_path) -> None:
+    current_time = [3600.0]
+    sleeps: list[float] = []
+
+    def now_fn() -> float:
+        return current_time[0]
+
+    def sleep_fn(seconds: float) -> None:
+        sleeps.append(seconds)
+        current_time[0] += seconds
+
+    config = resolve_kiwoom_tr_rate_limit_config(
+        profile_name="TEST_FAST",
+        ledger_path=str(tmp_path / "local_data" / "kiwoom_rate_limit" / "ledger.json"),
+        max_tr_per_second=1,
+        max_tr_per_minute=2,
+        max_tr_per_hour=3,
+        min_request_interval_seconds=0.0,
+    )
+    limiter = KiwoomTrRateLimiter(config, now_fn=now_fn, sleep_fn=sleep_fn)
+    for requested_time in (3600.0, 3600.2, 3601.3, 3660.5):
+        current_time[0] = requested_time
+        limiter.await_request_slot()
+        limiter.record_request()
+    assert pytest.approx(sleeps, rel=0, abs=1e-6) == [0.8, 58.7, 3539.5]
+
+
+def test_kiwoom_tr_rate_limiter_loads_persisted_ledger_across_restart(tmp_path) -> None:
+    current_time = [200.0]
+
+    def now_fn() -> float:
+        return current_time[0]
+
+    config = resolve_kiwoom_tr_rate_limit_config(
+        profile_name="TEST_FAST",
+        ledger_path=str(tmp_path / "local_data" / "kiwoom_rate_limit" / "ledger.json"),
+        max_tr_per_second=10,
+        max_tr_per_minute=10,
+        max_tr_per_hour=10,
+        min_request_interval_seconds=0.0,
+    )
+    first = KiwoomTrRateLimiter(config, now_fn=now_fn, sleep_fn=lambda _seconds: None)
+    first.await_request_slot()
+    first.record_request()
+    second = KiwoomTrRateLimiter(config, now_fn=now_fn, sleep_fn=lambda _seconds: None)
+    summary = second.build_summary()
+    assert summary["tr_request_count_last_minute"] == 1
+    assert summary["tr_request_count_last_hour"] == 1
 
 
 def test_historical_market_data_capture_runner_returns_provider_empty_response(tmp_path) -> None:
@@ -772,9 +854,13 @@ def test_capture_and_train_wrapper_reports_partial_provider_limit(tmp_path, monk
     )
     assert result["status"] == "PARTIAL_CAPTURE_NO_TRAINING"
     assert result["provider_limit_hit"] is True
+    assert result["provider_limit_despite_limiter"] is True
     assert result["partial_capture"] is True
     assert result["partial_symbols"] == ["005930"]
     assert result["completed_symbols"] == []
+    assert result["tr_request_count"] == 2
+    assert result["tr_rate_limit_profile"] == "CONSERVATIVE"
+    assert Path(result["tr_rate_ledger_path"]).exists()
     assert Path(result["capture_state_path"]).exists()
     state = json.loads(Path(result["capture_state_path"]).read_text(encoding="utf-8"))
     assert state["provider_limit_hit"] is True
@@ -1034,6 +1120,7 @@ def test_capture_and_train_wrapper_backfills_partial_cache_to_full_coverage(tmp_
     assert result["training_input_symbols"] == ["005930"]
     assert result["training_on_partial_coverage"] is False
     assert result["training_input_coverage_basis_by_symbol"]["005930"] == "TRADING_DAYS"
+    assert result["tr_request_count"] == 1
 
 
 def test_capture_and_train_wrapper_backfill_provider_limit_blocks_full_coverage_training(tmp_path, monkeypatch) -> None:
@@ -1831,3 +1918,4 @@ def test_capture_and_train_wrapper_resume_skips_completed_and_retries_failed(tmp
     assert result["retried"] == ["000660"]
     assert seen_symbols == ["000660"]
     assert sorted(result["training_input_symbols"]) == ["000660", "005930"]
+    assert result["tr_request_count"] == 1

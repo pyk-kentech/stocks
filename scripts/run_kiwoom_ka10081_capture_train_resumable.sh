@@ -17,6 +17,11 @@ mkdir -p "${LOG_DIR}" "${TOKEN_ROOT}" "${STORE_ROOT}" "${RAW_LAKE_ROOT}" "${TRAI
 : "${KIWOOM_CREDENTIAL_REF:=/home/yoonkeun/.secrets/kiwoom_mock_chart}"
 : "${KIWOOM_SYMBOLS:=005930,000660}"
 : "${KIWOOM_MAX_SYMBOLS_PER_RUN:=2}"
+: "${KIWOOM_RATE_LIMIT_PROFILE:=CONSERVATIVE}"
+: "${KIWOOM_MAX_TR_PER_SECOND:=4}"
+: "${KIWOOM_MAX_TR_PER_MINUTE:=90}"
+: "${KIWOOM_MAX_TR_PER_HOUR:=900}"
+: "${KIWOOM_MIN_REQUEST_INTERVAL_SECONDS:=4.0}"
 : "${KIWOOM_REQUEST_SLEEP_SECONDS:=0.25}"
 : "${KIWOOM_SYMBOL_SLEEP_SECONDS:=0.50}"
 : "${KIWOOM_API_ID:=KA10081}"
@@ -47,6 +52,11 @@ CMD=(
   --max-request-count 500
   --max-continuation-pages 20
   --max-symbols-per-run "${KIWOOM_MAX_SYMBOLS_PER_RUN}"
+  --rate-limit-profile "${KIWOOM_RATE_LIMIT_PROFILE}"
+  --max-tr-per-second "${KIWOOM_MAX_TR_PER_SECOND}"
+  --max-tr-per-minute "${KIWOOM_MAX_TR_PER_MINUTE}"
+  --max-tr-per-hour "${KIWOOM_MAX_TR_PER_HOUR}"
+  --min-request-interval-seconds "${KIWOOM_MIN_REQUEST_INTERVAL_SECONDS}"
   --request-sleep-seconds "${KIWOOM_REQUEST_SLEEP_SECONDS}"
   --symbol-sleep-seconds "${KIWOOM_SYMBOL_SLEEP_SECONDS}"
   --training-handoff-mode persisted_manifest

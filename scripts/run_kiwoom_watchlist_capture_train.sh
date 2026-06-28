@@ -23,6 +23,11 @@ mkdir -p "${LOG_DIR}" "${TOKEN_ROOT}" "${STORE_ROOT}" "${RAW_LAKE_ROOT}" "${TRAI
 : "${KIWOOM_RESUME_STATE:=}"
 : "${KIWOOM_RESUME_ALL:=0}"
 : "${KIWOOM_SEARCH_MODE:=SMOKE_SEARCH}"
+: "${KIWOOM_RATE_LIMIT_PROFILE:=CONSERVATIVE}"
+: "${KIWOOM_MAX_TR_PER_SECOND:=4}"
+: "${KIWOOM_MAX_TR_PER_MINUTE:=90}"
+: "${KIWOOM_MAX_TR_PER_HOUR:=900}"
+: "${KIWOOM_MIN_REQUEST_INTERVAL_SECONDS:=4.0}"
 : "${KIWOOM_REQUEST_SLEEP_SECONDS:=0.25}"
 : "${KIWOOM_SYMBOL_SLEEP_SECONDS:=0.50}"
 
@@ -54,6 +59,11 @@ CMD=(
   --batch-size "${KIWOOM_BATCH_SIZE}"
   --batch-index "${KIWOOM_BATCH_INDEX}"
   --capture-state-root "${STATE_ROOT}"
+  --rate-limit-profile "${KIWOOM_RATE_LIMIT_PROFILE}"
+  --max-tr-per-second "${KIWOOM_MAX_TR_PER_SECOND}"
+  --max-tr-per-minute "${KIWOOM_MAX_TR_PER_MINUTE}"
+  --max-tr-per-hour "${KIWOOM_MAX_TR_PER_HOUR}"
+  --min-request-interval-seconds "${KIWOOM_MIN_REQUEST_INTERVAL_SECONDS}"
   --request-sleep-seconds "${KIWOOM_REQUEST_SLEEP_SECONDS}"
   --symbol-sleep-seconds "${KIWOOM_SYMBOL_SLEEP_SECONDS}"
   --reuse-existing-raw-lake

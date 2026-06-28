@@ -20,6 +20,7 @@ from stock_risk_mcp.historical_market_data_models import (
 from stock_risk_mcp.historical_market_data_normalizer import normalize_historical_ohlcv_rows
 from stock_risk_mcp.historical_market_data_transport import RealKiwoomChartTransport
 from stock_risk_mcp.historical_market_data_guard import validate_safe_local_root
+from stock_risk_mcp.kiwoom_tr_rate_limiter import KiwoomTrRateLimiter, resolve_kiwoom_tr_rate_limit_config
 from stock_risk_mcp.kiwoom_oauth_engine import build_kiwoom_oauth_request, issue_kiwoom_oauth_token
 from stock_risk_mcp.kiwoom_oauth_models import KiwoomCredentialRef, KiwoomEnvironment, KiwoomOAuthStatus
 from stock_risk_mcp.offline_strategy_template_catalog import build_offline_strategy_template_catalog
@@ -578,17 +579,30 @@ def _load_cached_rows(
 class _RateLimitedTransport:
     transport_kind = HistoricalMarketDataTransportKind.REAL_KIWOOM_CHART
 
-    def __init__(self, delegate: RealKiwoomChartTransport, *, request_sleep_seconds: float) -> None:
+    def __init__(
+        self,
+        delegate: RealKiwoomChartTransport,
+        *,
+        request_sleep_seconds: float,
+        rate_limiter: KiwoomTrRateLimiter | None = None,
+    ) -> None:
         self._delegate = delegate
         self.base_url = getattr(delegate, "base_url", None)
         self._request_sleep_seconds = max(float(request_sleep_seconds), 0.0)
+        self._rate_limiter = rate_limiter
         self._request_count = 0
 
     def execute(self, preview, *, auth_header=None):
+        if self._rate_limiter is not None and str(preview.headers.get("api-id") or "").upper() == "KA10081":
+            self._rate_limiter.await_request_slot()
         if self._request_count > 0 and self._request_sleep_seconds > 0:
             time.sleep(self._request_sleep_seconds)
-        self._request_count += 1
-        return self._delegate.execute(preview, auth_header=auth_header)
+        try:
+            return self._delegate.execute(preview, auth_header=auth_header)
+        finally:
+            if self._rate_limiter is not None and str(preview.headers.get("api-id") or "").upper() == "KA10081":
+                self._rate_limiter.record_request()
+            self._request_count += 1
 
 
 def run_historical_market_data_real_capture_and_manifest(
@@ -597,6 +611,12 @@ def run_historical_market_data_real_capture_and_manifest(
     environment: KiwoomEnvironment,
     token_store_root: str,
     force_refresh_token: bool = False,
+    rate_limit_profile: str | None = "CONSERVATIVE",
+    max_tr_per_second: int | None = None,
+    max_tr_per_minute: int | None = None,
+    max_tr_per_hour: int | None = None,
+    min_request_interval_seconds: float | None = None,
+    tr_rate_ledger_path: str | None = None,
 ) -> tuple[HistoricalChartCaptureRunResult, dict[str, object]]:
     if pipeline_input.real_capture_config is None or pipeline_input.real_capture_config.credential_ref is None:
         raise ValueError("real capture credential ref is required")
@@ -651,9 +671,23 @@ def run_historical_market_data_real_capture_and_manifest(
             "manifest_written": False,
             "training_started": False,
         }
-    transport = RealKiwoomChartTransport(
-        timeout_seconds=pipeline_input.real_capture_config.timeout_seconds,
-        base_url=_kiwoom_base_url(environment),
+    rate_limiter = KiwoomTrRateLimiter(
+        resolve_kiwoom_tr_rate_limit_config(
+            profile_name=rate_limit_profile,
+            ledger_path=tr_rate_ledger_path,
+            max_tr_per_second=max_tr_per_second,
+            max_tr_per_minute=max_tr_per_minute,
+            max_tr_per_hour=max_tr_per_hour,
+            min_request_interval_seconds=min_request_interval_seconds,
+        )
+    )
+    transport = _RateLimitedTransport(
+        RealKiwoomChartTransport(
+            timeout_seconds=pipeline_input.real_capture_config.timeout_seconds,
+            base_url=_kiwoom_base_url(environment),
+        ),
+        request_sleep_seconds=0.0,
+        rate_limiter=rate_limiter,
     )
     result = run_historical_market_data_real_capture(
         pipeline_input,
@@ -674,6 +708,7 @@ def run_historical_market_data_real_capture_and_manifest(
         "token_written": token_response.token_written,
         "chart_request_started": True,
         "token_ref_path": token_response.token_ref.token_ref_path,
+        **rate_limiter.build_summary(),
     }
 
 
@@ -694,6 +729,12 @@ def run_kiwoom_ka10081_capture_and_train(
     direction: str | None = None,
     request_sleep_seconds: float = 0.25,
     symbol_sleep_seconds: float = 0.5,
+    rate_limit_profile: str | None = "CONSERVATIVE",
+    max_tr_per_second: int | None = None,
+    max_tr_per_minute: int | None = None,
+    max_tr_per_hour: int | None = None,
+    min_request_interval_seconds: float | None = None,
+    tr_rate_ledger_path: str | None = None,
     max_symbols_per_run: int = 0,
     stop_on_provider_limit: bool = True,
     resume_from_capture_state: str | None = None,
@@ -751,12 +792,23 @@ def run_kiwoom_ka10081_capture_and_train(
         "token_written": False,
         "chart_request_started": False,
     }
+    rate_limiter = KiwoomTrRateLimiter(
+        resolve_kiwoom_tr_rate_limit_config(
+            profile_name=rate_limit_profile,
+            ledger_path=tr_rate_ledger_path,
+            max_tr_per_second=max_tr_per_second,
+            max_tr_per_minute=max_tr_per_minute,
+            max_tr_per_hour=max_tr_per_hour,
+            min_request_interval_seconds=min_request_interval_seconds,
+        )
+    )
     transport = _RateLimitedTransport(
         RealKiwoomChartTransport(
         timeout_seconds=pipeline_input.real_capture_config.timeout_seconds if pipeline_input.real_capture_config else 10,
         base_url=_kiwoom_base_url(environment),
         ),
         request_sleep_seconds=request_sleep_seconds,
+        rate_limiter=rate_limiter,
     )
     auth_header: str | None = None
     token_ready = False
@@ -1432,6 +1484,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "chart_response_received": chart_response_received,
         "row_count": row_count,
         "provider_limit_hit": provider_limit_hit,
+        "provider_limit_despite_limiter": bool(provider_limit_hit and rate_limiter.build_summary()["limiter_expected_safe"]),
         "partial_cache_used": partial_cache_used,
         "partial_capture": bool(partial_symbols),
         "completed_symbols": sorted(set(completed_symbols)),
@@ -1502,6 +1555,7 @@ def run_kiwoom_ka10081_capture_and_train(
         "backfill_cache_gaps": auto_backfill_cache_gaps,
         "max_backfill_pages_per_symbol": max_backfill_pages_per_symbol,
         "prefer_full_coverage_training": prefer_full_coverage_training,
+        **rate_limiter.build_summary(),
     }
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return summary

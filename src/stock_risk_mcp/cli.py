@@ -1010,6 +1010,19 @@ def build_command_parser() -> argparse.ArgumentParser:
     historical_market_data_real_capture_preflight.add_argument("--raw-lake-root", required=True)
     historical_market_data_real_capture_preflight.add_argument("--max-request-count", type=int, default=20)
     historical_market_data_real_capture_preflight.add_argument("--max-continuation-pages", type=int, default=3)
+    historical_market_data_real_capture_preflight.add_argument(
+        "--rate-limit-profile",
+        default="CONSERVATIVE",
+        choices=["CONSERVATIVE", "OFFICIAL_CEILING", "TEST_FAST"],
+    )
+    historical_market_data_real_capture_preflight.add_argument("--max-tr-per-second", type=int)
+    historical_market_data_real_capture_preflight.add_argument("--max-tr-per-minute", type=int)
+    historical_market_data_real_capture_preflight.add_argument("--max-tr-per-hour", type=int)
+    historical_market_data_real_capture_preflight.add_argument("--min-request-interval-seconds", type=float)
+    historical_market_data_real_capture_preflight.add_argument(
+        "--tr-rate-ledger-path",
+        default="local_data/kiwoom_rate_limit/ka10081_tr_rate_ledger.json",
+    )
     historical_market_data_real_capture_preflight.add_argument("--request-sleep-seconds", type=float, default=0.25)
     historical_market_data_real_capture_preflight.add_argument("--symbol-sleep-seconds", type=float, default=0.5)
     historical_market_data_real_capture_preflight.add_argument("--max-symbols-per-run", type=int, default=0)
@@ -4328,6 +4341,12 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 environment=KiwoomOAuthEnvironment(str(args.kiwoom_environment).upper()),
                 token_store_root=str(args.token_store_root),
                 force_refresh_token=bool(args.force_refresh_token),
+                rate_limit_profile=str(args.rate_limit_profile).upper(),
+                max_tr_per_second=args.max_tr_per_second,
+                max_tr_per_minute=args.max_tr_per_minute,
+                max_tr_per_hour=args.max_tr_per_hour,
+                min_request_interval_seconds=args.min_request_interval_seconds,
+                tr_rate_ledger_path=str(args.tr_rate_ledger_path),
             )
             payload = {
                 "status": "COMPLETED" if result.manifest is not None else "FAILED",
@@ -4348,6 +4367,24 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 "manifest_id": result.manifest.manifest_id if result.manifest else None,
                 "raw_response_count": result.raw_response_count,
                 "normalized_row_count": result.normalized_row_count,
+                **{
+                    key: oauth_summary.get(key)
+                    for key in (
+                        "tr_rate_limit_profile",
+                        "max_tr_per_second",
+                        "max_tr_per_minute",
+                        "max_tr_per_hour",
+                        "min_request_interval_seconds",
+                        "tr_rate_ledger_path",
+                        "tr_request_count",
+                        "tr_rate_limiter_sleep_count",
+                        "tr_rate_limiter_total_sleep_seconds",
+                        "estimated_next_safe_request_at",
+                        "tr_request_count_last_minute",
+                        "tr_request_count_last_hour",
+                        "limiter_expected_safe",
+                    )
+                },
             }
             if args.output_file:
                 payload["output_file"] = str(args.output_file)
@@ -4374,6 +4411,12 @@ def run_command(args: argparse.Namespace) -> dict[str, object]:
                 direction=args.direction,
                 request_sleep_seconds=float(args.request_sleep_seconds),
                 symbol_sleep_seconds=float(args.symbol_sleep_seconds),
+                rate_limit_profile=str(args.rate_limit_profile).upper(),
+                max_tr_per_second=args.max_tr_per_second,
+                max_tr_per_minute=args.max_tr_per_minute,
+                max_tr_per_hour=args.max_tr_per_hour,
+                min_request_interval_seconds=args.min_request_interval_seconds,
+                tr_rate_ledger_path=str(args.tr_rate_ledger_path),
                 max_symbols_per_run=int(args.max_symbols_per_run),
                 stop_on_provider_limit=bool(args.stop_on_provider_limit),
                 resume_from_capture_state=args.resume_from_capture_state,

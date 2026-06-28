@@ -49,6 +49,12 @@ def test_kiwoom_capture_and_train_help_uses_command_router() -> None:
     assert result.returncode == 0
     assert "--training-handoff-mode" in result.stdout
     assert "--training-output-root" in result.stdout
+    assert "--rate-limit-profile" in result.stdout
+    assert "--max-tr-per-second" in result.stdout
+    assert "--max-tr-per-minute" in result.stdout
+    assert "--max-tr-per-hour" in result.stdout
+    assert "--min-request-interval-seconds" in result.stdout
+    assert "--tr-rate-ledger-path" in result.stdout
     assert "--upd-stkpc-tp" in result.stdout
     assert "--request-sleep-seconds" in result.stdout
     assert "--symbol-sleep-seconds" in result.stdout
@@ -103,6 +109,8 @@ def test_kiwoom_capture_and_train_parser_accepts_expanded_search() -> None:
             "local_data/offline_strategy",
             "--search-mode",
             "EXPANDED_SEARCH",
+            "--rate-limit-profile",
+            "CONSERVATIVE",
             "--allow-real-chart-capture",
             "--acknowledge-readonly-only",
             "--acknowledge-no-orders",
@@ -112,6 +120,42 @@ def test_kiwoom_capture_and_train_parser_accepts_expanded_search() -> None:
         ]
     )
     assert args.search_mode == "EXPANDED_SEARCH"
+    assert args.rate_limit_profile == "CONSERVATIVE"
+
+
+def test_kiwoom_capture_and_train_parser_defaults_to_conservative_rate_limit() -> None:
+    parser = build_command_parser()
+    args = parser.parse_args(
+        [
+            "kiwoom-ka10081-capture-and-train-run",
+            "--kiwoom-environment",
+            "MOCK",
+            "--credential-ref",
+            "/tmp/ref",
+            "--token-store-root",
+            "local_data/kiwoom_tokens",
+            "--api-id",
+            "KA10081",
+            "--symbols",
+            "005930",
+            "--start-date",
+            "2020-01-01",
+            "--end-date",
+            "2026-06-27",
+            "--store-root",
+            "local_data/store",
+            "--raw-lake-root",
+            "local_data/raw",
+            "--allow-real-chart-capture",
+            "--acknowledge-readonly-only",
+            "--acknowledge-no-orders",
+            "--acknowledge-user-initiated",
+            "--acknowledge-rate-limit-and-capacity",
+            "--acknowledge-credential-redaction",
+        ]
+    )
+    assert args.rate_limit_profile == "CONSERVATIVE"
+    assert args.tr_rate_ledger_path == "local_data/kiwoom_rate_limit/ka10081_tr_rate_ledger.json"
 
 
 def test_unknown_command_fails_with_router_error() -> None:
