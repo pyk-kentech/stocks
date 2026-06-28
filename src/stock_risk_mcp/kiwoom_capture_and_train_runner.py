@@ -385,6 +385,9 @@ def _score_ranking_row(
     signal_count_before_filters: int,
     entry_signal_count: int,
     exit_signal_count: int,
+    missing_indicator_count: int,
+    schema_gap: bool,
+    final_entry_condition_count: int,
     rejection_reason_count: int,
     profit_factor: float | None,
     max_drawdown: float | None,
@@ -396,6 +399,9 @@ def _score_ranking_row(
         + float(signal_count_before_filters) * 2.0
         + float(entry_signal_count) * 3.0
         + float(exit_signal_count) * 2.0
+        + float(final_entry_condition_count) * 1.5
+        - float(missing_indicator_count) * 4.0
+        - (15.0 if schema_gap else 0.0)
         - float(rejection_reason_count) * 10.0
         + float(profit_factor or 0.0) * 5.0
         + float(total_return or 0.0) * 100.0
@@ -410,6 +416,9 @@ def _rank_score_components(
     signal_count_before_filters: int,
     entry_signal_count: int,
     exit_signal_count: int,
+    missing_indicator_count: int,
+    schema_gap: bool,
+    final_entry_condition_count: int,
     rejection_reason_count: int,
     profit_factor: float | None,
     max_drawdown: float | None,
@@ -421,6 +430,9 @@ def _rank_score_components(
         "signal_count_component": float(signal_count_before_filters) * 2.0,
         "entry_signal_component": float(entry_signal_count) * 3.0,
         "exit_signal_component": float(exit_signal_count) * 2.0,
+        "final_entry_condition_component": float(final_entry_condition_count) * 1.5,
+        "missing_indicator_penalty_component": float(missing_indicator_count) * -4.0,
+        "schema_gap_penalty_component": -15.0 if schema_gap else 0.0,
         "rejection_penalty_component": float(rejection_reason_count) * -10.0,
         "profit_factor_component": float(profit_factor or 0.0) * 5.0,
         "total_return_component": float(total_return or 0.0) * 100.0,
@@ -438,6 +450,52 @@ def _candidate_parameter_summary_by_family(training_result) -> dict[str, list[st
     return {family: sorted(values) for family, values in sorted(grouped.items())}
 
 
+def _compact_ranking_candidate(row: dict[str, object]) -> dict[str, object]:
+    return {
+        "symbol": row.get("symbol"),
+        "strategy_family": row.get("strategy_family"),
+        "candidate_id": row.get("candidate_id"),
+        "parameter_set_id": row.get("parameter_set_id"),
+        "parameter_summary": row.get("parameter_summary"),
+        "promotion_status": row.get("promotion_status"),
+        "rank_score": row.get("rank_score"),
+        "signal_count_before_filters": row.get("signal_count_before_filters"),
+        "entry_signal_count": row.get("entry_signal_count"),
+        "missing_indicator_columns": row.get("missing_indicator_columns"),
+    }
+
+
+def _required_indicator_columns_for_family(family: str) -> list[str]:
+    if family == "VOLUME_PULLBACK_LONG":
+        return ["OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "CLOSE_PRICE", "VOLUME", "VOLUME_RATIO", "BODY_RATIO"]
+    if family == "RSI_OVERSOLD_REBOUND":
+        return ["CLOSE_PRICE", "RSI_LEVEL"]
+    if family == "MACD_RSI_MOMENTUM":
+        return ["CLOSE_PRICE", "VOLUME", "MACD_LINE", "MACD_SIGNAL", "RSI_LEVEL"]
+    return ["CLOSE_PRICE"]
+
+
+def _trade_profit_factor(trades: list) -> float:
+    winners = [trade.net_return for trade in trades if trade.net_return > 0]
+    losers = [trade.net_return for trade in trades if trade.net_return <= 0]
+    gross_profit = sum(winners)
+    gross_loss = abs(sum(losers))
+    if gross_loss == 0:
+        return gross_profit if gross_profit else 0.0
+    return gross_profit / gross_loss
+
+
+def _trade_max_drawdown(trades: list) -> float:
+    running = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    for trade in trades:
+        running += trade.net_return
+        peak = max(peak, running)
+        max_drawdown = min(max_drawdown, running - peak)
+    return abs(max_drawdown)
+
+
 def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> dict[str, object]:
     available_rows = [row for row in rows if row.get("ranking_available", True)]
     best_candidate_by_symbol: dict[str, dict[str, object]] = {}
@@ -447,24 +505,25 @@ def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> di
     candidate_count_by_symbol: Counter[str] = Counter()
     candidate_count_by_family: Counter[str] = Counter()
     no_trades_count = 0
+    zero_entry_signal_count = 0
+    zero_entry_signal_count_by_family: Counter[str] = Counter()
+    missing_indicator_count_by_family: Counter[str] = Counter()
+    best_diagnostic_candidate_by_symbol: dict[str, dict[str, object]] = {}
+    best_diagnostic_candidate_by_family: dict[str, dict[str, object]] = {}
     for row in available_rows:
         symbol = str(row.get("symbol") or "")
         family = str(row.get("strategy_family") or "")
         candidate_count_by_symbol[symbol] += 1
         candidate_count_by_family[family] += 1
+        if int(row.get("entry_signal_count") or 0) == 0:
+            zero_entry_signal_count += 1
+            zero_entry_signal_count_by_family[family] += 1
+        missing_indicator_count_by_family[family] += len(row.get("missing_indicator_columns") or [])
         if "NO_TRADES" in row.get("rejection_reasons", []):
             no_trades_count += 1
         for reason in row.get("rejection_reasons", []):
             rejected_count_by_reason[str(reason)] += 1
-        compact = {
-            "symbol": symbol,
-            "strategy_family": family,
-            "candidate_id": row.get("candidate_id"),
-            "parameter_set_id": row.get("parameter_set_id"),
-            "parameter_summary": row.get("parameter_summary"),
-            "promotion_status": row.get("promotion_status"),
-            "rank_score": row.get("rank_score"),
-        }
+        compact = _compact_ranking_candidate(row)
         if symbol and (symbol not in best_candidate_by_symbol or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol[symbol].get("rank_score") or -10**9)):
             best_candidate_by_symbol[symbol] = compact
         if family and (family not in best_candidate_by_family or float(row.get("rank_score") or -10**9) > float(best_candidate_by_family[family].get("rank_score") or -10**9)):
@@ -475,13 +534,28 @@ def _build_ranking_summary(dataset_id: str, rows: list[dict[str, object]]) -> di
             or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol_and_family[symbol_family_key].get("rank_score") or -10**9)
         ):
             best_candidate_by_symbol_and_family[symbol_family_key] = compact
+        diagnostic_score = (
+            float(row.get("signal_count_before_filters") or 0) * 10.0
+            + float(row.get("entry_signal_count") or 0) * 20.0
+            + float(row.get("final_entry_condition_count") or 0) * 5.0
+            - float(len(row.get("missing_indicator_columns") or [])) * 5.0
+        )
+        if symbol and (symbol not in best_diagnostic_candidate_by_symbol or diagnostic_score > float(best_diagnostic_candidate_by_symbol[symbol].get("diagnostic_score") or -10**9)):
+            best_diagnostic_candidate_by_symbol[symbol] = {**compact, "diagnostic_score": diagnostic_score}
+        if family and (family not in best_diagnostic_candidate_by_family or diagnostic_score > float(best_diagnostic_candidate_by_family[family].get("diagnostic_score") or -10**9)):
+            best_diagnostic_candidate_by_family[family] = {**compact, "diagnostic_score": diagnostic_score}
     return {
         "dataset_id": dataset_id,
         "best_candidate_by_symbol": best_candidate_by_symbol,
         "best_candidate_by_family": best_candidate_by_family,
         "best_candidate_by_symbol_and_family": best_candidate_by_symbol_and_family,
+        "best_diagnostic_candidate_by_symbol": best_diagnostic_candidate_by_symbol,
+        "best_diagnostic_candidate_by_family": best_diagnostic_candidate_by_family,
         "rejected_count_by_reason": dict(sorted(rejected_count_by_reason.items())),
         "no_trades_count": no_trades_count,
+        "zero_entry_signal_count": zero_entry_signal_count,
+        "zero_entry_signal_count_by_family": dict(sorted(zero_entry_signal_count_by_family.items())),
+        "missing_indicator_count_by_family": dict(sorted(missing_indicator_count_by_family.items())),
         "candidate_count_by_symbol": dict(sorted(candidate_count_by_symbol.items())),
         "candidate_count_by_family": dict(sorted(candidate_count_by_family.items())),
     }
@@ -498,6 +572,13 @@ def _build_symbol_family_ranking_rows(
     coverage_by_symbol = {item["requested_symbol"]: item for item in symbol_results}
     candidates_by_id = {candidate.candidate_id: candidate for candidate in training_result.candidates}
     metrics_by_id = {metric.candidate_id: metric for metric in training_result.metric_summaries}
+    signals_by_key: dict[tuple[str, str], list] = defaultdict(list)
+    for signal in training_result.signals:
+        signals_by_key[(signal.candidate_id, signal.instrument_id)].append(signal)
+    trades_by_key: dict[tuple[str, str], list] = defaultdict(list)
+    for backtest_result in training_result.backtest_results:
+        for trade in backtest_result.trades:
+            trades_by_key[(backtest_result.candidate_id, trade.instrument_id)].append(trade)
     rows: list[dict[str, object]] = []
     for decision in training_result.promotion_decisions:
         candidate = candidates_by_id.get(decision.candidate_id)
@@ -505,6 +586,50 @@ def _build_symbol_family_ranking_rows(
         diagnostics = dict(decision.diagnostics or {})
         for symbol in training_symbols or [None]:
             coverage = coverage_by_symbol.get(symbol) if symbol else None
+            candidate_signals = list(signals_by_key.get((decision.candidate_id, symbol), [])) if symbol else []
+            candidate_trades = list(trades_by_key.get((decision.candidate_id, symbol), [])) if symbol else []
+            signal_feature_rows = [signal.signal_features for signal in candidate_signals]
+            indicator_columns_available = sorted(
+                {
+                    str(item).upper()
+                    for features in signal_feature_rows
+                    for item in str(features.get("indicator_columns_available") or "").split(",")
+                    if item
+                }
+            )
+            required_indicator_columns = _required_indicator_columns_for_family(decision.family.value)
+            missing_indicator_columns = sorted(
+                {
+                    str(item).upper()
+                    for features in signal_feature_rows
+                    for item in str(features.get("missing_indicator_columns") or "").split(",")
+                    if item
+                }
+            )
+            condition_pass_counts = {
+                key: sum(int(features.get(key) or 0) for features in signal_feature_rows)
+                for key in (
+                    "rows_with_valid_indicator_window",
+                    "macd_cross_count",
+                    "rsi_condition_count",
+                    "volume_condition_count",
+                    "candle_condition_count",
+                    "pullback_condition_count",
+                    "rebound_condition_count",
+                    "final_entry_condition_count",
+                    "signal_count_before_filters",
+                )
+            }
+            condition_block_counts = {
+                key: sum(int(features.get(key) or 0) for features in signal_feature_rows)
+                for key in (
+                    "schema_gap_count",
+                    "blocked_by_missing_indicator_count",
+                    "blocked_by_condition_count",
+                    "hold_count",
+                )
+            }
+            entry_signals = [signal for signal in candidate_signals if signal.action.value == "ENTER_LONG"]
             row = {
                 "symbol": symbol,
                 "strategy_family": decision.family.value,
@@ -514,25 +639,63 @@ def _build_symbol_family_ranking_rows(
                 "parameter_summary": candidate.parameter_summary if candidate is not None else None,
                 "promotion_status": decision.status.value,
                 "rejection_reasons": list(decision.reasons),
-                "actual_trade_count": int(diagnostics.get("actual_trade_count") or (metric.trade_count if metric else 0) or 0),
-                "signal_count_before_filters": int(diagnostics.get("signal_count_before_filters") or 0),
-                "entry_signal_count": int(diagnostics.get("entry_signal_count") or 0),
-                "exit_signal_count": int(diagnostics.get("exit_signal_count") or 0),
-                "profit_factor": float(metric.profit_factor) if metric is not None else None,
-                "win_rate": float(metric.win_rate) if metric is not None else None,
-                "max_drawdown": float(metric.max_drawdown) if metric is not None else None,
-                "total_return": float(metric.cumulative_return) if metric is not None else None,
-                "average_trade_return": float(metric.average_trade_return) if metric is not None else None,
+                "input_row_count": coverage.get("normalized_row_count") if coverage else None,
+                "symbol_row_count": coverage.get("normalized_row_count") if coverage else None,
+                "date_min": coverage.get("date_min") if coverage else None,
+                "date_max": coverage.get("date_max") if coverage else None,
+                "indicator_columns_available": indicator_columns_available,
+                "required_indicator_columns": required_indicator_columns,
+                "missing_indicator_columns": missing_indicator_columns,
+                "signal_input_schema_gap": bool(missing_indicator_columns),
+                "signal_count_before_filters": int(condition_pass_counts.get("signal_count_before_filters") or 0),
+                "entry_signal_count": len(entry_signals),
+                "exit_signal_count": sum(1 for signal in candidate_signals if signal.action.value == "EXIT_LONG"),
+                "condition_pass_counts": condition_pass_counts,
+                "condition_block_counts": condition_block_counts,
+                "rows_with_valid_indicator_window": int(condition_pass_counts.get("rows_with_valid_indicator_window") or 0),
+                "macd_cross_count": int(condition_pass_counts.get("macd_cross_count") or 0),
+                "rsi_condition_count": int(condition_pass_counts.get("rsi_condition_count") or 0),
+                "volume_condition_count": int(condition_pass_counts.get("volume_condition_count") or 0),
+                "candle_condition_count": int(condition_pass_counts.get("candle_condition_count") or 0),
+                "pullback_condition_count": int(condition_pass_counts.get("pullback_condition_count") or 0),
+                "rebound_condition_count": int(condition_pass_counts.get("rebound_condition_count") or 0),
+                "final_entry_condition_count": int(condition_pass_counts.get("final_entry_condition_count") or 0),
+                "first_possible_signal_date": next((signal.observed_at.isoformat() for signal in candidate_signals if int(signal.signal_features.get("rows_with_valid_indicator_window") or 0) > 0), None),
+                "first_entry_signal_date": entry_signals[0].observed_at.isoformat() if entry_signals else None,
+                "last_entry_signal_date": entry_signals[-1].observed_at.isoformat() if entry_signals else None,
+                "actual_trade_count": len(candidate_trades),
+                "profit_factor": (
+                    _trade_profit_factor(candidate_trades)
+                    if candidate_trades
+                    else 0.0
+                ),
+                "win_rate": (
+                    sum(1 for trade in candidate_trades if trade.net_return > 0) / len(candidate_trades)
+                    if candidate_trades
+                    else 0.0
+                ),
+                "max_drawdown": _trade_max_drawdown(candidate_trades) if candidate_trades else 0.0,
+                "total_return": sum(trade.net_return for trade in candidate_trades) if candidate_trades else 0.0,
+                "average_trade_return": (
+                    sum(trade.net_return for trade in candidate_trades) / len(candidate_trades)
+                    if candidate_trades
+                    else 0.0
+                ),
                 "coverage_status": coverage.get("status") if coverage else None,
                 "coverage_basis": coverage.get("coverage_basis") if coverage else None,
                 "ranking_available": True,
                 "ranking_missing_reason": None,
             }
+            if row["signal_input_schema_gap"] and "SIGNAL_INPUT_SCHEMA_GAP" not in row["rejection_reasons"]:
+                row["rejection_reasons"] = ["SIGNAL_INPUT_SCHEMA_GAP", *row["rejection_reasons"]]
             row["rank_score_components"] = _rank_score_components(
                 actual_trade_count=row["actual_trade_count"],
                 signal_count_before_filters=row["signal_count_before_filters"],
                 entry_signal_count=row["entry_signal_count"],
                 exit_signal_count=row["exit_signal_count"],
+                missing_indicator_count=len(row["missing_indicator_columns"]),
+                schema_gap=bool(row["signal_input_schema_gap"]),
+                final_entry_condition_count=row["final_entry_condition_count"],
                 rejection_reason_count=len(row["rejection_reasons"]),
                 profit_factor=row["profit_factor"],
                 max_drawdown=row["max_drawdown"],
@@ -544,6 +707,9 @@ def _build_symbol_family_ranking_rows(
                 signal_count_before_filters=row["signal_count_before_filters"],
                 entry_signal_count=row["entry_signal_count"],
                 exit_signal_count=row["exit_signal_count"],
+                missing_indicator_count=len(row["missing_indicator_columns"]),
+                schema_gap=bool(row["signal_input_schema_gap"]),
+                final_entry_condition_count=row["final_entry_condition_count"],
                 rejection_reason_count=len(row["rejection_reasons"]),
                 profit_factor=row["profit_factor"],
                 max_drawdown=row["max_drawdown"],

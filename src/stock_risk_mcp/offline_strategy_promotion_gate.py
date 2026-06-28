@@ -53,6 +53,9 @@ def build_offline_strategy_promotion_decision(
     if metric_summary.expectancy < gate.min_expectancy:
         set_status(OfflineStrategyStatus.REJECTED)
         reasons.append("EXPECTANCY_TOO_LOW")
+    if int((diagnostics or {}).get("signal_input_schema_gap_count") or 0) > 0:
+        set_status(OfflineStrategyStatus.RESEARCH_ONLY)
+        reasons.append("SIGNAL_INPUT_SCHEMA_GAP")
     if metric_summary.cumulative_return <= 0 and status == OfflineStrategyStatus.PROMOTED_OFFLINE_CANDIDATE:
         set_status(OfflineStrategyStatus.WATCHLIST_ONLY)
         reasons.append("NON_POSITIVE_CUMULATIVE_RETURN")

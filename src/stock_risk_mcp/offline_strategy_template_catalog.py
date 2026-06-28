@@ -30,7 +30,7 @@ def build_offline_strategy_template_catalog() -> list[OfflineStrategyTemplate]:
                 max_parameter_combinations=32,
                 parameters=[
                     OfflineStrategyParameter(parameter_name="VOLUME_LOOKBACK", dtype="INT", candidate_values=[5, 10]),
-                    OfflineStrategyParameter(parameter_name="VOLUME_MULTIPLIER", dtype="FLOAT", candidate_values=[1.5, 2.0]),
+                    OfflineStrategyParameter(parameter_name="VOLUME_MULTIPLIER", dtype="FLOAT", candidate_values=[0.95, 1.5, 2.0]),
                     OfflineStrategyParameter(parameter_name="PULLBACK_MAX_BARS", dtype="INT", candidate_values=[2, 3]),
                     OfflineStrategyParameter(parameter_name="TARGET_R_MULTIPLE", dtype="FLOAT", candidate_values=[1.5, 2.0]),
                 ],
@@ -70,8 +70,8 @@ def build_offline_strategy_template_catalog() -> list[OfflineStrategyTemplate]:
                 max_parameter_combinations=24,
                 parameters=[
                     OfflineStrategyParameter(parameter_name="RSI_PERIOD", dtype="INT", candidate_values=[7, 14]),
-                    OfflineStrategyParameter(parameter_name="OVERSOLD_THRESHOLD", dtype="FLOAT", candidate_values=[25.0, 30.0]),
-                    OfflineStrategyParameter(parameter_name="REBOUND_THRESHOLD", dtype="FLOAT", candidate_values=[35.0, 40.0]),
+                    OfflineStrategyParameter(parameter_name="OVERSOLD_THRESHOLD", dtype="FLOAT", candidate_values=[35.0, 25.0, 30.0]),
+                    OfflineStrategyParameter(parameter_name="REBOUND_THRESHOLD", dtype="FLOAT", candidate_values=[45.0, 35.0, 40.0]),
                     OfflineStrategyParameter(parameter_name="HOLD_BARS", dtype="INT", candidate_values=[1, 2]),
                 ],
             ),
@@ -95,7 +95,7 @@ def build_offline_strategy_template_catalog() -> list[OfflineStrategyTemplate]:
                     OfflineStrategyParameter(parameter_name="MACD_FAST", dtype="INT", candidate_values=[8, 12]),
                     OfflineStrategyParameter(parameter_name="MACD_SLOW", dtype="INT", candidate_values=[21, 26]),
                     OfflineStrategyParameter(parameter_name="MACD_SIGNAL", dtype="INT", candidate_values=[5, 9]),
-                    OfflineStrategyParameter(parameter_name="RSI_MIDLINE", dtype="FLOAT", candidate_values=[50.0]),
+                    OfflineStrategyParameter(parameter_name="RSI_MIDLINE", dtype="FLOAT", candidate_values=[45.0, 50.0]),
                     OfflineStrategyParameter(parameter_name="ALLOW_OVERBOUGHT_SECOND_LEG", dtype="BOOL", candidate_values=[False, True]),
                 ],
             ),

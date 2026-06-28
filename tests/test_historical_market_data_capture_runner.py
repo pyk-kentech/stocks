@@ -527,16 +527,26 @@ def test_capture_and_train_wrapper_reloads_persisted_manifest(tmp_path, monkeypa
         def execute(self, preview, *, auth_header=None):
             assert auth_header == "Bearer REDACTED"
             symbol = preview.body_json["stk_cd"]
+            rows = []
+            for index in range(40):
+                close_price = 80000 + index * 120 + (200 if index % 6 == 0 else 0) - (150 if index % 5 == 0 else 0)
+                rows.append(
+                    {
+                        "dt": f"2026{5 + ((index + 9) // 30):02d}{((index + 9) % 30) + 1:02d}",
+                        "open_pric": str(close_price - (250 if index % 4 == 0 else 80)),
+                        "high_pric": str(close_price + 260),
+                        "low_pric": str(close_price - 220),
+                        "cur_prc": str(close_price),
+                        "trde_qty": str(900000 + index * 40000 + (300000 if index % 7 == 0 else 0)),
+                    }
+                )
             return {
                 "status_code": 200,
                 "headers": {"cont-yn": "N", "next-key": ""},
                 "body_json": {
                     "return_code": 0,
                     "return_msg": "OK",
-                    "stk_day_pole_chart_qry": [
-                        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
-                        {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
-                    ],
+                    "stk_day_pole_chart_qry": rows,
                     "stk_cd": symbol,
                 },
             }
@@ -697,16 +707,26 @@ def test_capture_and_train_wrapper_expanded_search_generates_more_candidates_and
         def execute(self, preview, *, auth_header=None):
             assert auth_header == "Bearer REDACTED"
             symbol = preview.body_json["stk_cd"]
+            rows = []
+            for index in range(40):
+                close_price = 80000 + index * 120 + (200 if index % 6 == 0 else 0) - (150 if index % 5 == 0 else 0)
+                rows.append(
+                    {
+                        "dt": f"2026{5 + ((index + 9) // 30):02d}{((index + 9) % 30) + 1:02d}",
+                        "open_pric": str(close_price - (250 if index % 4 == 0 else 80)),
+                        "high_pric": str(close_price + 260),
+                        "low_pric": str(close_price - 220),
+                        "cur_prc": str(close_price),
+                        "trde_qty": str(900000 + index * 40000 + (300000 if index % 7 == 0 else 0)),
+                    }
+                )
             return {
                 "status_code": 200,
                 "headers": {"cont-yn": "N", "next-key": ""},
                 "body_json": {
                     "return_code": 0,
                     "return_msg": "OK",
-                    "stk_day_pole_chart_qry": [
-                        {"dt": "20260623", "open_pric": "80000", "high_pric": "81300", "low_pric": "79800", "cur_prc": "81200", "trde_qty": "1000000"},
-                        {"dt": "20260624", "open_pric": "81200", "high_pric": "81800", "low_pric": "81000", "cur_prc": "81600", "trde_qty": "1100000"}
-                    ],
+                    "stk_day_pole_chart_qry": rows,
                     "stk_cd": symbol,
                 },
             }
@@ -765,10 +785,20 @@ def test_capture_and_train_wrapper_expanded_search_generates_more_candidates_and
     assert all("rank_score" in row and "rank_score_components" in row for row in ranking_payload["rows"])
     assert all("parameter_set_id" in row and "parameter_summary" in row for row in ranking_payload["rows"])
     assert all(row["rank_score"] is not None for row in ranking_payload["rows"])
+    assert all("input_row_count" in row and "symbol_row_count" in row for row in ranking_payload["rows"])
+    assert all("indicator_columns_available" in row and "required_indicator_columns" in row for row in ranking_payload["rows"])
+    assert all("signal_count_before_filters" in row and "condition_pass_counts" in row and "condition_block_counts" in row for row in ranking_payload["rows"])
+    assert any(row["signal_count_before_filters"] > 0 for row in ranking_payload["rows"])
+    assert len({row["rank_score"] for row in ranking_payload["rows"]}) > 1
     ranking_summary = json.loads(Path(expanded_result["ranking_summary_path"]).read_text(encoding="utf-8"))
     assert "best_candidate_by_symbol" in ranking_summary
     assert "best_candidate_by_family" in ranking_summary
     assert "rejected_count_by_reason" in ranking_summary
+    assert "zero_entry_signal_count" in ranking_summary
+    assert "zero_entry_signal_count_by_family" in ranking_summary
+    assert "missing_indicator_count_by_family" in ranking_summary
+    assert "best_diagnostic_candidate_by_symbol" in ranking_summary
+    assert "best_diagnostic_candidate_by_family" in ranking_summary
     dumped = json.dumps({"ranking": ranking_payload, "summary": ranking_summary}, ensure_ascii=False).lower()
     assert "secretkey" not in dumped
     assert "authorization" not in dumped
@@ -1445,6 +1475,7 @@ def test_watchlist_batch_splitting_and_resume_summary(tmp_path, monkeypatch) -> 
     assert any("rank_score" in row and "rank_score_components" in row for row in ranking_payload["rows"])
     ranking_summary = json.loads(Path(result["aggregate_ranking_summary_path"]).read_text(encoding="utf-8"))
     assert "best_candidate_by_symbol" in ranking_summary
+    assert "best_diagnostic_candidate_by_symbol" in ranking_summary
     assert "rejected_count_by_reason" in ranking_summary
 
 

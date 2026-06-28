@@ -20,7 +20,10 @@ from stock_risk_mcp.offline_strategy_models import (
 )
 from stock_risk_mcp.offline_strategy_parameter_space import expand_offline_strategy_candidates
 from stock_risk_mcp.offline_strategy_promotion_gate import build_offline_strategy_promotion_decision
-from stock_risk_mcp.offline_strategy_signal_engine import build_offline_strategy_signals
+from stock_risk_mcp.offline_strategy_signal_engine import (
+    aggregate_offline_strategy_signal_diagnostics,
+    build_offline_strategy_signal_bundle,
+)
 from stock_risk_mcp.offline_strategy_template_catalog import build_offline_strategy_template_catalog
 from stock_risk_mcp.offline_strategy_training_plan_engine import build_offline_strategy_training_plan
 from stock_risk_mcp.offline_strategy_walk_forward_engine import build_offline_strategy_walk_forward_result
@@ -39,37 +42,29 @@ def _candidate_diagnostics(
     pipeline_input: OfflineStrategyPipelineInput,
     candidate,
     rows_by_instrument: dict[str, list],
-    candidate_signals,
+    signal_diagnostics: dict[str, object],
     backtest_result,
 ) -> dict[str, int | float | str | bool | None]:
     all_rows = [row for rows in rows_by_instrument.values() for row in rows]
-    signal_dates = sorted(signal.observed_at for signal in candidate_signals)
-    indicator_columns = sorted(
-        {
-            key.upper()
-            for signal in candidate_signals
-            for key, value in signal.signal_features.items()
-            if value is not None
-        }
-    )
-    action_counts = defaultdict(int)
-    for signal in candidate_signals:
-        action_counts[signal.action.value] += 1
     return {
         "input_row_count": len(all_rows),
         "date_range_start": min((row.observed_at.isoformat() for row in all_rows), default=None),
         "date_range_end": max((row.observed_at.isoformat() for row in all_rows), default=None),
-        "indicator_columns_available": ",".join(indicator_columns),
-        "signal_count_before_filters": len(candidate_signals),
-        "entry_signal_count": action_counts.get("ENTER_LONG", 0),
-        "exit_signal_count": action_counts.get("EXIT_LONG", 0),
-        "blocked_by_hold_count": action_counts.get("HOLD", 0),
-        "blocked_by_avoid_long_count": action_counts.get("AVOID_LONG", 0),
-        "blocked_by_risk_warning_count": action_counts.get("RISK_WARNING", 0),
+        "signal_count_before_filters": int(signal_diagnostics.get("signal_count_before_filters") or 0),
+        "entry_signal_count": int(signal_diagnostics.get("entry_signal_count") or 0),
+        "exit_signal_count": int(signal_diagnostics.get("exit_signal_count") or 0),
         "min_trade_count_threshold": pipeline_input.promotion_gate_config.min_trade_count,
         "actual_trade_count": backtest_result.trade_count,
-        "first_signal_date": signal_dates[0].isoformat() if signal_dates else None,
-        "last_signal_date": signal_dates[-1].isoformat() if signal_dates else None,
+        "rows_with_valid_indicator_window": int(signal_diagnostics.get("rows_with_valid_indicator_window") or 0),
+        "macd_cross_count": int(signal_diagnostics.get("macd_cross_count") or 0),
+        "rsi_condition_count": int(signal_diagnostics.get("rsi_condition_count") or 0),
+        "volume_condition_count": int(signal_diagnostics.get("volume_condition_count") or 0),
+        "candle_condition_count": int(signal_diagnostics.get("candle_condition_count") or 0),
+        "pullback_condition_count": int(signal_diagnostics.get("pullback_condition_count") or 0),
+        "rebound_condition_count": int(signal_diagnostics.get("rebound_condition_count") or 0),
+        "final_entry_condition_count": int(signal_diagnostics.get("final_entry_condition_count") or 0),
+        "signal_input_schema_gap_count": int(signal_diagnostics.get("signal_input_schema_gap_count") or 0),
+        "missing_indicator_columns": ",".join(str(item) for item in signal_diagnostics.get("missing_indicator_columns", [])),
     }
 
 
@@ -115,7 +110,8 @@ def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput
     metric_summaries = []
     promotion_decisions = []
     for candidate in candidates:
-        candidate_signals = build_offline_strategy_signals(pipeline_input.dataset_id, rows_by_instrument, candidate)
+        signal_bundle = build_offline_strategy_signal_bundle(pipeline_input.dataset_id, rows_by_instrument, candidate)
+        candidate_signals = signal_bundle.signals
         signals.extend(candidate_signals)
         candidate_intents, backtest_result = build_offline_strategy_backtest(
             pipeline_input.dataset_id,
@@ -129,13 +125,14 @@ def build_offline_strategy_pipeline(pipeline_input: OfflineStrategyPipelineInput
         backtest_results.append(backtest_result)
         metric_summary = build_offline_strategy_metric_summary(pipeline_input.dataset_id, backtest_result)
         metric_summaries.append(metric_summary)
+        signal_diagnostics = aggregate_offline_strategy_signal_diagnostics(signal_bundle.diagnostics_by_instrument)
         promotion_decisions.append(
             build_offline_strategy_promotion_decision(
                 pipeline_input,
                 candidate,
                 backtest_result,
                 metric_summary,
-                diagnostics=_candidate_diagnostics(pipeline_input, candidate, rows_by_instrument, candidate_signals, backtest_result),
+                diagnostics=_candidate_diagnostics(pipeline_input, candidate, rows_by_instrument, signal_diagnostics, backtest_result),
             )
         )
     artifact_manifest = build_offline_strategy_artifact_manifest(pipeline_input.dataset_id)

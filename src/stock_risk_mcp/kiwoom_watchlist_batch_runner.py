@@ -300,6 +300,11 @@ def _aggregate_ranking_reports(
     candidate_count_by_symbol: dict[str, int] = {}
     candidate_count_by_family: dict[str, int] = {}
     no_trades_count = 0
+    zero_entry_signal_count = 0
+    zero_entry_signal_count_by_family: dict[str, int] = {}
+    missing_indicator_count_by_family: dict[str, int] = {}
+    best_diagnostic_candidate_by_symbol: dict[str, dict[str, object]] = {}
+    best_diagnostic_candidate_by_family: dict[str, dict[str, object]] = {}
     for row in available_rows:
         symbol = str(row.get("symbol") or "")
         family = str(row.get("strategy_family") or "")
@@ -307,6 +312,10 @@ def _aggregate_ranking_reports(
             candidate_count_by_symbol[symbol] = candidate_count_by_symbol.get(symbol, 0) + 1
         if family:
             candidate_count_by_family[family] = candidate_count_by_family.get(family, 0) + 1
+            missing_indicator_count_by_family[family] = missing_indicator_count_by_family.get(family, 0) + len(row.get("missing_indicator_columns") or [])
+        if int(row.get("entry_signal_count") or 0) == 0:
+            zero_entry_signal_count += 1
+            zero_entry_signal_count_by_family[family] = zero_entry_signal_count_by_family.get(family, 0) + 1
         for reason in row.get("rejection_reasons", []):
             rejected_count_by_reason[str(reason)] = rejected_count_by_reason.get(str(reason), 0) + 1
             if str(reason) == "NO_TRADES":
@@ -327,6 +336,16 @@ def _aggregate_ranking_reports(
         key = f"{symbol}|{family}"
         if symbol and family and (key not in best_candidate_by_symbol_and_family or float(row.get("rank_score") or -10**9) > float(best_candidate_by_symbol_and_family[key].get("rank_score") or -10**9)):
             best_candidate_by_symbol_and_family[key] = compact
+        diagnostic_score = (
+            float(row.get("signal_count_before_filters") or 0) * 10.0
+            + float(row.get("entry_signal_count") or 0) * 20.0
+            + float(row.get("final_entry_condition_count") or 0) * 5.0
+            - float(len(row.get("missing_indicator_columns") or [])) * 5.0
+        )
+        if symbol and (symbol not in best_diagnostic_candidate_by_symbol or diagnostic_score > float(best_diagnostic_candidate_by_symbol[symbol].get("diagnostic_score") or -10**9)):
+            best_diagnostic_candidate_by_symbol[symbol] = {**compact, "diagnostic_score": diagnostic_score}
+        if family and (family not in best_diagnostic_candidate_by_family or diagnostic_score > float(best_diagnostic_candidate_by_family[family].get("diagnostic_score") or -10**9)):
+            best_diagnostic_candidate_by_family[family] = {**compact, "diagnostic_score": diagnostic_score}
     summary_path.write_text(
         json.dumps(
             {
@@ -334,8 +353,13 @@ def _aggregate_ranking_reports(
                 "best_candidate_by_symbol": best_candidate_by_symbol,
                 "best_candidate_by_family": best_candidate_by_family,
                 "best_candidate_by_symbol_and_family": best_candidate_by_symbol_and_family,
+                "best_diagnostic_candidate_by_symbol": best_diagnostic_candidate_by_symbol,
+                "best_diagnostic_candidate_by_family": best_diagnostic_candidate_by_family,
                 "rejected_count_by_reason": dict(sorted(rejected_count_by_reason.items())),
                 "no_trades_count": no_trades_count,
+                "zero_entry_signal_count": zero_entry_signal_count,
+                "zero_entry_signal_count_by_family": dict(sorted(zero_entry_signal_count_by_family.items())),
+                "missing_indicator_count_by_family": dict(sorted(missing_indicator_count_by_family.items())),
                 "candidate_count_by_symbol": dict(sorted(candidate_count_by_symbol.items())),
                 "candidate_count_by_family": dict(sorted(candidate_count_by_family.items())),
             },
