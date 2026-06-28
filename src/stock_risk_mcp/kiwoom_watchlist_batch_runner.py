@@ -1329,28 +1329,57 @@ def _write_watchlist_review_reports(
                 "selection_reason": "PROMOTED_CLEANER_DIVERSIFIED_CANDIDATE",
             }
         )
+    selected_candidate_symbols = sorted({str(item.get("symbol") or "") for item in selected_candidates if str(item.get("symbol") or "")})
+    exclusion_reason_count = dict(
+        sorted(
+            Counter(str(item.get("exclusion_reason") or "UNKNOWN_EXCLUSION_REASON") for item in excluded_candidates).items()
+        )
+    )
+    concentration_warnings = {
+        "sector_concentration_warning": sector_warning,
+        "family_concentration_warning": family_warning,
+        "warnings": warnings,
+    }
+    safety_summary = {
+        "review_status": "REVIEW_ONLY",
+        "trade_readiness_status": "NOT_TRADE_READY",
+        "report_interpretation": "REVIEW_ONLY_NOT_TRADE_READY",
+        "selected_candidates_are_trade_recommendations": False,
+        "order_execution_allowed": False,
+        "account_access_allowed": False,
+        "autonomous_trading_allowed": False,
+        "human_review_required": True,
+    }
     portfolio_payload = {
-        "schema_version": "v15.3.1",
+        "schema_version": "v16.0.0",
         "artifact_type": "WATCHLIST_PORTFOLIO_CANDIDATE_REPORT",
         "review_status": "REVIEW_ONLY",
+        "report_interpretation": "REVIEW_ONLY_NOT_TRADE_READY",
+        "trade_readiness_status": "NOT_TRADE_READY",
         "watchlist_dataset_id": watchlist_dataset_id,
         "offline_strategy_run_id": offline_strategy_run_id,
         "run_root": aggregate_run_root,
         "generated_at": generated_at,
         "source_promotion_review_path": None,
         "top_n_default": top_n_default,
+        "selected_candidate_count": len(selected_candidates),
+        "selected_candidate_symbols": selected_candidate_symbols,
         "selected_candidates": selected_candidates,
         "selection_reason": "PROMOTED_CANDIDATES_FILTERED_BY_DIVERSIFICATION_AND_REVIEW_RISK",
+        "excluded_promoted_candidate_count": len(excluded_candidates),
         "excluded_promoted_candidates": excluded_candidates,
         "exclusion_reason": "SEE_PER_CANDIDATE_EXCLUSION_REASON",
+        "exclusion_reason_count": exclusion_reason_count,
         "max_candidates_per_symbol": max_candidates_per_symbol,
         "max_candidates_per_sector": max_candidates_per_sector,
         "max_candidates_per_family": max_candidates_per_family,
         "review_status_reason": "NOT_TRADE_READY",
         "portfolio_candidate_count": len(selected_candidates),
-        "portfolio_candidate_symbols": sorted({str(item.get("symbol") or "") for item in selected_candidates if str(item.get("symbol") or "")}),
+        "portfolio_candidate_symbols": selected_candidate_symbols,
         "portfolio_candidate_sector_counts": dict(sorted(selected_sector_counts.items())),
         "portfolio_candidate_family_counts": dict(sorted(selected_family_counts.items())),
+        "concentration_warnings": concentration_warnings,
+        "safety_summary": safety_summary,
     }
     output_root = Path(aggregate_run_root) / "reports"
     output_root.mkdir(parents=True, exist_ok=True)

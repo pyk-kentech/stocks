@@ -1994,6 +1994,21 @@ def test_watchlist_review_reports_include_sector_duplicate_risk_and_portfolio_ca
     assert summary_payload["training_dataset_manifest_path"] == result["training_dataset_manifest_path"]
     assert summary_payload["smoke_training_report_path"] == result["smoke_training_report_path"]
     assert summary_payload["training_readiness_status"] == "READY_FOR_SMOKE_AND_BASELINE_ONLY"
+    assert portfolio_review["report_interpretation"] == "REVIEW_ONLY_NOT_TRADE_READY"
+    assert portfolio_review["trade_readiness_status"] == "NOT_TRADE_READY"
+    assert portfolio_review["review_status"] == "REVIEW_ONLY"
+    assert portfolio_review["selected_candidate_count"] == portfolio_review["portfolio_candidate_count"]
+    assert portfolio_review["selected_candidate_symbols"] == portfolio_review["portfolio_candidate_symbols"]
+    assert portfolio_review["excluded_promoted_candidate_count"] == len(portfolio_review["excluded_promoted_candidates"])
+    assert portfolio_review["exclusion_reason_count"]["MAX_CANDIDATES_PER_SYMBOL"] >= 1
+    assert portfolio_review["exclusion_reason_count"]["HIGH_RISK_REVIEW"] >= 1
+    assert portfolio_review["concentration_warnings"]["sector_concentration_warning"]["status"] == "WARNING"
+    assert portfolio_review["concentration_warnings"]["family_concentration_warning"]["status"] == "OK"
+    assert portfolio_review["safety_summary"]["selected_candidates_are_trade_recommendations"] is False
+    assert portfolio_review["safety_summary"]["order_execution_allowed"] is False
+    assert portfolio_review["safety_summary"]["account_access_allowed"] is False
+    assert portfolio_review["safety_summary"]["autonomous_trading_allowed"] is False
+    assert portfolio_review["safety_summary"]["human_review_required"] is True
     assert portfolio_review["max_candidates_per_symbol"] == 1
     assert portfolio_review["max_candidates_per_sector"] == 3
     assert portfolio_review["max_candidates_per_family"] == 5
